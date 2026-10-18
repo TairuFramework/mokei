@@ -1,8 +1,11 @@
 import type { StoreProvider } from '@hozon/db'
 import type { LogLevel, Sink } from '@logtape/logtape'
-import { context, trace } from '@opentelemetry/api'
+import { context, metrics, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+import { resourceFromAttributes } from '@opentelemetry/resources'
+import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import {
   BasicTracerProvider,
   BatchSpanProcessor,
@@ -17,7 +20,7 @@ import { LocalTraceRecorder, type TraceRecorderEvent } from './trace-recorder.js
 let installed = false
 const EXPORT_TIMEOUT_MS = 10_000
 
-async function shutdownProvider(provider: BasicTracerProvider): Promise<void> {
+async function shutdownProvider(provider: { shutdown(): Promise<void> }): Promise<void> {
   try {
     const shutdown = provider.shutdown()
     await raceAttempt({ fn: () => shutdown, timeoutMs: EXPORT_TIMEOUT_MS })
@@ -29,17 +32,26 @@ async function shutdownProvider(provider: BasicTracerProvider): Promise<void> {
   }
 }
 
+function getMetricsEndpoint(otlp: { endpoint: string; metricsEndpoint?: string }): string | null {
+  if (otlp.metricsEndpoint != null) return otlp.metricsEndpoint
+  return otlp.endpoint.endsWith('/v1/traces')
+    ? `${otlp.endpoint.slice(0, -'/v1/traces'.length)}/v1/metrics`
+    : null
+}
+
 export function setupMokeiTelemetry(params: {
   provider: StoreProvider
   onEvent?: (event: TraceRecorderEvent) => void
   hasListeners?: (type: TraceRecorderEvent['type']) => boolean
   flushIntervalMs?: number
-  otlp?: { endpoint: string; headers?: Record<string, string> }
+  service?: { name?: string; version?: string }
+  otlp?: { endpoint: string; metricsEndpoint?: string; headers?: Record<string, string> }
   logs?: { level?: LogLevel; file?: boolean }
   reportCategories?: ReadonlyArray<ReadonlyArray<string>>
 }): { recorder: LocalTraceRecorder; dispose(): Promise<void> } {
   if (installed) throw new Error('Flow telemetry was already installed in this process')
   if (isSetup()) throw new Error('Logging is already configured')
+  const metricsEndpoint = params.otlp ? getMetricsEndpoint(params.otlp) : null
   // OTel's public getters return proxies even before registration. Read without probing.
   const registry: unknown = Reflect.get(globalThis, Symbol.for('opentelemetry.js.api.1'))
   if (typeof registry === 'object' && registry !== null) {
@@ -48,6 +60,9 @@ export function setupMokeiTelemetry(params: {
     }
     if ('context' in registry && registry.context != null) {
       throw new Error('A global context manager is already registered')
+    }
+    if (metricsEndpoint != null && 'metrics' in registry && registry.metrics != null) {
+      throw new Error('A global meter provider is already registered')
     }
   }
 
@@ -74,13 +89,36 @@ export function setupMokeiTelemetry(params: {
       processors.push(processor)
       rollback.push(() => processor.shutdown())
     }
+    const resource = resourceFromAttributes({
+      'service.name': params.service?.name ?? 'mokei',
+      ...(params.service?.version == null ? {} : { 'service.version': params.service.version }),
+    })
     const provider = new BasicTracerProvider({
+      resource,
       spanProcessors: processors,
       forceFlushTimeoutMillis: EXPORT_TIMEOUT_MS,
     })
     rollback.length = 0
     rollback.push(() => recorder.shutdown())
     rollback.push(() => shutdownProvider(provider))
+    let meterProvider: MeterProvider | undefined
+    if (params.otlp && metricsEndpoint != null) {
+      meterProvider = new MeterProvider({
+        resource,
+        readers: [
+          new PeriodicExportingMetricReader({
+            exporter: new OTLPMetricExporter({
+              url: metricsEndpoint,
+              headers: params.otlp.headers,
+              timeoutMillis: EXPORT_TIMEOUT_MS,
+            }),
+            exportTimeoutMillis: EXPORT_TIMEOUT_MS,
+          }),
+        ],
+      })
+      const registered = meterProvider
+      rollback.push(() => shutdownProvider(registered))
+    }
     const manager = new AsyncLocalStorageContextManager()
     let contextRegistered = false
     rollback.push(() => {
@@ -98,6 +136,12 @@ export function setupMokeiTelemetry(params: {
     // Cached tracers retain this provider even if later setup fails.
     installed = true
     rollback.push(() => trace.disable())
+    if (meterProvider) {
+      if (!metrics.setGlobalMeterProvider(meterProvider)) {
+        throw new Error('Failed to register the global meter provider')
+      }
+      rollback.push(() => metrics.disable())
+    }
 
     const sinks: Record<string, Sink> = { capture: recorder.sink, errors: getConsoleSink() }
     const rootSinks = ['capture']
@@ -144,12 +188,15 @@ export function setupMokeiTelemetry(params: {
         disposal ??= settleSequential(
           [
             () => provider.forceFlush(),
+            // Shutdown exports a final metrics batch.
+            ...(meterProvider ? [() => shutdownProvider(meterProvider)] : []),
             // Exporter shutdown may wait on an HTTP response after the processor's timeout.
             () => shutdownProvider(provider),
             // Never release storage while a local write outlives a provider/export timeout.
             () => recorder.shutdown(),
             reset,
             () => trace.disable(),
+            () => metrics.disable(),
             () => context.disable(),
           ],
           'Failed to dispose mokei telemetry',

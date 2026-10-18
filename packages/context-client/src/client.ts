@@ -97,7 +97,7 @@ import {
   MRTR_METHODS,
   runInputRequiredFlow,
 } from './mrtr.js'
-import { capturePayload, type MessageDirection, responseOutcome } from './observation.js'
+import { capturePayload, type MessageDirection } from './observation.js'
 import { SetupReader } from './setup-reader.js'
 import {
   ACKNOWLEDGED_METHOD,
@@ -329,7 +329,8 @@ type ClientTypes = {
 type PagedResult = { nextCursor?: string } & Record<string, unknown>
 
 const FIRST_EXCHANGE = Symbol('firstExchange')
-type TracedRequestOptions = RequestOptions & { [FIRST_EXCHANGE]?: SpanContext }
+const ROUND = Symbol('round')
+type TracedRequestOptions = RequestOptions & { [FIRST_EXCHANGE]?: SpanContext; [ROUND]?: number }
 
 export class ContextClient<
   T extends ContextTypes = UnknownContextTypes,
@@ -639,9 +640,12 @@ export class ContextClient<
     if (!protocol.clientMethods.has(method as string)) {
       throw new MethodNotInRevisionError({ method: method as string, version: protocol.version })
     }
-    const firstContext = (options as TracedRequestOptions | undefined)?.[FIRST_EXCHANGE]
+    const traced = options as TracedRequestOptions | undefined
+    const firstContext = traced?.[FIRST_EXCHANGE]
     const exchange = this.#exchangeTracer.startOutgoing(method as string, params, {
       links: firstContext === undefined ? [] : [{ context: firstContext }],
+      traceAttributes: options?.traceAttributes,
+      round: traced?.[ROUND],
     })
     const first = firstContext ?? exchange.span.spanContext()
     return withActiveContext(exchange.context, async () => {
@@ -682,8 +686,7 @@ export class ContextClient<
         ) {
           exchange.fail('cancelled', error.message)
         } else if (cause instanceof RPCError) {
-          const outcome = responseOutcome({ error: cause })
-          exchange.fail(outcome.error ? outcome.errorType : String(cause.code), cause.message)
+          exchange.failRPC(cause)
         } else {
           exchange.fail(
             cause instanceof TransportClosedError ? 'context.lost' : '_OTHER',
@@ -701,13 +704,30 @@ export class ContextClient<
       // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
       // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
       // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
+      // The first leg settled as suspended (no `execute_tool`), so a refusal records the local
+      // failure span the logical call would otherwise lack.
+      const refuse = (error: InputRequiredNotSupportedError): InputRequiredNotSupportedError => {
+        if (method === 'tools/call') {
+          this.#exchangeTracer.recordLocalFailure({
+            method,
+            params,
+            links: [{ context: first }],
+            traceAttributes: options?.traceAttributes,
+            round: 0,
+            error,
+          })
+        }
+        return error
+      }
       if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
-        throw new InputRequiredNotSupportedError({
-          reason:
-            protocol.inputRequestMethods.size === 0
-              ? `protocol version ${protocol.version} has no multi round-trip requests`
-              : `${method as string} cannot suspend on input`,
-        })
+        throw refuse(
+          new InputRequiredNotSupportedError({
+            reason:
+              protocol.inputRequestMethods.size === 0
+                ? `protocol version ${protocol.version} has no multi round-trip requests`
+                : `${method as string} cannot suspend on input`,
+          }),
+        )
       }
       // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
       // the driver below reads each retry leg, so the loop lives in exactly one place.
@@ -715,34 +735,63 @@ export class ContextClient<
         return result as ClientTypes['SendRequests'][Method]['Result']
       }
       if (!this.#inputRequired.autoFulfill) {
-        throw new InputRequiredNotSupportedError({
-          reason:
-            'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
-        })
+        throw refuse(
+          new InputRequiredNotSupportedError({
+            reason:
+              'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
+          }),
+        )
       }
-      return (await runInputRequiredFlow({
-        method: method as string,
-        first: result,
-        maxRounds: this.#inputRequired.maxRounds,
-        timeout: options?.timeout,
-        maxTotalTimeout: options?.maxTotalTimeout,
-        startedAt,
-        signal: options?.signal,
-        dispatch: (key, inputRequest, signal) =>
-          this.#fulfilInputRequest(key, inputRequest, signal),
-        retry: (retryParams, timeout) => {
-          return this.request(
+      // `legs` is the next retry's round index; `suspended` is true while no retry leg is in
+      // flight and the last settled round was `input_required`, i.e. when a rejection is local.
+      let legs = 1
+      let suspended = true
+      try {
+        return (await runInputRequiredFlow({
+          method: method as string,
+          first: result,
+          maxRounds: this.#inputRequired.maxRounds,
+          timeout: options?.timeout,
+          maxTotalTimeout: options?.maxTotalTimeout,
+          startedAt,
+          signal: options?.signal,
+          dispatch: (key, inputRequest, signal) =>
+            this.#fulfilInputRequest(key, inputRequest, signal),
+          retry: async (retryParams, timeout) => {
+            const round = legs++
+            suspended = false
+            const retried = await this.request(
+              method,
+              { ...(params as object), ...retryParams } as typeof params,
+              {
+                ...options,
+                allowInputRequired: true,
+                timeout,
+                [FIRST_EXCHANGE]: first,
+                [ROUND]: round,
+              } as TracedRequestOptions,
+            )
+            suspended = isInputRequiredResult(retried)
+            return retried
+          },
+        })) as ClientTypes['SendRequests'][Method]['Result']
+      } catch (cause) {
+        // A wire failure on a retry leg already settled that leg's span with `execute_tool`.
+        if (suspended && method === 'tools/call') {
+          this.#exchangeTracer.recordLocalFailure({
             method,
-            { ...(params as object), ...retryParams } as typeof params,
-            {
-              ...options,
-              allowInputRequired: true,
-              timeout,
-              [FIRST_EXCHANGE]: first,
-            } as TracedRequestOptions,
-          )
-        },
-      })) as ClientTypes['SendRequests'][Method]['Result']
+            params,
+            links: [{ context: first }],
+            traceAttributes: options?.traceAttributes,
+            round: legs - 1,
+            error: cause,
+            ...(options?.signal?.aborted && cause === options.signal.reason
+              ? { errorType: 'cancelled' }
+              : {}),
+          })
+        }
+        throw cause
+      }
     })
   }
 
@@ -902,7 +951,7 @@ export class ContextClient<
       'name' in serverInfo &&
       typeof serverInfo.name === 'string'
     ) {
-      this.#tracing?.contextSpan?.setAttribute('server.name', serverInfo.name)
+      this.#tracing?.contextSpan?.setAttribute('mokei.server.name', serverInfo.name)
     }
   }
 
@@ -1314,16 +1363,18 @@ export class ContextClient<
                 () => {},
               )
             } else {
-              traced.fail(
-                settle.reason === 'cancel'
-                  ? 'cancelled'
-                  : settle.reason === 'closed'
-                    ? 'context.lost'
-                    : settle.error instanceof RPCError
-                      ? String(settle.error.code)
+              if (settle.reason === 'error' && settle.error instanceof RPCError) {
+                traced.failRPC(settle.error)
+              } else {
+                traced.fail(
+                  settle.reason === 'cancel'
+                    ? 'cancelled'
+                    : settle.reason === 'closed'
+                      ? 'context.lost'
                       : '_OTHER',
-                settle.error?.message,
-              )
+                  settle.error?.message,
+                )
+              }
               handlers.onSettle(settle)
             }
           },
@@ -1452,16 +1503,17 @@ export class ContextClient<
         exchange.succeed(result)
         return result
       } catch (cause) {
-        exchange.fail(
-          signal.aborted
-            ? 'cancelled'
-            : cause instanceof RPCError
-              ? String(cause.code)
+        if (!signal.aborted && cause instanceof RPCError) exchange.failRPC(cause)
+        else {
+          exchange.fail(
+            signal.aborted
+              ? 'cancelled'
               : cause instanceof TransportClosedError
                 ? 'context.lost'
                 : '_OTHER',
-          cause instanceof Error ? cause.message : String(cause),
-        )
+            cause instanceof Error ? cause.message : String(cause),
+          )
+        }
         throw cause
       } finally {
         signal.removeEventListener('abort', abort)

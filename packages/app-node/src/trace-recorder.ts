@@ -50,11 +50,11 @@ function isRoot(span: ReadableSpan): boolean {
 function createSummary(span: OpenSpan): TraceSummary {
   const kind = span.attributes['mokei.kind']
   const attributes: TraceSummary['attributes'] = {}
-  for (const key of ['run.id', 'flow.id', 'mokei.context.id'] as const) {
+  for (const key of ['mokei.run.id', 'mokei.flow.id', 'mokei.context.id'] as const) {
     const value = span.attributes[key]
     if (typeof value === 'string') attributes[key] = value
   }
-  const label = span.attributes['run.label']
+  const label = span.attributes['mokei.run.label']
   if (typeof label === 'string') attributes.label = label
   return {
     traceID: span.traceID,

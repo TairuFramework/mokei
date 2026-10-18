@@ -15,7 +15,7 @@ test('a long flush interval keeps live spans available before persistence', asyn
     flushIntervalMs: 600_000,
   })
   try {
-    const span = trace.getTracer('live-before-persistence').startSpan('flow.run', {
+    const span = trace.getTracer('live-before-persistence').startSpan('invoke_workflow', {
       attributes: { 'mokei.root': true, 'mokei.kind': 'flow' },
     })
     span.end()

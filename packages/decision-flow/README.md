@@ -122,9 +122,12 @@ result as `results.<callNode>.output`.
 ## Tracing, metrics, and privacy
 
 The engine records `flow.segment` and `flow.node` spans. Decision prediction adds a child
-`decision.predict` span with `system_one.model`, `system_one.question.count`,
-`system_one.usage.input_tokens`, and `system_one.usage.output_tokens`. Failures add `error.type`,
-`http.status_code` when available, and `system_one.retry_after_ms` when available.
+`predict {model}` span (`predict` when the node sets no model), kind `CLIENT`, with
+`gen_ai.operation.name=predict`, `gen_ai.provider.name`, `gen_ai.request.model`,
+`gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` and
+`mokei.system_one.question.count`. Failures add `error.type`, `http.response.status_code` when
+available, and `mokei.system_one.retry_after_ms` when available. Each prediction records a
+`gen_ai.client.operation.duration` histogram.
 
 Each answered question adds a `decision.answer` event to `flow.node`. Its fixed attributes are
 `decision.question`, `decision.type`, `decision.choice`, `decision.score`, `decision.noul`, and
@@ -134,8 +137,8 @@ dimension.
 
 Use a `count` connector on `decision.answer` for decision distribution per flow, node, and question.
 Derive confidence distributions from `decision.confidence` and low-confidence fallback rates from
-`flow.branch.case`. Use `spanmetrics` on `decision.predict` for prediction latency, tokens, and
-retries.
+`flow.branch.case`. Use `gen_ai.client.operation.duration` for prediction latency, or `spanmetrics` on `predict`
+spans for tokens and retries.
 
 By default, spans and logs omit resolved state, question instructions, criteria descriptions,
 inputs, result payloads, and error messages. Set `recordErrorMessages: true` only when the host

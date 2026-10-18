@@ -39,7 +39,12 @@ test('round-trips every field and absent optional fields', async () => {
     activeSegmentSpanID: 'segment',
     endTime: 200.5,
     startTime: 100.25,
-    attributes: { 'run.id': 'run', 'flow.id': 'flow', 'mokei.context.id': 'ctx', label: 'label' },
+    attributes: {
+      'mokei.run.id': 'run',
+      'mokei.flow.id': 'flow',
+      'mokei.context.id': 'ctx',
+      label: 'label',
+    },
     errorCount: 1,
     droppedCount: 3,
   })
@@ -51,7 +56,7 @@ test('round-trips every field and absent optional fields', async () => {
 })
 
 test('preserves JSON-looking string attributes through get and list', async () => {
-  const trace = summary('trace', { attributes: { label: '{"a":1}', 'flow.id': '[1,2]' } })
+  const trace = summary('trace', { attributes: { label: '{"a":1}', 'mokei.flow.id': '[1,2]' } })
   await store.upsert([trace])
   expect(await store.get('trace')).toEqual(trace)
   expect((await store.list({ limit: 10 })).traces).toEqual([trace])
@@ -177,19 +182,19 @@ test('deletes requested traces and returns the number of existing rows', async (
 test('name filter searches span name, label and flow ID as literal case-insensitive text', async () => {
   await store.upsert([
     summary('named', {
-      name: 'flow.run',
-      attributes: { label: 'Éclair 100%_done!', 'flow.id': 'Review-Flow' },
+      name: 'invoke_workflow',
+      attributes: { label: 'Éclair 100%_done!', 'mokei.flow.id': 'Review-Flow' },
     }),
     summary('other'),
   ])
-  for (const name of ['FLOW.RUN', 'éCLAIR', '100%_done!', 'REVIEW-flow']) {
+  for (const name of ['INVOKE_WORKFLOW', 'éCLAIR', '100%_done!', 'REVIEW-flow']) {
     expect((await store.list({ limit: 10, name })).traces.map((row) => row.traceID)).toEqual([
       'named',
     ])
   }
   expect((await store.list({ limit: 10, name: 'missing' })).traces).toEqual([])
   await store.upsert([
-    summary('named', { revision: 2, name: 'flow.run', attributes: { label: 'New label' } }),
+    summary('named', { revision: 2, name: 'invoke_workflow', attributes: { label: 'New label' } }),
   ])
   expect((await store.list({ limit: 10, name: 'éclair' })).traces).toEqual([])
   expect(

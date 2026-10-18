@@ -9,6 +9,7 @@ import type {
   Model,
   ModelProvider,
   Message as ProviderMessage,
+  ProviderTelemetry,
   RequestParams,
   ServerMessage,
   StreamChatParams,
@@ -70,6 +71,11 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
   }
 
   #registry: Map<string, LlamaModelConfig>
+  #telemetry: ProviderTelemetry = {
+    providerName: 'llama.cpp',
+    local: true,
+    syntheticToolCallIDs: true,
+  }
   #llamaPromise: Promise<Llama> | null = null
   #loadedModels: Map<string, LlamaModel> = new Map()
   #loadingModels: Map<string, Promise<LlamaModel>> = new Map()
@@ -84,6 +90,10 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
       },
     })
     this.#registry = new Map(Object.entries(params.models ?? {}))
+  }
+
+  get telemetry(): ProviderTelemetry {
+    return this.#telemetry
   }
 
   async #getLlama(): Promise<Llama> {

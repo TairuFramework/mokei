@@ -17,6 +17,7 @@ export {
   createExchangeTracer,
   type ExchangeSpan,
   type TerminationReason,
+  type TraceParentFrom,
 } from './client-tracing.js'
 export {
   CapabilityNotDeclaredError,
@@ -40,6 +41,12 @@ export {
   type ValidationIssue,
 } from './errors.js'
 export {
+  mcpMetricsEnabled,
+  metricAttributes,
+  recordMCPOperation,
+  recordMCPSession,
+} from './mcp-metrics.js'
+export {
   DEFAULT_MAX_ROUNDS,
   type InputRequiredResult,
   type InputRequiredRetryParams,
@@ -54,15 +61,32 @@ export {
   capturePayload,
   DEFAULT_PAYLOAD_CAP,
   type MessageDirection,
+  type NetworkInfo,
   type PayloadCapture,
   redactCommandArgs,
   redactPayload,
   requestAttributes,
   requestSpanName,
   resolvePayloadCap,
+  responseAttributes,
   responseOutcome,
   sanitizeMessage,
+  settleAttributes,
 } from './observation.js'
+export {
+  AGENT_COUNT_BUCKETS,
+  AGENT_DURATION_BUCKETS,
+  endSpanError,
+  errorTypeOf,
+  GEN_AI_DURATION_BUCKETS,
+  getMokeiMeter,
+  getMokeiTracer,
+  MCP_DURATION_BUCKETS,
+  resolveContentCapture,
+  SEMCONV_SCHEMA_URL,
+  TOKEN_BUCKETS,
+  WORKFLOW_DURATION_BUCKETS,
+} from './semconv.js'
 export {
   type ListenHandle,
   type ListenHandlers,

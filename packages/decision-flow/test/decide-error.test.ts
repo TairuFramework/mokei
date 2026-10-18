@@ -11,7 +11,7 @@ import {
 import { MAX_DELAY_MS } from '@sozai/async'
 import { describe, expect, test } from 'vitest'
 
-import { describeDecisionError, retryableDecision } from '../src/decide-error.js'
+import { describeDecisionError, errorTypeOf, retryableDecision } from '../src/decide-error.js'
 import { InvalidDecisionStateError } from '../src/decide-node.js'
 
 describe('retryableDecision', () => {
@@ -129,5 +129,14 @@ describe('describeDecisionError', () => {
     expect(metadata).toEqual({ type: 'Error' })
     expect(metadata).not.toHaveProperty('message')
     expect(metadata).not.toHaveProperty('cause')
+  })
+})
+
+describe('errorTypeOf', () => {
+  test('maps aborts, named errors and generic values', () => {
+    expect(errorTypeOf(new DOMException('stop', 'AbortError'))).toBe('cancelled')
+    expect(errorTypeOf(new TypeError('x'))).toBe('TypeError')
+    expect(errorTypeOf(new Error('x'))).toBe('_OTHER')
+    expect(errorTypeOf('x')).toBe('_OTHER')
   })
 })

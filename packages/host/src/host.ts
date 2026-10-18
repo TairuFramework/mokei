@@ -3,12 +3,22 @@ import {
   type ClientTransport,
   ContextClient,
   type ContextTypes,
+  capturePayload,
   type ElicitHandler,
+  endSpanError,
+  errorTypeOf,
+  getMokeiTracer,
   type ListParams,
+  mcpMetricsEnabled,
+  metricAttributes,
+  type NetworkInfo,
   type PayloadCapture,
   type PromptParams,
+  recordMCPSession,
+  resolveContentCapture,
   type TerminationReason,
   type ToolParams,
+  type TraceParentFrom,
   type UnknownContextTypes,
 } from '@mokei/context-client'
 import type {
@@ -25,10 +35,9 @@ import type {
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
 import { type FetchMiddleware, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
-import { ROOT_CONTEXT, SpanStatusCode } from '@opentelemetry/api'
+import { ROOT_CONTEXT, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
-import { createTracerFactory } from '@sozai/otel'
 
 import {
   createLocalToolID,
@@ -39,8 +48,32 @@ import {
   type LocalToolDefinition,
 } from './local-tools.js'
 
-const createTracer = createTracerFactory('mokei')
 type ContextTransport = 'stdio' | 'http' | 'direct'
+
+/** The protocol revision is unresolved (and the getter throws) while an `'auto'` probe is pending. */
+function currentProtocolVersion(client: ContextClient): string | undefined {
+  try {
+    return client.protocolVersion
+  } catch {
+    return undefined
+  }
+}
+
+function networkInfo(transport: ContextTransport, url?: string): NetworkInfo | undefined {
+  if (transport === 'stdio') return { transport: 'pipe' }
+  if (transport !== 'http') return undefined
+  const info: NetworkInfo = { transport: 'tcp', protocolName: 'http' }
+  if (url === undefined) return info
+  try {
+    const parsed = new URL(url)
+    info.serverAddress = parsed.hostname.replace(/^\[|\]$/g, '')
+    info.serverPort =
+      parsed.port === '' ? (parsed.protocol === 'https:' ? 443 : 80) : Number(parsed.port)
+  } catch {
+    // Unparseable URL: keep transport-level attributes only.
+  }
+  return info
+}
 
 export type EnableTools = boolean | Array<string>
 export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
@@ -103,6 +136,8 @@ export type LocalToolParams = {
   arguments?: Record<string, unknown>
   _meta?: Record<string, JSONValue>
   signal?: AbortSignal
+  /** Attributes added to the `execute_tool` span; never sent anywhere else. */
+  traceAttributes?: Record<string, string>
 }
 
 export type AllowToolCalls = 'always' | 'ask' | 'never'
@@ -158,7 +193,7 @@ export type ContextHostParams = {
   dispose?: () => Promise<void>
   elicit?: HostElicitHandler | true
   /** MCP payload capture defaults to 'off'. */
-  tracing?: { payloads?: PayloadCapture }
+  tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
 }
 
 export type HasContextParams = { key: string }
@@ -258,6 +293,7 @@ export type HTTPContextParams = {
 export class ContextHost extends Disposer {
   #contexts: Record<string, HostedContext> = {}
   #payloads?: PayloadCapture
+  #parentFrom?: TraceParentFrom
   #contextSettlers = new Map<string, (reason: TerminationReason) => void>()
   #localTools: Map<string, LocalTool> = new Map()
   #events: EventEmitter<HostEvents> = new EventEmitter<HostEvents>()
@@ -282,6 +318,7 @@ export class ContextHost extends Disposer {
     })
     this.#elicit = params.elicit
     this.#payloads = params.tracing?.payloads ?? 'off'
+    this.#parentFrom = params.tracing?.parentFrom
   }
 
   get contexts(): Record<string, HostedContext> {
@@ -597,6 +634,7 @@ export class ContextHost extends Disposer {
       context.client as unknown as ContextClient,
       'http',
       transport,
+      url,
     )
 
     return context.client
@@ -616,15 +654,29 @@ export class ContextHost extends Disposer {
     client: ContextClient,
     transport: ContextTransport = 'direct',
     httpTransport?: HTTPTransport,
+    url?: string,
   ): void {
-    const span = createTracer('host').startSpan(
+    const network = networkInfo(transport, url)
+    const span = getMokeiTracer('host').startSpan(
       'mcp.context',
       {
         attributes: {
           'mokei.kind': 'context',
           'mokei.root': true,
           'mokei.context.id': key,
-          'mcp.transport': transport,
+          'mokei.context.transport': transport,
+          ...(network === undefined
+            ? {}
+            : {
+                'network.transport': network.transport,
+                ...(network.protocolName === undefined
+                  ? {}
+                  : { 'network.protocol.name': network.protocolName }),
+                ...(network.serverAddress === undefined
+                  ? {}
+                  : { 'server.address': network.serverAddress }),
+                ...(network.serverPort === undefined ? {} : { 'server.port': network.serverPort }),
+              }),
         },
       },
       ROOT_CONTEXT,
@@ -633,25 +685,48 @@ export class ContextHost extends Disposer {
       contextID: key,
       contextSpan: span,
       payloads: this.#payloads,
+      ...(this.#parentFrom === undefined ? {} : { parentFrom: this.#parentFrom }),
       getSessionID: () => httpTransport?.sessionID ?? undefined,
+      getProtocolVersion: () => currentProtocolVersion(client),
+      network,
     })
+    const initialVersion = currentProtocolVersion(client)
+    if (initialVersion !== undefined) span.setAttribute('mcp.protocol.version', initialVersion)
     if (client.initializationResult != null)
-      span.setAttribute('server.name', client.initializationResult.serverInfo.name)
+      span.setAttribute('mokei.server.name', client.initializationResult.serverInfo.name)
     let settled = false
+    const startedAt = performance.now()
     this.#contextSettlers.set(key, (reason) => {
       if (settled) return
       settled = true
       client.endTracing(reason)
+      if (mcpMetricsEnabled())
+        recordMCPSession({
+          durationS: (performance.now() - startedAt) / 1000,
+          attributes: metricAttributes({
+            ...(network === undefined
+              ? {}
+              : {
+                  'network.transport': network.transport,
+                  'network.protocol.name': network.protocolName,
+                  'server.address': network.serverAddress,
+                  'server.port': network.serverPort,
+                }),
+            'mcp.protocol.version': currentProtocolVersion(client),
+            ...(reason === 'lost' ? { 'error.type': 'context.lost' } : {}),
+          }),
+        })
       if (httpTransport?.sessionID != null)
         span.setAttribute('mcp.session.id', httpTransport.sessionID)
-      if (reason === 'lost') span.setAttribute('error.type', 'context.lost')
-      span.setStatus({ code: reason === 'lost' ? SpanStatusCode.ERROR : SpanStatusCode.OK })
-      span.end()
+      if (reason === 'lost') endSpanError(span, 'context.lost')
+      else span.end()
     })
     const unsubscribes = [
       client.events.on('initialized', ({ serverInfo }) => {
         if (settled) return
-        span.setAttribute('server.name', serverInfo.name)
+        span.setAttribute('mokei.server.name', serverInfo.name)
+        const version = currentProtocolVersion(client)
+        if (version !== undefined) span.setAttribute('mcp.protocol.version', version)
         if (httpTransport?.sessionID != null)
           span.setAttribute('mcp.session.id', httpTransport.sessionID)
       }),
@@ -800,7 +875,7 @@ export class ContextHost extends Disposer {
   }
 
   callNamespacedTool(params: NamespacedToolParams): Promise<CallToolResult> {
-    const { id, arguments: args = {}, _meta, signal, timeout } = params
+    const { id, arguments: args = {}, _meta, signal, timeout, traceAttributes } = params
 
     // Check if this is a local tool
     if (isLocalToolID(id)) {
@@ -809,16 +884,17 @@ export class ContextHost extends Disposer {
         arguments: args,
         _meta: _meta as Record<string, JSONValue> | undefined,
         signal,
+        traceAttributes,
       })
     }
 
     const [key, name] = getContextToolInfo(id)
-    return this.callTool({ key, name, arguments: args, _meta, signal, timeout })
+    return this.callTool({ key, name, arguments: args, _meta, signal, timeout, traceAttributes })
   }
 
   /** Call a local tool by name. Local tools run in-process, so there is no request to time out. */
   async callLocalTool(params: LocalToolParams): Promise<CallToolResult> {
-    const { name, arguments: args = {}, _meta, signal } = params
+    const { name, arguments: args = {}, _meta, signal, traceAttributes } = params
 
     const localTool = this.#localTools.get(name)
     if (localTool == null) {
@@ -828,11 +904,41 @@ export class ContextHost extends Disposer {
       throw signal.reason
     }
 
+    const capture = resolveContentCapture(this.#payloads)
+    const span = getMokeiTracer('host').startSpan(`execute_tool ${name}`, {
+      kind: SpanKind.INTERNAL,
+      attributes: {
+        'gen_ai.operation.name': 'execute_tool',
+        'gen_ai.tool.name': name,
+        'gen_ai.tool.type': 'function',
+        ...(localTool.tool.description === undefined
+          ? {}
+          : { 'gen_ai.tool.description': localTool.tool.description }),
+        ...traceAttributes,
+      },
+    })
+    // Serializing and redacting payloads is costly; skip it for unsampled or no-op spans.
+    const recording = span.isRecording()
+    const setContent = (key: string, value: unknown): void => {
+      const captured = capturePayload(value, capture)
+      if (captured === undefined) return
+      span.setAttribute(key, captured.payload)
+      if (captured.truncated) span.setAttribute('mokei.payload.truncated', true)
+    }
+    if (recording) setContent('gen_ai.tool.call.arguments', args)
     try {
       // The call carries `arguments` (wire vocabulary); the handler receives `input`.
-      return await localTool.execute({ input: args, meta: _meta ?? {}, signal })
+      const result = await localTool.execute({ input: args, meta: _meta ?? {}, signal })
+      if (result.isError === true) {
+        endSpanError(span, 'tool_error')
+      } else {
+        if (recording) setContent('gen_ai.tool.call.result', result)
+        span.end()
+      }
+      return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
+      endSpanError(span, errorTypeOf(error), errorMessage)
       return {
         content: [{ type: 'text' as const, text: errorMessage }],
         isError: true,

@@ -86,6 +86,8 @@ export type AgentRunParams<T extends ProviderTypes = ProviderTypes> = {
   messages?: Array<Message<T['MessagePart'], T['ToolCall']>>
   /** Aborts the run, cancelling the model request and any tool call in flight */
   signal?: AbortSignal
+  /** Application conversation ID, recorded as `gen_ai.conversation.id` on telemetry */
+  conversationID?: string
 }
 
 /**
@@ -98,6 +100,10 @@ export type AgentParams<T extends ProviderTypes = ProviderTypes> = {
   provider: string | ModelProvider<T>
   /** Model identifier to use for chat completions */
   model: string
+  /** Agent name, recorded as `gen_ai.agent.name` and in the `invoke_agent` span name */
+  name?: string
+  /** Agent description, recorded as `gen_ai.agent.description` */
+  description?: string
   /** Optional system prompt prepended to messages */
   systemPrompt?: string
   /** Tool approval strategy (default: 'auto') */
@@ -121,6 +127,8 @@ export type ResolvedAgentParams<T extends ProviderTypes = ProviderTypes> = {
   session: Session<T>
   provider: ModelProvider<T>
   model: string
+  name: string | undefined
+  description: string | undefined
   systemPrompt: string | undefined
   toolApproval: ToolApprovalStrategy
   maxIterations: number

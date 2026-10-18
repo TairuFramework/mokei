@@ -2,7 +2,13 @@ import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createTransportStream } from '@enkaku/node-streams'
 import { HandlerError, type ProcedureHandlers, serve } from '@enkaku/server'
-import { type PayloadCapture, sanitizeMessage, type TerminationReason } from '@mokei/context-client'
+import {
+  type PayloadCapture,
+  resolveContentCapture,
+  sanitizeMessage,
+  type TerminationReason,
+  type TraceParentFrom,
+} from '@mokei/context-client'
 import type {
   ActiveContextInfo,
   BaseProtocol,
@@ -30,7 +36,7 @@ export type HandlersContext = {
   startedTime: number
   shutdown?: () => void | Promise<void>
   shutdownSignal?: AbortSignal
-  tracing?: { payloads?: PayloadCapture }
+  tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
   tracingInfo?: () => TracingInfo
   eventBufferLimit?: number
   flowStatus?: () => FlowServiceStatus
@@ -127,11 +133,13 @@ export function createHandlers({
         spawned.childProcess.kill()
         return
       }
+      const contentCapture = resolveContentCapture(tracing?.payloads)
       const proxyTracing = createProxyTracing({
         contextID,
         command: ctx.param.command,
         args: ctx.param.args ?? [],
         payloads: tracing?.payloads,
+        parentFrom: tracing?.parentFrom,
       })
       const controller = new AbortController()
       let stopped = false
@@ -179,10 +187,7 @@ export function createHandlers({
                     meta: createEventMeta(contextID),
                     data: {
                       from: 'client',
-                      message: sanitizeMessage(message, tracing?.payloads) as Record<
-                        string,
-                        unknown
-                      >,
+                      message: sanitizeMessage(message, contentCapture) as Record<string, unknown>,
                     },
                   })
               }),
@@ -197,10 +202,7 @@ export function createHandlers({
                     meta: createEventMeta(contextID),
                     data: {
                       from: 'server',
-                      message: sanitizeMessage(message, tracing?.payloads) as Record<
-                        string,
-                        unknown
-                      >,
+                      message: sanitizeMessage(message, contentCapture) as Record<string, unknown>,
                     },
                   })
               }),
@@ -268,7 +270,7 @@ export type HostDaemonParams = {
   handleSignals?: boolean
   shutdownTimeoutMs?: number
   handlers?: Partial<ProcedureHandlers<Protocol>>
-  tracing?: { payloads?: PayloadCapture }
+  tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
   tracingInfo?: () => TracingInfo
   eventBufferLimit?: number
   flowStatus?: () => FlowServiceStatus

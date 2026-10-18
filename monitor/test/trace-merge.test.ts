@@ -26,7 +26,7 @@ export const summary: TraceSummary = {
 export const open: OpenSpan = {
   traceID: summary.traceID,
   spanID: summary.rootSpanID,
-  name: 'flow.run',
+  name: 'invoke_workflow',
   kind: 0,
   startTime: 100,
   attributes: {},

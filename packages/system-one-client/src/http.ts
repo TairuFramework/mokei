@@ -166,8 +166,10 @@ async function mapError<T>(run: () => Promise<T>): Promise<T> {
 export class HTTPSystemOneBackend implements SystemOneBackend {
   #http: KyInstance
   #retry: RetryPolicy | undefined
+  #url: string
 
   constructor(params: HTTPSystemOneBackendParams) {
+    this.#url = params.url
     this.#retry = params.retry
     const headers = new Headers(params.headers)
     if (params.apiKey != null && params.apiKey !== '') {
@@ -179,6 +181,10 @@ export class HTTPSystemOneBackend implements SystemOneBackend {
       fetch: params.fetch,
       timeout: params.timeout,
     })
+  }
+
+  get url(): string {
+    return this.#url
   }
 
   async predict(params: SystemOneBackendPredictParams): Promise<SystemOneResult> {

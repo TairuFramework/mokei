@@ -97,3 +97,18 @@ test.each(['maybe', 0, -1, 1.5])('rejects tracing.payloads %s', async (payloads)
   await writeFile(getMokeiConfigPath(), JSON.stringify({ tracing: { payloads } }))
   await expect(loadMokeiConfig()).rejects.toBeInstanceOf(MokeiConfigError)
 })
+
+test('reads parentFrom and metricsEndpoint', async () => {
+  const config = {
+    tracing: { parentFrom: 'meta', otlp: { endpoint: 'http://x', metricsEndpoint: 'http://y' } },
+  }
+  await writeFile(getMokeiConfigPath(), JSON.stringify(config))
+  expect(await loadMokeiConfig()).toMatchObject(config)
+})
+
+test('rejects an unknown parentFrom', async () => {
+  await writeFile(getMokeiConfigPath(), JSON.stringify({ tracing: { parentFrom: 'other' } }))
+  await expect(loadMokeiConfig()).rejects.toMatchObject({
+    issues: expect.arrayContaining([expect.stringContaining('tracing.parentFrom')]),
+  })
+})

@@ -99,12 +99,18 @@ export type OllamaClientParams = OllamaConfiguration
 
 export class OllamaClient {
   #api: KyInstance
+  #baseURL: string
 
   constructor(params: OllamaClientParams = {}) {
+    this.#baseURL = params.baseURL ?? DEFAULT_BASE_URL
     this.#api = ky.create({
-      prefix: params.baseURL ?? DEFAULT_BASE_URL,
+      prefix: this.#baseURL,
       timeout: params.timeout ?? DEFAULT_TIMEOUT,
     })
+  }
+
+  get baseURL(): string {
+    return this.#baseURL
   }
 
   async listModels(params: ListModelParams = {}): Promise<Array<Model>> {

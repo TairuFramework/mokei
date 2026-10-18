@@ -6,7 +6,7 @@ import { decodeJSONColumn } from './json-column.js'
 import { decodeTraceCursor, encodeTraceCursor } from './trace-cursor.js'
 
 export function traceSearchText(summary: TraceSummary): string {
-  return [summary.name, summary.attributes.label, summary.attributes['flow.id']]
+  return [summary.name, summary.attributes.label, summary.attributes['mokei.flow.id']]
     .filter((value) => typeof value === 'string')
     .join('\n')
     .toLowerCase()

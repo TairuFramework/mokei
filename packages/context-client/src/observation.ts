@@ -44,18 +44,23 @@ export function redactPayload(value: unknown): unknown {
 export function capturePayload(
   value: unknown,
   capture: PayloadCapture | undefined,
+  options?: { redact?: boolean },
 ): { payload: string; truncated: boolean } | undefined {
   const cap = resolvePayloadCap(capture)
   if (cap === null) return undefined
 
-  const serialised = JSON.stringify(redactPayload(value))
+  const serialised = JSON.stringify(options?.redact === false ? value : redactPayload(value))
   if (serialised === undefined) return { payload: 'null', truncated: false }
+  return capText(serialised, cap)
+}
+
+function capText(text: string, cap: number): { payload: string; truncated: boolean } {
   const encoder = new TextEncoder()
-  if (encoder.encode(serialised).length <= cap) return { payload: serialised, truncated: false }
+  if (encoder.encode(text).length <= cap) return { payload: text, truncated: false }
 
   let payload = ''
   let bytes = 0
-  for (const character of serialised) {
+  for (const character of text) {
     const characterBytes = encoder.encode(character).length
     if (bytes + characterBytes > cap) break
     payload += character
@@ -64,8 +69,32 @@ export function capturePayload(
   return { payload, truncated: true }
 }
 
-export function requestSpanName(method: string): string {
-  return `mcp.${method}`
+export type NetworkInfo = {
+  transport: 'pipe' | 'tcp'
+  protocolName?: 'http'
+  serverAddress?: string
+  serverPort?: number
+}
+
+/** JSON-RPC protocol-level codes a server returns for bad requests; not server faults. */
+export const SERVER_NON_ERROR_CODES = new Set([-32700, -32600, -32601, -32602, -32002])
+
+const RESOURCE_URI_METHODS = new Set([
+  'resources/read',
+  'resources/subscribe',
+  'resources/unsubscribe',
+  'notifications/resources/updated',
+])
+
+export function requestSpanName(method: string, params?: unknown): string {
+  if (
+    (method === 'tools/call' || method === 'prompts/get') &&
+    isRecord(params) &&
+    typeof params.name === 'string'
+  ) {
+    return `${method} ${params.name}`
+  }
+  return method
 }
 
 export function requestAttributes(params: {
@@ -76,18 +105,59 @@ export function requestAttributes(params: {
   contextID?: string
   sessionID?: string
   capture?: PayloadCapture
+  protocolVersion?: string
+  network?: NetworkInfo
+  traceAttributes?: Attributes
+  /** Leave `gen_ai.operation.name` to `settleAttributes`: a suspended round is not a tool execution. */
+  deferOperationName?: boolean
 }): Attributes {
   const attributes: Attributes = {
     'mokei.kind': 'mcp',
     'mcp.method.name': params.method,
     'mokei.direction': params.direction,
   }
-  if (
-    params.method === 'tools/call' &&
-    isRecord(params.params) &&
-    typeof params.params.name === 'string'
-  ) {
-    attributes['gen_ai.tool.name'] = params.params.name
+  const body = isRecord(params.params) ? params.params : undefined
+  if (params.method === 'tools/call') {
+    if (params.deferOperationName !== true) attributes['gen_ai.operation.name'] = 'execute_tool'
+    if (typeof body?.name === 'string') attributes['gen_ai.tool.name'] = body.name
+    if (body?.arguments !== undefined) {
+      const captured = capturePayload(body.arguments, params.capture)
+      if (captured !== undefined) {
+        attributes['gen_ai.tool.call.arguments'] = captured.payload
+        if (captured.truncated) attributes['mokei.payload.truncated'] = true
+      }
+    }
+  } else if (params.method === 'prompts/get') {
+    if (typeof body?.name === 'string') attributes['gen_ai.prompt.name'] = body.name
+    if (isRecord(body?.arguments)) {
+      for (const [key, value] of Object.entries(body.arguments)) {
+        const redacted =
+          !PUBLIC_KEYS.has(key) && SECRET_KEY.test(key) ? '[redacted]' : redactPayload(value)
+        const cap = resolvePayloadCap(params.capture)
+        if (cap === null) continue
+        const captured =
+          typeof redacted === 'string'
+            ? capText(redacted, cap)
+            : (capturePayload(redacted, params.capture) as { payload: string; truncated: boolean })
+        attributes[`gen_ai.prompt.variable.${key}`] = captured.payload
+        if (captured.truncated) attributes['mokei.payload.truncated'] = true
+      }
+    }
+  } else if (RESOURCE_URI_METHODS.has(params.method) && typeof body?.uri === 'string') {
+    attributes['mcp.resource.uri'] = body.uri
+  }
+  if (params.protocolVersion !== undefined)
+    attributes['mcp.protocol.version'] = params.protocolVersion
+  if (params.network !== undefined) {
+    attributes['network.transport'] = params.network.transport
+    if (params.network.protocolName !== undefined) {
+      attributes['network.protocol.name'] = params.network.protocolName
+    }
+    if (params.network.serverAddress !== undefined) {
+      attributes['server.address'] = params.network.serverAddress
+    }
+    if (params.network.serverPort !== undefined)
+      attributes['server.port'] = params.network.serverPort
   }
   if (params.id !== undefined) attributes['jsonrpc.request.id'] = String(params.id)
   if (params.contextID !== undefined) attributes['mokei.context.id'] = params.contextID
@@ -99,14 +169,53 @@ export function requestAttributes(params: {
       if (captured.truncated) attributes['mokei.payload.truncated'] = true
     }
   }
+  return { ...attributes, ...params.traceAttributes }
+}
+
+/**
+ * Attributes set when an exchange settles: only a `tools/call` that does not suspend is an
+ * `execute_tool`, and MRTR rounds carry their 0-based index.
+ */
+export function settleAttributes(params: {
+  method: string
+  inputRequired: boolean
+  round?: number
+}): Attributes {
+  const attributes: Attributes = {}
+  if (params.method === 'tools/call' && !params.inputRequired) {
+    attributes['gen_ai.operation.name'] = 'execute_tool'
+  }
+  if (params.round !== undefined) attributes['mokei.mcp.round'] = params.round
   return attributes
 }
 
-export function responseOutcome(message: {
-  result?: unknown
-  error?: { code: number }
-}): { error: false } | { error: true; errorType: string } {
-  if (message.error !== undefined) return { error: true, errorType: String(message.error.code) }
+export function responseAttributes(
+  method: string,
+  result: unknown,
+  capture: PayloadCapture | undefined,
+): Attributes {
+  if (method !== 'tools/call' || (isRecord(result) && result.isError === true)) return {}
+  const captured = capturePayload(result, capture)
+  if (captured === undefined) return {}
+  return {
+    'gen_ai.tool.call.result': captured.payload,
+    ...(captured.truncated ? { 'mokei.payload.truncated': true } : {}),
+  }
+}
+
+export function responseOutcome(
+  message: { result?: unknown; error?: { code: number; message?: string } },
+  side: MessageDirection,
+):
+  | { error: false; statusCode?: string }
+  | { error: true; errorType: string; statusCode?: string; message?: string } {
+  if (message.error !== undefined) {
+    const statusCode = String(message.error.code)
+    if (side === 'server' && SERVER_NON_ERROR_CODES.has(message.error.code)) {
+      return { error: false, statusCode }
+    }
+    return { error: true, errorType: statusCode, statusCode, message: message.error.message }
+  }
   if (isRecord(message.result) && message.result.isError === true) {
     return { error: true, errorType: 'tool_error' }
   }

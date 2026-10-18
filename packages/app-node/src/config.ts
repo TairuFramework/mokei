@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import type { LogLevel } from '@logtape/logtape'
-import type { PayloadCapture } from '@mokei/context-client'
+import type { PayloadCapture, TraceParentFrom } from '@mokei/context-client'
 import { createValidator, type Schema } from '@sozai/schema'
 import { getAppEnvVar, getDataDir, readJSONFile } from '@tejika/env'
 
@@ -8,7 +8,8 @@ export type MokeiConfig = {
   logs: { level: LogLevel; file: boolean }
   tracing: {
     payloads?: PayloadCapture
-    otlp?: { endpoint: string; headers?: Record<string, string> }
+    parentFrom?: TraceParentFrom
+    otlp?: { endpoint: string; metricsEndpoint?: string; headers?: Record<string, string> }
   }
 }
 
@@ -53,10 +54,12 @@ const configurationSchema = {
             { type: 'integer', minimum: 1 },
           ],
         },
+        parentFrom: { type: 'string', enum: ['context', 'meta'] },
         otlp: {
           type: 'object',
           properties: {
             endpoint: { type: 'string' },
+            metricsEndpoint: { type: 'string' },
             headers: { type: 'object', additionalProperties: { type: 'string' } },
           },
           required: ['endpoint'],

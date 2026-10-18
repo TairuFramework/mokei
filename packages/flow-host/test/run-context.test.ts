@@ -230,7 +230,12 @@ test('correlates concurrent watcher inbox and terminal listener work after await
     const span = required(
       exporter
         .getFinishedSpans()
-        .find((span) => span.name === 'flow.run' && span.attributes['run.id'] === run.runID),
+        .find(
+          (span) =>
+            span.name.startsWith('invoke_workflow') &&
+            span.attributes['mokei.run.resumed'] !== true &&
+            span.attributes['mokei.run.id'] === run.runID,
+        ),
     )
     expect(span.ended).toBe(true)
   }
@@ -297,7 +302,10 @@ test('correlates resumed recovery failures and inbox work', async () => {
   const spans = exporter.getFinishedSpans().filter((span) => !before.has(span))
   const resumed = required(
     spans.find(
-      (span) => span.name === 'flow.run.resume' && span.attributes['run.id'] === waiting.runID,
+      (span) =>
+        span.name.startsWith('invoke_workflow') &&
+        span.attributes['mokei.run.resumed'] === true &&
+        span.attributes['mokei.run.id'] === waiting.runID,
     ),
   )
   expect(resumed.parentSpanContext).toMatchObject({
@@ -313,7 +321,7 @@ test('correlates resumed recovery failures and inbox work', async () => {
       span.parentSpanContext?.spanId ===
       parseTraceparent(required(requestMeta.traceparent as string | undefined))?.spanID,
   )
-  expect(taskSpans.some((span) => span.name !== 'flow.run.resume')).toBe(true)
+  expect(taskSpans.some((span) => span.attributes['mokei.run.resumed'] !== true)).toBe(true)
   expect((await shared.taskStore.get(required(stored.taskID)))?.requestMeta).toEqual(requestMeta)
   logger.info('outside recovery')
   expect(logs.at(-1)?.traceID).toBeUndefined()

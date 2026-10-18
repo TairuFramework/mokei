@@ -37,7 +37,7 @@ function span(traceID: string, endTime = 99): StoredSpan {
   return {
     traceID,
     spanID: 'span',
-    name: 'flow.run',
+    name: 'invoke_workflow',
     kind: 1,
     startTime: 1,
     endTime,

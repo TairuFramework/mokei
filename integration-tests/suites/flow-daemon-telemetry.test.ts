@@ -55,7 +55,10 @@ test.each([
       // Check before opening another reader, which could itself checkpoint a leftover WAL.
       expect(existsSync(join(fixture.directory, 'mokei.db-wal'))).toBe(false)
       expect((await fixture.readTrace(run.traceID)).spans).toContainEqual(
-        expect.objectContaining({ name: 'flow.run', traceID: run.traceID }),
+        expect.objectContaining({
+          name: expect.stringMatching(/^invoke_workflow/),
+          traceID: run.traceID,
+        }),
       )
     } finally {
       for (const timer of timers) clearTimeout(timer)

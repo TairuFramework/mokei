@@ -1,6 +1,7 @@
 /// <reference types="node" />
 
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { SEMCONV_SCHEMA_URL } from '@mokei/context-client'
 import { createMemoryTaskStore } from '@mokei/context-server'
 import type { Predictor } from '@mokei/decision-flow'
 import type { Context } from '@opentelemetry/api'
@@ -23,7 +24,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vi
 import { createFlowHost } from '../src/host.js'
 import { createMemoryRunStore } from '../src/run-store.js'
 import { createFixture, echoFlow, emptyFlow } from './fixture.js'
+import { useTestMetrics } from './support/metrics.js'
 
+const metricsHarness = useTestMetrics()
 const storage = new AsyncLocalStorage<Context>()
 const exporter = new InMemorySpanExporter()
 const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] })
@@ -73,6 +76,15 @@ async function state(
   await vi.waitFor(async () => expect((await f.host.get(runID))?.state).toBe(expected))
   await provider.forceFlush()
 }
+function isRunSpan(span: { name: string }) {
+  return span.name === 'invoke_workflow' || span.name.startsWith('invoke_workflow ')
+}
+function isResumeSpan(span: { name: string; attributes: Record<string, unknown> }) {
+  return isRunSpan(span) && span.attributes['mokei.run.resumed'] === true
+}
+function isStartSpan(span: { name: string; attributes: Record<string, unknown> }) {
+  return isRunSpan(span) && span.attributes['mokei.run.resumed'] !== true
+}
 function required<T>(value: T | undefined): T {
   if (value === undefined) throw new Error('Expected fixture value')
   return value
@@ -90,21 +102,24 @@ const inputFlow: FlowDefinition = {
     done: { kind: 'end', outcome: 'done' },
   },
 }
-test('flow.run span carries run attributes and ends with the run', async () => {
+test('invoke_workflow span carries run attributes and ends with the run', async () => {
   const runStore = createMemoryRunStore()
   const f = await fixture({ flows: [emptyFlow], runStore })
   const run = await f.host.start({ flow: emptyFlow.id, label: 'Named run' })
   await state(f, run.runID, 'completed')
-  const spans = exporter.getFinishedSpans().filter((span) => span.name === 'flow.run')
+  const spans = exporter.getFinishedSpans().filter((span) => isStartSpan(span))
   expect(spans).toHaveLength(1)
   const span = required(spans[0])
   expect(span.instrumentationScope.name).toBe('mokei.flow-host')
+  expect(span.name).toBe(`invoke_workflow ${emptyFlow.id}`)
   expect(span.attributes).toEqual({
+    'gen_ai.operation.name': 'invoke_workflow',
+    'gen_ai.workflow.name': emptyFlow.id,
     'mokei.kind': 'flow',
     'mokei.root': true,
-    'run.id': run.runID,
-    'flow.id': emptyFlow.id,
-    'run.label': 'Named run',
+    'mokei.run.id': run.runID,
+    'mokei.flow.id': emptyFlow.id,
+    'mokei.run.label': 'Named run',
   })
   expect(run.traceID).toBe(span.spanContext().traceId)
   expect((await runStore.get(run.runID))?.traceparent).toBe(
@@ -115,15 +130,15 @@ test('flow.run span carries run attributes and ends with the run', async () => {
     ),
   )
 })
-test('server spans share the run traceID and descend from flow.run', async () => {
+test('server spans share the run traceID and descend from invoke_workflow', async () => {
   const f = await fixture()
   const run = await f.host.start({ definition: emptyFlow })
   await state(f, run.runID, 'completed')
   const spans = exporter.getFinishedSpans()
-  const parent = required(spans.find((span) => span.name === 'flow.run'))
+  const parent = required(spans.find((span) => isStartSpan(span)))
   const nodes = spans.filter((span) => span.name === 'flow.node')
   expect(nodes.length).toBeGreaterThan(0)
-  expect(parent.attributes).not.toHaveProperty('flow.id')
+  expect(parent.attributes).not.toHaveProperty('mokei.flow.id')
   const ancestorsOf = (span: (typeof spans)[number]) => {
     const ancestors = []
     const visited = new Set<string>()
@@ -147,12 +162,12 @@ test('server spans share the run traceID and descend from flow.run', async () =>
     expect(chain).toContain(parent)
     expect(
       chain.some(
-        (span) => span.name === 'mcp.tools/call' && span.attributes['mokei.kind'] === 'mcp',
+        (span) => span.name.startsWith('tools/call') && span.attributes['mokei.kind'] === 'mcp',
       ),
     ).toBe(true)
   }
 })
-test('decision.predict spans descend from flow.run', async () => {
+test('predict spans descend from invoke_workflow', async () => {
   const definition: FlowDefinition = {
     ...emptyFlow,
     start: 'decide',
@@ -180,8 +195,8 @@ test('decision.predict spans descend from flow.run', async () => {
   const run = await f.host.start({ definition })
   await state(f, run.runID, 'completed')
   const spans = exporter.getFinishedSpans()
-  const runSpan = required(spans.find((span) => span.name === 'flow.run'))
-  const prediction = required(spans.find((span) => span.name === 'decision.predict'))
+  const runSpan = required(spans.find((span) => isStartSpan(span)))
+  const prediction = required(spans.find((span) => span.name === 'predict'))
   const ancestors = []
   const visited = new Set<string>()
   let ancestor = prediction
@@ -207,13 +222,13 @@ test('run.state events are recorded through input and completion', async () => {
   const f = await fixture()
   const run = await f.host.start({ definition: inputFlow })
   await state(f, run.runID, 'input_required')
-  expect(exporter.getFinishedSpans().filter((span) => span.name === 'flow.run')).toEqual([])
+  expect(exporter.getFinishedSpans().filter((span) => isStartSpan(span))).toEqual([])
   await f.host.inbox.answer(required(f.host.inbox.list()[0]).id, { value: 'Ada' })
   await state(f, run.runID, 'completed')
-  const span = exporter.getFinishedSpans().find((span) => span.name === 'flow.run')
+  const span = exporter.getFinishedSpans().find((span) => isStartSpan(span))
   const states = span?.events
-    .filter((event) => event.name === 'run.state')
-    .map((event) => event.attributes?.['run.state'])
+    .filter((event) => event.name === 'mokei.run.state')
+    .map((event) => event.attributes?.['mokei.run.state'])
   expect(states).toEqual(expect.arrayContaining(['working', 'input_required', 'completed']))
   expect(states?.at(-1)).toBe('completed')
 })
@@ -225,11 +240,12 @@ test('failed run span has error status', async () => {
   const run = await f.host.start({ definition: emptyFlow })
   expect(run.state).toBe('failed')
   await provider.forceFlush()
-  const span = exporter.getFinishedSpans().find((span) => span.name === 'flow.run')
+  const span = exporter.getFinishedSpans().find((span) => isStartSpan(span))
   expect(span?.status.code).toBe(SpanStatusCode.ERROR)
+  expect(span?.attributes['error.type']).toBe('failed')
   expect(span?.events.at(-1)).toMatchObject({
-    name: 'run.state',
-    attributes: { 'run.state': 'failed' },
+    name: 'mokei.run.state',
+    attributes: { 'mokei.run.state': 'failed' },
   })
 })
 test.each(['denied', 'cancelled'] as const)(
@@ -240,8 +256,8 @@ test.each(['denied', 'cancelled'] as const)(
     if (terminal === 'denied') await f.host.inbox.decline(`${run.runID}:approval`)
     else await f.host.cancel(run.runID)
     await state(f, run.runID, terminal)
-    const span = exporter.getFinishedSpans().find((span) => span.name === 'flow.run')
-    expect(span?.events.map((event) => event.attributes?.['run.state'])).toEqual([
+    const span = exporter.getFinishedSpans().find((span) => isStartSpan(span))
+    expect(span?.events.map((event) => event.attributes?.['mokei.run.state'])).toEqual([
       'awaiting_approval',
       terminal,
     ])
@@ -272,15 +288,20 @@ test.each(['input', 'approval'] as const)(
       expect(parseTraceparent(required(requestTraceparent))?.traceID).toBe(run.traceID)
     }
     await first.host.dispose()
-    expect(exporter.getFinishedSpans().filter((span) => span.name === 'flow.run')).toHaveLength(1)
+    expect(exporter.getFinishedSpans().filter((span) => isStartSpan(span))).toHaveLength(1)
     const before = new Set(exporter.getFinishedSpans())
     const second = await fixture(shared)
     await vi.waitFor(() => expect(second.host.inbox.list()).toHaveLength(1))
     await second.host.inbox.answer(required(second.host.inbox.list()[0]).id, { value: 'Ada' })
     await state(second, run.runID, 'completed')
     const spans = exporter.getFinishedSpans().filter((span) => !before.has(span))
-    const resumed = spans.find((span) => span.name === 'flow.run.resume')
-    expect(resumed?.attributes).toMatchObject({ 'mokei.kind': 'flow', 'mokei.root': true })
+    const resumed = spans.find((span) => isResumeSpan(span))
+    expect(resumed?.attributes).toMatchObject({
+      'mokei.kind': 'flow',
+      'mokei.root': true,
+      'mokei.run.resumed': true,
+      'gen_ai.operation.name': 'invoke_workflow',
+    })
     const parent = parseTraceparent(required(stored.traceparent))
     expect(resumed?.parentSpanContext).toMatchObject({
       traceId: run.traceID,
@@ -317,7 +338,7 @@ test.each(['input', 'approval'] as const)(
       }
       expect(requestSpan.spanContext().traceId).toBe(run.traceID)
       expect(requestAncestors.slice(1)).toContain(
-        required(exporter.getFinishedSpans().find((span) => span.name === 'flow.run')),
+        required(exporter.getFinishedSpans().find((span) => isStartSpan(span))),
       )
     }
   },
@@ -330,7 +351,7 @@ test('dispose ends open spans without terminating runs', async () => {
   await f.host.dispose()
   await f.host.dispose()
   await provider.forceFlush()
-  expect(exporter.getFinishedSpans().filter((span) => span.name === 'flow.run')).toHaveLength(2)
+  expect(exporter.getFinishedSpans().filter((span) => isStartSpan(span))).toHaveLength(2)
   expect((await f.host.get(queued.runID))?.state).toBe('awaiting_approval')
   expect((await f.host.get(waiting.runID))?.state).toBe('input_required')
 })
@@ -376,11 +397,11 @@ test('recovery failure ends all run spans and stops the host', async () => {
     createFlowHost({ session: f.session, flows: [echoFlow], runStore, taskStore, pollMs: 1 }),
   ).rejects.toBe(failure)
   await provider.forceFlush()
-  const spans = exporter.getFinishedSpans().filter((span) => span.name.startsWith('flow.run'))
-  expect(spans.filter((span) => span.name === 'flow.run')).toHaveLength(3)
-  const resumed = spans.filter((span) => span.name === 'flow.run.resume')
+  const spans = exporter.getFinishedSpans().filter((span) => isRunSpan(span))
+  expect(spans.filter((span) => isStartSpan(span))).toHaveLength(3)
+  const resumed = spans.filter((span) => isResumeSpan(span))
   expect(resumed).toHaveLength(3)
-  expect(resumed.map((span) => span.attributes['run.id']).sort()).toEqual(
+  expect(resumed.map((span) => span.attributes['mokei.run.id']).sort()).toEqual(
     [queued.runID, waiting.runID, interrupted.runID].sort(),
   )
   for (const span of spans) expect(span.ended).toBe(true)
@@ -400,7 +421,7 @@ test('without an SDK trace fields are absent and runs complete', async () => {
   expect(run).not.toHaveProperty('traceID')
   expect(await f.host.get(run.runID)).not.toHaveProperty('traceID')
   expect(await runStore.get(run.runID)).not.toHaveProperty('traceparent')
-  expect(exporter.getFinishedSpans().filter((span) => span.name.startsWith('flow.run'))).toEqual([])
+  expect(exporter.getFinishedSpans().filter((span) => isRunSpan(span))).toEqual([])
 })
 
 test('without an SDK an active remote parent does not create stored trace fields', async () => {
@@ -429,7 +450,7 @@ test('starts independent root traces linked to the caller', async () => {
   expect(first.traceID).not.toBe(caller.spanContext().traceId)
   await state(f, first.runID, 'completed')
   await state(f, second.runID, 'completed')
-  const runSpans = exporter.getFinishedSpans().filter((span) => span.name === 'flow.run')
+  const runSpans = exporter.getFinishedSpans().filter((span) => isStartSpan(span))
   expect(runSpans).toHaveLength(2)
   expect(runSpans.every((span) => span.parentSpanContext === undefined)).toBe(true)
   expect(runSpans[0]?.links[0]?.context).toEqual(caller.spanContext())
@@ -446,7 +467,36 @@ test('ignores an invalid caller span link', async () => {
   })
   const run = await context.with(invalid, () => f.host.start({ definition: emptyFlow }))
   await state(f, run.runID, 'completed')
-  const span = required(exporter.getFinishedSpans().find((span) => span.name === 'flow.run'))
+  const span = required(exporter.getFinishedSpans().find((span) => isStartSpan(span)))
   expect(span.parentSpanContext).toBeUndefined()
   expect(span.links).toEqual([])
+})
+
+test('terminal runs record gen_ai.invoke_workflow.duration with workflow name', async () => {
+  const f = await fixture({ flows: [emptyFlow] })
+  const run = await f.host.start({ flow: emptyFlow.id })
+  await state(f, run.runID, 'completed')
+  const points = (await metricsHarness.collect()).get('gen_ai.invoke_workflow.duration') ?? []
+  expect(points).toHaveLength(1)
+  expect(points[0]?.attributes).toEqual({ 'gen_ai.workflow.name': emptyFlow.id })
+  expect(points[0]?.schemaUrl).toBe(SEMCONV_SCHEMA_URL)
+})
+
+test('failed runs record the duration metric with error.type', async () => {
+  const f = await fixture()
+  vi.spyOn(f.session.contextHost.getContext('flow').client, 'callTool').mockRejectedValueOnce(
+    new Error('Launch failed'),
+  )
+  await f.host.start({ definition: emptyFlow })
+  const points = (await metricsHarness.collect()).get('gen_ai.invoke_workflow.duration') ?? []
+  expect(points).toHaveLength(1)
+  expect(points[0]?.attributes).toEqual({ 'error.type': 'failed' })
+})
+
+test('non-terminal states and dispose record no duration metric', async () => {
+  const f = await fixture()
+  const run = await f.host.start({ definition: inputFlow })
+  await state(f, run.runID, 'input_required')
+  await f.host.dispose()
+  expect((await metricsHarness.collect()).get('gen_ai.invoke_workflow.duration')).toBeUndefined()
 })

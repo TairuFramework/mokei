@@ -105,8 +105,15 @@ test('recovers waiting input from a reopened sqlite database', async () => {
     await session.dispose()
     await telemetry.dispose()
     const captured = await traceStore.getTrace(traceID)
-    const runSpan = required(captured.spans.find((span) => span.name === 'flow.run'))
-    const resumeSpan = required(captured.spans.find((span) => span.name === 'flow.run.resume'))
+    const runSpan = required(
+      captured.spans.find(
+        (span) =>
+          span.name.startsWith('invoke_workflow') && span.attributes['mokei.run.resumed'] !== true,
+      ),
+    )
+    const resumeSpan = required(
+      captured.spans.find((span) => span.attributes['mokei.run.resumed'] === true),
+    )
     expect(runSpan.traceID).toBe(traceID)
     expect(resumeSpan.traceID).toBe(traceID)
     expect(resumeSpan.parentSpanID).toBe(traceparent.split('-')[2])

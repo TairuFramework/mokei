@@ -47,3 +47,14 @@ export function describeDecisionError(error: unknown): ErrorMetadata {
 
   return { type: error instanceof Error ? error.name : 'Error' }
 }
+
+/**
+ * `error.type` of a thrown value: aborts are `cancelled`, errors with a specific name keep it,
+ * everything else is `_OTHER`. Mirrors `errorTypeOf` in `@mokei/context-client`, which this
+ * package does not depend on.
+ */
+export function errorTypeOf(error: unknown): string {
+  if (!(error instanceof Error)) return '_OTHER'
+  if (error.name === 'AbortError') return 'cancelled'
+  return error.name !== 'Error' ? error.name : '_OTHER'
+}

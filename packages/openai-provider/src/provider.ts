@@ -6,11 +6,12 @@ import type {
   FunctionToolCall,
   MessagePart,
   ModelProvider,
+  ProviderTelemetry,
   RequestParams,
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
-import { resolveSamplingParams } from '@mokei/model-provider'
+import { resolveSamplingParams, telemetryFromBaseURL } from '@mokei/model-provider'
 import { assertType } from '@sozai/schema'
 
 import type { ChatCompletionChunk, OpenAIClientParams } from './client.js'
@@ -37,10 +38,16 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
   }
 
   #client: OpenAIClient
+  #telemetry: ProviderTelemetry
 
   constructor(params: OpenAIProviderParams = {}) {
     this.#client =
       params.client instanceof OpenAIClient ? params.client : new OpenAIClient(params.client)
+    this.#telemetry = telemetryFromBaseURL('openai', this.#client.baseURL)
+  }
+
+  get telemetry(): ProviderTelemetry {
+    return this.#telemetry
   }
 
   async listModels(params?: RequestParams) {
@@ -151,7 +158,12 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
         : undefined,
     })
 
+    // `done` is held until the stream ends: with `stream_options.include_usage` the usage
+    // arrives in a trailing chunk after the one carrying `finish_reason`.
     let usage: ChatCompletionUsage | null = null
+    let finishReason: string | undefined
+    let responseID: string | undefined
+    let responseModel: string | undefined
     const response = request.then((stream: ReadableStream<ChatCompletionChunk>) => {
       return stream.pipeThrough(
         new TransformStream<ChatCompletionChunk, MessagePart<ChatCompletionChunk, ToolCall>>({
@@ -178,17 +190,27 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
                 raw: part,
               })
             }
+            if (part.id) responseID = part.id
+            if (part.model) responseModel = part.model
             if (part.choices[0]?.finish_reason) {
-              controller.enqueue({
-                type: 'done',
-                reason: part.choices[0].finish_reason,
-                inputTokens: usage?.prompt_tokens ?? 0,
-                outputTokens: usage?.completion_tokens ?? 0,
-              })
+              finishReason = part.choices[0].finish_reason
             }
             if (part.usage != null) {
               usage = part.usage
             }
+          },
+          flush(controller) {
+            if (finishReason == null) return
+            controller.enqueue({
+              type: 'done',
+              reason: finishReason,
+              inputTokens: usage?.prompt_tokens ?? 0,
+              outputTokens: usage?.completion_tokens ?? 0,
+              responseID,
+              responseModel,
+              cacheReadInputTokens: usage?.prompt_tokens_details?.cached_tokens,
+              reasoningOutputTokens: usage?.completion_tokens_details?.reasoning_tokens,
+            })
           },
         }),
       )

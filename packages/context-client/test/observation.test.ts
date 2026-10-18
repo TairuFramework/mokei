@@ -4,11 +4,34 @@ import {
   capturePayload,
   redactPayload,
   requestAttributes,
+  requestSpanName,
+  responseAttributes,
   responseOutcome,
   sanitizeMessage,
+  settleAttributes,
 } from '../src/observation.js'
 
 describe('MCP observation', () => {
+  test('responseAttributes flags a truncated tool result', () => {
+    const result = { content: [{ type: 'text', text: 'x'.repeat(100) }] }
+    expect(responseAttributes('tools/call', result, 10)).toMatchObject({
+      'mokei.payload.truncated': true,
+    })
+    expect(responseAttributes('tools/call', { content: [] }, 'on')).not.toHaveProperty(
+      'mokei.payload.truncated',
+    )
+  })
+
+  test('requestAttributes flags truncated tool arguments', () => {
+    const attributes = requestAttributes({
+      method: 'tools/call',
+      params: { name: 't', arguments: { a: 'x'.repeat(100) } },
+      direction: 'client',
+      capture: 10,
+    })
+    expect(attributes['mokei.payload.truncated']).toBe(true)
+  })
+
   test('redactPayload drops non-allow-listed _meta keys', () => {
     expect(
       redactPayload({
@@ -73,6 +96,8 @@ describe('MCP observation', () => {
     ).toEqual({
       'mokei.kind': 'mcp',
       'mcp.method.name': 'tools/call',
+      'gen_ai.operation.name': 'execute_tool',
+      'gen_ai.tool.call.arguments': '{"q":1}',
       'gen_ai.tool.name': 'search',
       'jsonrpc.request.id': '7',
       'mokei.direction': 'client',
@@ -91,18 +116,6 @@ describe('MCP observation', () => {
         capture: 50,
       })['mokei.payload.truncated'],
     ).toBe(true)
-  })
-
-  test('responseOutcome maps JSON-RPC errors and tool errors', () => {
-    expect(responseOutcome({ result: {} })).toEqual({ error: false })
-    expect(responseOutcome({ error: { code: -32602 } })).toEqual({
-      error: true,
-      errorType: '-32602',
-    })
-    expect(responseOutcome({ result: { isError: true } })).toEqual({
-      error: true,
-      errorType: 'tool_error',
-    })
   })
 
   test('sanitizeMessage redacts and caps, and reduces to the envelope when off', () => {
@@ -161,4 +174,138 @@ test('exact token count and progress keys survive redaction while access tokens 
   expect(
     redactPayload({ ...allowed, accessToken: 'secret', MaxTokens: 'secret', nested: [allowed] }),
   ).toEqual({ ...allowed, accessToken: '[redacted]', MaxTokens: '[redacted]', nested: [allowed] })
+})
+
+describe('MCP span shape', () => {
+  test('requestSpanName appends tool and prompt names', () => {
+    expect(requestSpanName('tools/call', { name: 'get-weather' })).toBe('tools/call get-weather')
+    expect(requestSpanName('prompts/get', { name: 'greet' })).toBe('prompts/get greet')
+    expect(requestSpanName('initialize')).toBe('initialize')
+    expect(requestSpanName('tools/call', {})).toBe('tools/call')
+  })
+
+  test('requestAttributes sets GenAI attributes per method', () => {
+    const base = { direction: 'client' as const, capture: 'on' as const }
+    const call = requestAttributes({
+      ...base,
+      method: 'tools/call',
+      params: { name: 't', arguments: { apiKey: 'k', q: 1 } },
+    })
+    expect(call['gen_ai.operation.name']).toBe('execute_tool')
+    expect(call['gen_ai.tool.name']).toBe('t')
+    expect(call['gen_ai.tool.call.arguments']).toBe('{"apiKey":"[redacted]","q":1}')
+    expect(
+      requestAttributes({
+        ...base,
+        capture: 'off',
+        method: 'tools/call',
+        params: { name: 't', arguments: { q: 1 } },
+      }),
+    ).not.toHaveProperty('gen_ai.tool.call.arguments')
+    expect(requestAttributes({ ...base, method: 'tools/list' })).not.toHaveProperty(
+      'gen_ai.operation.name',
+    )
+    expect(
+      requestAttributes({
+        ...base,
+        method: 'prompts/get',
+        params: { name: 'greet', arguments: { city: 'Paris' } },
+      }),
+    ).toMatchObject({ 'gen_ai.prompt.name': 'greet', 'gen_ai.prompt.variable.city': 'Paris' })
+    expect(
+      requestAttributes({ ...base, method: 'resources/read', params: { uri: 'file:///a' } }),
+    ).toMatchObject({ 'mcp.resource.uri': 'file:///a' })
+    for (const method of [
+      'resources/read',
+      'resources/subscribe',
+      'resources/unsubscribe',
+      'notifications/resources/updated',
+    ]) {
+      expect(requestAttributes({ ...base, method, params: { uri: 'file:///a' } })).toMatchObject({
+        'mcp.resource.uri': 'file:///a',
+      })
+    }
+  })
+
+  test('deferOperationName omits execute_tool from tools/call request attributes', () => {
+    const params = { method: 'tools/call', params: { name: 't' }, direction: 'client' as const }
+    expect(requestAttributes({ ...params, deferOperationName: true })).not.toHaveProperty(
+      'gen_ai.operation.name',
+    )
+    expect(requestAttributes(params)['gen_ai.operation.name']).toBe('execute_tool')
+  })
+
+  test('settleAttributes marks the final round and the round index', () => {
+    expect(settleAttributes({ method: 'tools/call', inputRequired: false })).toEqual({
+      'gen_ai.operation.name': 'execute_tool',
+    })
+    expect(settleAttributes({ method: 'tools/call', inputRequired: true, round: 0 })).toEqual({
+      'mokei.mcp.round': 0,
+    })
+    expect(settleAttributes({ method: 'prompts/get', inputRequired: false, round: 2 })).toEqual({
+      'mokei.mcp.round': 2,
+    })
+  })
+
+  test('a long string prompt variable is capped in bytes and flagged truncated', () => {
+    const attributes = requestAttributes({
+      direction: 'client',
+      capture: 10,
+      method: 'prompts/get',
+      params: { name: 'p', arguments: { topic: 'x'.repeat(100) } },
+    })
+    expect(
+      new TextEncoder().encode(attributes['gen_ai.prompt.variable.topic'] as string).length,
+    ).toBe(10)
+    expect(attributes['mokei.payload.truncated']).toBe(true)
+  })
+
+  test('prompt variables are redacted by key and capped', () => {
+    const attributes = requestAttributes({
+      direction: 'client',
+      capture: 12,
+      method: 'prompts/get',
+      params: { name: 'p', arguments: { apiKey: 'sk-secret', note: 'abcdefghijklmnop' } },
+    })
+    expect(attributes['gen_ai.prompt.variable.apiKey']).toBe('[redacted]')
+    expect(attributes['gen_ai.prompt.variable.note']).toBe('abcdefghijkl')
+    expect(attributes['mokei.payload.truncated']).toBe(true)
+  })
+
+  test('requestAttributes sets network and protocol version', () => {
+    expect(
+      requestAttributes({
+        direction: 'client',
+        method: 'tools/list',
+        protocolVersion: '2026-07-28',
+        network: {
+          transport: 'tcp',
+          protocolName: 'http',
+          serverAddress: 'mcp.example.com',
+          serverPort: 443,
+        },
+      }),
+    ).toMatchObject({
+      'mcp.protocol.version': '2026-07-28',
+      'network.transport': 'tcp',
+      'network.protocol.name': 'http',
+      'server.address': 'mcp.example.com',
+      'server.port': 443,
+    })
+  })
+
+  test('responseOutcome treats protocol-level server codes as non-errors', () => {
+    const error = { code: -32602, message: 'bad' }
+    expect(responseOutcome({ error }, 'server')).toEqual({ error: false, statusCode: '-32602' })
+    expect(responseOutcome({ error }, 'client')).toEqual({
+      error: true,
+      errorType: '-32602',
+      statusCode: '-32602',
+      message: 'bad',
+    })
+    expect(responseOutcome({ result: { isError: true } }, 'client')).toEqual({
+      error: true,
+      errorType: 'tool_error',
+    })
+  })
 })

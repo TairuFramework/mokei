@@ -13,7 +13,7 @@ const summary: TraceSummary = {
   outcome: 'interrupted',
   startTime: 1,
   endTime: 100,
-  attributes: { 'run.id': 'run-1' },
+  attributes: { 'mokei.run.id': 'run-1' },
   spanCount: 2,
   errorCount: 0,
   droppedCount: 0,

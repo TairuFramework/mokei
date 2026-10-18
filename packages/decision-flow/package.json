@@ -43,13 +43,14 @@
   "dependencies": {
     "@mokei/logger": "workspace:^",
     "@mokei/system-one-client": "workspace:^",
+    "@opentelemetry/api": "catalog:",
     "@sozai/async": "catalog:",
     "@sozai/flow-graph": "catalog:",
     "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:"
   },
   "devDependencies": {
-    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
     "@opentelemetry/sdk-trace-base": "catalog:",
     "@sozai/log": "catalog:",
     "@types/node": "catalog:"

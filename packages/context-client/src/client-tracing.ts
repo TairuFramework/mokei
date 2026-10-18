@@ -1,16 +1,24 @@
 import type { RequestID } from '@mokei/context-protocol'
 import type { Context, Link, Span } from '@opentelemetry/api'
-import { context, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
-import { createTracerFactory, extractW3CTraceContext } from '@sozai/otel'
+import { context, ROOT_CONTEXT, SpanKind, trace } from '@opentelemetry/api'
+import { extractW3CTraceContext } from '@sozai/otel'
 
+import { mcpMetricsEnabled, metricAttributes, recordMCPOperation } from './mcp-metrics.js'
+import { isInputRequiredResult } from './mrtr.js'
 import {
   capturePayload,
+  type NetworkInfo,
   type PayloadCapture,
   requestAttributes,
   requestSpanName,
+  responseAttributes,
   responseOutcome,
+  settleAttributes,
 } from './observation.js'
+import { endSpanError, errorTypeOf, getMokeiTracer, resolveContentCapture } from './semconv.js'
 
+/** Where incoming request spans take their parent from: the bound context span, or `_meta.traceparent`. */
+export type TraceParentFrom = 'context' | 'meta'
 export type TerminationReason = 'stopped' | 'lost'
 export type ClientTracing = {
   contextID: string
@@ -19,6 +27,11 @@ export type ClientTracing = {
   payloads?: PayloadCapture
   /** Read the current negotiated session at request start. */
   getSessionID?: () => string | undefined
+  /** Read the negotiated protocol revision at request start. */
+  getProtocolVersion?: () => string | undefined
+  network?: NetworkInfo
+  /** Where incoming request spans take their parent from. Defaults to the bound context. */
+  parentFrom?: TraceParentFrom
 }
 export type ExchangeSpan = {
   span: Span
@@ -26,9 +39,9 @@ export type ExchangeSpan = {
   setID(id: RequestID): void
   succeed(result: unknown): void
   fail(errorType: string, message?: string): void
+  /** Settle from a JSON-RPC error response; classification depends on the exchange direction. */
+  failRPC(error: { code: number; message?: string }): void
 }
-
-const createTracer = createTracerFactory('mokei')
 
 export function createExchangeTracer(getBinding: () => ClientTracing | undefined) {
   const open = new Set<ExchangeSpan>()
@@ -40,10 +53,12 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     links: Array<Link>,
     id?: RequestID,
     contextTraceID?: string,
+    traceAttributes?: Record<string, string>,
+    round?: number,
   ): ExchangeSpan {
     const binding = getBinding()
-    const span = createTracer('context-client').startSpan(
-      requestSpanName(method),
+    const span = getMokeiTracer('context-client').startSpan(
+      requestSpanName(method, params),
       {
         kind: direction === 'client' ? SpanKind.CLIENT : SpanKind.SERVER,
         links,
@@ -57,7 +72,11 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
               direction,
               contextID: binding?.contextID,
               sessionID: binding?.getSessionID?.(),
-              capture: binding?.payloads,
+              capture: resolveContentCapture(binding?.payloads),
+              protocolVersion: binding?.getProtocolVersion?.(),
+              network: binding?.network,
+              traceAttributes,
+              deferOperationName: true,
             }),
             ...(contextTraceID === undefined ? {} : { 'mokei.context.trace_id': contextTraceID }),
           }
@@ -66,15 +85,43 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       parent,
     )
     let settled = false
-    function finish(errorType?: string, message?: string) {
+    const startedAt = performance.now()
+    function finish(
+      errorType?: string,
+      message?: string,
+      statusCode?: string,
+      inputRequired = false,
+    ) {
       settled = true
       open.delete(exchange)
-      if (errorType !== undefined) span.setAttribute('error.type', errorType)
-      span.setStatus({
-        code: errorType === undefined ? SpanStatusCode.OK : SpanStatusCode.ERROR,
-        message,
-      })
-      span.end()
+      if (mcpMetricsEnabled())
+        recordMCPOperation({
+          side: direction,
+          durationS: (performance.now() - startedAt) / 1000,
+          attributes: metricAttributes({
+            ...requestAttributes({
+              method,
+              params,
+              direction,
+              capture: 'off',
+              protocolVersion: binding?.getProtocolVersion?.(),
+              network: binding?.network,
+            }),
+            ...(errorType === undefined ? {} : { 'error.type': errorType }),
+            ...(statusCode === undefined ? {} : { 'rpc.response.status_code': statusCode }),
+          }),
+        })
+      if (statusCode !== undefined) span.setAttribute('rpc.response.status_code', statusCode)
+      // A suspended leg driven without an explicit round is the first one.
+      span.setAttributes(
+        settleAttributes({
+          method,
+          inputRequired,
+          round: round ?? (inputRequired ? 0 : undefined),
+        }),
+      )
+      if (errorType === undefined) span.end()
+      else endSpanError(span, errorType, message)
     }
     const exchange: ExchangeSpan = {
       span,
@@ -85,22 +132,35 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       succeed(result) {
         if (settled) return
         if (span.isRecording()) {
-          const captured = capturePayload(result, binding?.payloads)
+          const capture = resolveContentCapture(binding?.payloads)
+          const captured = capturePayload(result, capture)
+          span.setAttributes(responseAttributes(method, result, capture))
           span.addEvent(
             'mcp.response',
             captured === undefined
               ? {}
               : {
-                  payload: captured.payload,
+                  'mokei.mcp.response': captured.payload,
                   ...(captured.truncated ? { 'mokei.payload.truncated': true } : {}),
                 },
           )
         }
-        const outcome = responseOutcome({ result })
-        finish(outcome.error ? outcome.errorType : undefined)
+        const outcome = responseOutcome({ result }, direction)
+        finish(
+          outcome.error ? outcome.errorType : undefined,
+          undefined,
+          undefined,
+          isInputRequiredResult(result),
+        )
       },
       fail(errorType, message) {
         if (!settled) finish(errorType, message)
+      },
+      failRPC(error) {
+        if (settled) return
+        const outcome = responseOutcome({ error }, direction)
+        if (outcome.error) finish(outcome.errorType, outcome.message, outcome.statusCode)
+        else finish(undefined, undefined, outcome.statusCode)
       },
     }
     open.add(exchange)
@@ -110,7 +170,11 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     startOutgoing(
       method: string,
       params: unknown,
-      options?: { links?: Array<Link> },
+      options?: {
+        links?: Array<Link>
+        traceAttributes?: Record<string, string>
+        round?: number
+      },
     ): ExchangeSpan {
       const binding = getBinding()
       let parent = context.active()
@@ -128,7 +192,58 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
           contextTraceID = bound.traceId
         }
       }
-      return start(method, params, 'client', parent, links, undefined, contextTraceID)
+      return start(
+        method,
+        params,
+        'client',
+        parent,
+        links,
+        undefined,
+        contextTraceID,
+        options?.traceAttributes,
+        options?.round,
+      )
+    },
+    /**
+     * A call that fails locally after a round settled as `input_required` (embedded request
+     * failure, round cap, total timeout, abort) sent no final wire round: record the failed
+     * `execute_tool` so failed logical calls stay visible to span-based counts.
+     */
+    recordLocalFailure(params: {
+      method: string
+      params: unknown
+      links: Array<Link>
+      traceAttributes?: Record<string, string>
+      round: number
+      error: unknown
+      /** Overrides the `errorTypeOf` classification, e.g. `cancelled` for a caller abort reason. */
+      errorType?: string
+    }): void {
+      const toolName =
+        params.params !== null &&
+        typeof params.params === 'object' &&
+        typeof (params.params as { name?: unknown }).name === 'string'
+          ? (params.params as { name: string }).name
+          : undefined
+      const span = getMokeiTracer('context-client').startSpan(
+        toolName === undefined ? 'execute_tool' : `execute_tool ${toolName}`,
+        {
+          kind: SpanKind.INTERNAL,
+          links: params.links,
+          attributes: {
+            'gen_ai.operation.name': 'execute_tool',
+            ...(toolName === undefined ? {} : { 'gen_ai.tool.name': toolName }),
+            'mokei.mcp.round': params.round,
+            ...params.traceAttributes,
+          },
+        },
+        context.active(),
+      )
+      endSpanError(
+        span,
+        params.errorType ?? errorTypeOf(params.error),
+        params.error instanceof Error ? params.error.message : String(params.error),
+      )
     },
     startIncoming(
       method: string,
@@ -136,15 +251,26 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       id: RequestID,
       meta?: Record<string, unknown>,
     ): ExchangeSpan {
-      const bound = getBinding()?.contextSpan
-      const parent = bound === undefined ? ROOT_CONTEXT : trace.setSpan(ROOT_CONTEXT, bound)
+      const binding = getBinding()
+      const bound = binding?.contextSpan
+      const contextParent = bound === undefined ? ROOT_CONTEXT : trace.setSpan(ROOT_CONTEXT, bound)
       const remote = meta === undefined ? undefined : extractW3CTraceContext(meta)
       const remoteContext = remote === undefined ? undefined : trace.getSpanContext(remote)
+      if (binding?.parentFrom === 'meta' && remote !== undefined && remoteContext !== undefined) {
+        return start(
+          method,
+          params,
+          'server',
+          remote,
+          bound === undefined ? [] : [{ context: bound.spanContext() }],
+          id,
+        )
+      }
       return start(
         method,
         params,
         'server',
-        parent,
+        contextParent,
         remoteContext === undefined ? [] : [{ context: remoteContext }],
         id,
       )

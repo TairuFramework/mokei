@@ -1,4 +1,9 @@
-import type { CallToolResult } from '@mokei/context-protocol'
+import {
+  type PayloadCapture,
+  resolveContentCapture,
+  type TraceParentFrom,
+} from '@mokei/context-client'
+import type { CallToolResult, Tool } from '@mokei/context-protocol'
 import type {
   ContextHost,
   ContextTool,
@@ -15,7 +20,9 @@ import type {
   MessagePart,
   ModelProvider,
   ProviderTypes,
+  SamplingParams,
   ServerMessage,
+  StreamChatParams,
   StreamChatRequest,
 } from '@mokei/model-provider'
 import { Disposer, raceSignal } from '@sozai/async'
@@ -23,6 +30,7 @@ import { EventEmitter } from '@sozai/event'
 import { fromStream } from '@sozai/generator'
 
 import type { JSONValue } from './agent-types.js'
+import { traceStreamChat } from './inference-tracing.js'
 
 /** Parameters for executing a tool call the model requested. */
 export type ExecuteToolCallParams<T extends ProviderTypes = ProviderTypes> = {
@@ -34,6 +42,13 @@ export type ExecuteToolCallParams<T extends ProviderTypes = ProviderTypes> = {
   signal?: AbortSignal
   /** Rejects the tool call with a RequestTimeoutError after this many ms */
   timeout?: number
+  /** Extra attributes for the tool call's trace span, e.g. the agent name; never sent on the wire */
+  traceAttributes?: Record<string, string>
+  /**
+   * Set when the provider generates tool call IDs client-side
+   * (`ProviderTelemetry.syntheticToolCallIDs`): they carry no meaning, so the span omits them
+   */
+  syntheticToolCallIDs?: boolean
 }
 
 export type AddHTTPContextParams = HTTPContextParams & {
@@ -41,13 +56,30 @@ export type AddHTTPContextParams = HTTPContextParams & {
   enableTools?: EnableToolsArg
 }
 
-export type ChatParams<T extends ProviderTypes = ProviderTypes> = {
+export type ChatParams<T extends ProviderTypes = ProviderTypes> = SamplingParams & {
   provider: string | ModelProvider<T>
   model: string
   messages: Array<Message<T['MessagePart'], T['ToolCall']>>
   tools?: Array<T['Tool']>
   signal?: AbortSignal
   abortActiveRequest?: boolean
+}
+
+export type StreamChatTurnParams<T extends ProviderTypes = ProviderTypes> = SamplingParams & {
+  provider: string | ModelProvider<T>
+  model: string
+  messages: Array<Message<T['MessagePart'], T['ToolCall']>>
+  tools?: Array<T['Tool']>
+  /** MCP definitions of `tools`, recorded as `gen_ai.tool.definitions` when content is captured */
+  toolDefinitions?: Array<Tool>
+  signal?: AbortSignal
+}
+
+export type SessionTracing = {
+  /** Content capture for GenAI and MCP spans; also forwarded to a host this session creates */
+  payloads?: PayloadCapture
+  /** Forwarded to a host this session creates */
+  parentFrom?: TraceParentFrom
 }
 
 /** Async generator returned by {@link Session.streamChatTurn}. */
@@ -103,6 +135,8 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
    * ```
    */
   localTools?: Array<LocalToolDefinition>
+  /** Telemetry options; a supplied `contextHost` keeps its own configuration. */
+  tracing?: SessionTracing
 }
 
 /**
@@ -136,6 +170,7 @@ function chunkToServerMessage<M, C>(chunk: MessagePart<M, C>): ServerMessage<M, 
       return {
         source: 'server',
         role: 'assistant',
+        doneReason: chunk.reason,
         inputTokens: chunk.inputTokens,
         outputTokens: chunk.outputTokens,
         raw: chunk.raw as M,
@@ -151,6 +186,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #events: EventEmitter<SessionEvents<T>>
   #contextHost: ContextHost
   #providers: Map<string, ModelProvider<T>>
+  #tracing: SessionTracing | undefined
 
   constructor(params: SessionParams<T> = {}) {
     if (params.contextHost && params.elicit != null) {
@@ -162,7 +198,10 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       },
     })
     this.#events = new EventEmitter()
-    this.#contextHost = params.contextHost ?? new DefaultContextHost({ elicit: params.elicit })
+    this.#contextHost =
+      params.contextHost ??
+      new DefaultContextHost({ elicit: params.elicit, tracing: params.tracing })
+    this.#tracing = params.tracing
     this.#providers = new Map(Object.entries(params.providers ?? {}))
 
     // Register local tools if provided
@@ -298,6 +337,27 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return this.#contextHost.getCallableTools().map(provider.toolFromMCP)
   }
 
+  #streamChat<P extends T>(
+    provider: ModelProvider<P>,
+    params: StreamChatTurnParams<P>,
+  ): StreamChatRequest<P['MessagePart'], P['ToolCall']> {
+    const { provider: _provider, toolDefinitions, ...rest } = params
+    let tools = params.tools
+    let definitions = toolDefinitions
+    if (tools == null) {
+      definitions = this.#contextHost.getCallableTools()
+      tools = definitions.map(provider.toolFromMCP)
+    }
+    const request: StreamChatParams<P['Message'], P['ToolCall'], P['Tool']> = { ...rest, tools }
+    return traceStreamChat({
+      telemetry: provider.telemetry,
+      request,
+      tools: definitions,
+      capture: resolveContentCapture(this.#tracing?.payloads),
+      start: () => provider.streamChat(request),
+    })
+  }
+
   /**
    * Resolve a provider from a string key or return the provider directly.
    */
@@ -329,18 +389,9 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
    * const aggregated = await generator.next().then(r => r.value)
    * ```
    */
-  async *streamChatTurn<P extends T = T>(params: {
-    provider: string | ModelProvider<P>
-    model: string
-    messages: Array<Message<P['MessagePart'], P['ToolCall']>>
-    tools?: Array<P['Tool']>
-    signal?: AbortSignal
-  }): ChatTurn<P> {
+  async *streamChatTurn<P extends T = T>(params: StreamChatTurnParams<P>): ChatTurn<P> {
     const provider = this.resolveProvider(params.provider)
-    const tools = params.tools ?? this.getToolsForProvider(provider)
-
-    const request = provider.streamChat({ ...params, tools })
-    const stream = await request
+    const stream = await this.#streamChat(provider, params)
 
     const messageParts: Array<ServerMessage<P['MessagePart'], P['ToolCall']>> = []
 
@@ -378,10 +429,9 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       }
     }
 
+    const { abortActiveRequest: _abortActiveRequest, ...turnParams } = params
     const provider = this.resolveProvider(params.provider)
-    const tools = params.tools ?? this.getToolsForProvider(provider)
-
-    const request = provider.streamChat({ ...params, tools })
+    const request = this.#streamChat(provider, turnParams)
     this.#activeChatRequest = request
     try {
       const stream = await request
@@ -411,13 +461,17 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   executeToolCall<P extends T = T>(params: ExecuteToolCallParams<P>): Promise<CallToolResult> {
-    const { toolCall, _meta, signal, timeout } = params
+    const { toolCall, _meta, signal, timeout, traceAttributes, syntheticToolCallIDs } = params
     return this.#contextHost.callNamespacedTool({
       id: toolCall.name,
       arguments: JSON.parse(toolCall.arguments),
       _meta,
       signal,
       timeout,
+      traceAttributes: {
+        ...(syntheticToolCallIDs === true ? {} : { 'gen_ai.tool.call.id': toolCall.id }),
+        ...traceAttributes,
+      },
     })
   }
 }

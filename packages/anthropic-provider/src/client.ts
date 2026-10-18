@@ -70,6 +70,7 @@ export type { StreamEvent }
 export class AnthropicClient {
   #api: KyInstance
   #anthropicVersion: string
+  #baseURL: string
 
   constructor(params: AnthropicClientParams = {}) {
     this.#anthropicVersion = params.anthropicVersion ?? DEFAULT_ANTHROPIC_VERSION
@@ -80,11 +81,16 @@ export class AnthropicClient {
     if (params.apiKey != null) {
       headers['x-api-key'] = params.apiKey
     }
+    this.#baseURL = params.baseURL ?? DEFAULT_BASE_URL
     this.#api = ky.create({
-      prefix: params.baseURL ?? DEFAULT_BASE_URL,
+      prefix: this.#baseURL,
       timeout: params.timeout ?? DEFAULT_TIMEOUT,
       headers,
     })
+  }
+
+  get baseURL(): string {
+    return this.#baseURL
   }
 
   /**

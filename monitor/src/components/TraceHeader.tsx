@@ -33,7 +33,7 @@ function FlowHeader({ runID, summary }: { runID: string; summary: TraceSummary }
       <Group>
         <Text>Run ID: {runID}</Text>
         <Text>
-          Flow ID: <span>{run?.flowID ?? String(summary.attributes['flow.id'] ?? '—')}</span>
+          Flow ID: <span>{run?.flowID ?? String(summary.attributes['mokei.flow.id'] ?? '—')}</span>
         </Text>
         {run == null ? null : <RunStateBadge state={run.state} />}
         <Button
@@ -79,6 +79,18 @@ function FlowHeader({ runID, summary }: { runID: string; summary: TraceSummary }
   )
 }
 
+function transportLabel(attributes: Record<string, unknown>): string {
+  const context = attributes['mokei.context.transport']
+  if (context === 'direct') return 'in-process'
+  if (context === 'stdio' || context === 'http') return context
+  const transport = attributes['network.transport']
+  if (transport === 'pipe') return 'stdio'
+  if (transport === 'tcp') {
+    return attributes['network.protocol.name'] === 'http' ? 'http' : 'tcp'
+  }
+  return 'Unknown transport'
+}
+
 export function TraceHeader({
   summary,
   rootSpan,
@@ -89,7 +101,7 @@ export function TraceHeader({
   now: number
 }) {
   const attributes = rootSpan?.attributes ?? {}
-  const runID = summary.attributes['run.id']
+  const runID = summary.attributes['mokei.run.id']
   const title = traceDisplayTitle(summary)
   return (
     <Stack>
@@ -109,13 +121,10 @@ export function TraceHeader({
         <Group>
           <Text>
             {String(
-              attributes['mcp.server.name'] ??
-                attributes['server.name'] ??
-                attributes['process.command'] ??
-                summary.name,
+              attributes['mokei.server.name'] ?? attributes['process.command'] ?? summary.name,
             )}
           </Text>
-          <Text>{String(attributes['mcp.transport'] ?? 'Unknown transport')}</Text>
+          <Text>{transportLabel(attributes)}</Text>
           <Text>
             Uptime:{' '}
             {Math.max(

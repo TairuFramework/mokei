@@ -5,11 +5,12 @@ import type {
   FunctionToolCall,
   MessagePart,
   ModelProvider,
+  ProviderTelemetry,
   RequestParams,
   ServerMessage,
   StreamChatParams,
 } from '@mokei/model-provider'
-import { resolveSamplingParams } from '@mokei/model-provider'
+import { resolveSamplingParams, telemetryFromBaseURL } from '@mokei/model-provider'
 import { assertType } from '@sozai/schema'
 
 import { AnthropicClient, type AnthropicClientParams } from './client.js'
@@ -50,11 +51,20 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
 
   #client: AnthropicClient
   #defaultMaxTokens: number
+  #telemetry: ProviderTelemetry
 
   constructor(params: AnthropicProviderParams = {}) {
     this.#client =
       params.client instanceof AnthropicClient ? params.client : new AnthropicClient(params.client)
     this.#defaultMaxTokens = params.defaultMaxTokens ?? 4096
+    this.#telemetry = {
+      ...telemetryFromBaseURL('anthropic', this.#client.baseURL),
+      inputTokensExcludeCache: true,
+    }
+  }
+
+  get telemetry(): ProviderTelemetry {
+    return this.#telemetry
   }
 
   async listModels(params?: RequestParams) {
@@ -203,6 +213,10 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
     let currentToolUse: ToolUseBlock | null = null
     let currentToolJson = ''
     let inputTokens = 0
+    let responseID: string | undefined
+    let responseModel: string | undefined
+    let cacheReadInputTokens: number | undefined
+    let cacheWriteInputTokens: number | undefined
 
     const response = request.then((stream: ReadableStream<StreamEvent>) => {
       return stream.pipeThrough(
@@ -212,6 +226,10 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
               case 'message_start':
                 // Capture input tokens from message start
                 inputTokens = event.message.usage.input_tokens
+                responseID = event.message.id
+                responseModel = event.message.model
+                cacheReadInputTokens = event.message.usage.cache_read_input_tokens
+                cacheWriteInputTokens = event.message.usage.cache_creation_input_tokens
                 break
 
               case 'content_block_start':
@@ -279,6 +297,10 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
                   reason: event.delta.stop_reason,
                   inputTokens,
                   outputTokens: event.usage.output_tokens,
+                  responseID,
+                  responseModel,
+                  cacheReadInputTokens,
+                  cacheWriteInputTokens,
                   raw: event,
                 })
                 break

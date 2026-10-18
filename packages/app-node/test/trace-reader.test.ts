@@ -50,7 +50,7 @@ function stored(spanID = 'root', patch: Partial<StoredSpan> = {}): StoredSpan {
     startTime: 100,
     endTime: 200,
     status: { code: 2 },
-    attributes: { 'mokei.kind': 'flow', 'run.id': 'run', 'run.label': 'label' },
+    attributes: { 'mokei.kind': 'flow', 'mokei.run.id': 'run', 'mokei.run.label': 'label' },
     events: [],
     links: [],
     ...patch,
@@ -211,7 +211,7 @@ test('get synthesises a summary for a trace with spans but no row', async () => 
       outcome: 'error',
       spanCount: 2,
       errorCount: 2,
-      attributes: { 'run.id': 'run', label: 'label' },
+      attributes: { 'mokei.run.id': 'run', label: 'label' },
       revision: 0,
     }),
   )
@@ -353,8 +353,8 @@ test('get returns queued spans committed after the snapshot exactly once', async
 
 test('name filtering matches label and flow ID in stored and live summaries', async () => {
   const persisted = summary('stored', {
-    name: 'flow.run',
-    attributes: { label: 'Éclair 100%_done!', 'flow.id': 'Review-Flow' },
+    name: 'invoke_workflow',
+    attributes: { label: 'Éclair 100%_done!', 'mokei.flow.id': 'Review-Flow' },
   })
   const local = { ...persisted, traceID: 'live', revision: 2 }
   await (await getTraceIndexStore(db)).upsert([persisted])
@@ -364,7 +364,7 @@ test('name filtering matches label and flow ID in stored and live summaries', as
     logs: [],
     summaries: [local],
   })
-  for (const name of ['FLOW.RUN', 'éCLAIR', '100%_done!', 'REVIEW-flow']) {
+  for (const name of ['INVOKE_WORKFLOW', 'éCLAIR', '100%_done!', 'REVIEW-flow']) {
     expect((await reader.list({ limit: 10, name })).traces.map((row) => row.traceID)).toEqual([
       'stored',
       'live',

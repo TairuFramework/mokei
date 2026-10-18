@@ -39,7 +39,7 @@ const summary: TraceSummary = {
   errorCount: 0,
   droppedCount: 0,
   revision: 1,
-  attributes: { 'run.id': 'run-1', 'flow.id': 'flow-1' },
+  attributes: { 'mokei.run.id': 'run-1', 'mokei.flow.id': 'flow-1' },
 }
 
 function renderPage(path: string) {
@@ -103,7 +103,11 @@ beforeEach(() => {
               'mokei.payload.truncated': true,
             },
             events: [
-              { name: 'mcp.response', time: 70, attributes: { payload: '{"result":"world"}' } },
+              {
+                name: 'mcp.response',
+                time: 70,
+                attributes: { 'mokei.mcp.response': '{"result":"world"}' },
+              },
             ],
           },
         ],
@@ -169,7 +173,7 @@ test('context header shows command and transport', async () => {
           'child',
           {
             ...span('child'),
-            attributes: { 'process.command': 'server-command', 'mcp.transport': 'stdio' },
+            attributes: { 'process.command': 'server-command', 'network.transport': 'pipe' },
           },
         ],
       ]),
@@ -178,6 +182,33 @@ test('context header shows command and transport', async () => {
   renderPage('/traces/trace-1')
   expect(await screen.findByText('server-command')).toBeTruthy()
   expect(screen.getByText('stdio')).toBeTruthy()
+})
+
+test.each([
+  [{ 'mokei.context.transport': 'direct' }, 'in-process'],
+  [{ 'mokei.context.transport': 'stdio' }, 'stdio'],
+  [{ 'mokei.context.transport': 'http' }, 'http'],
+  [{ 'network.transport': 'pipe' }, 'stdio'],
+  [{ 'network.transport': 'tcp', 'network.protocol.name': 'http' }, 'http'],
+  [{}, 'Unknown transport'],
+] as const)('context header shows server name and transport from %j', async (network, label) => {
+  const result = mocks.trace()
+  mocks.trace.mockReturnValue({
+    ...result,
+    state: {
+      ...result.state,
+      summary: { ...summary, kind: 'context' },
+      spans: new Map([
+        [
+          'child',
+          { ...span('child'), attributes: { 'mokei.server.name': 'my-server', ...network } },
+        ],
+      ]),
+    },
+  })
+  renderPage('/traces/trace-1')
+  expect(await screen.findByText('my-server')).toBeTruthy()
+  expect(screen.getByText(label)).toBeTruthy()
 })
 
 test.each(['list', 'trace'] as const)('%s errors offer Retry', async (hook) => {
@@ -210,11 +241,11 @@ test('deep-linked span selection can be cleared without losing filters', async (
 })
 
 test.each([
-  ['flow', { label: 'Nightly review', 'flow.id': 'review-flow' }, 'Nightly review'],
-  ['flow', { 'flow.id': 'review-flow' }, 'review-flow'],
+  ['flow', { label: 'Nightly review', 'mokei.flow.id': 'review-flow' }, 'Nightly review'],
+  ['flow', { 'mokei.flow.id': 'review-flow' }, 'review-flow'],
   ['flow', {}, 'Flow trace'],
-  ['context', { label: 'Server label', 'flow.id': 'ignored' }, 'Server label'],
-  ['context', { 'flow.id': 'ignored' }, 'Flow trace'],
+  ['context', { label: 'Server label', 'mokei.flow.id': 'ignored' }, 'Server label'],
+  ['context', { 'mokei.flow.id': 'ignored' }, 'Flow trace'],
 ] as const)(
   'list and header share the display title for %s with %j',
   async (kind, attributes, title) => {

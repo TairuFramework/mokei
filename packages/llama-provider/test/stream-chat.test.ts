@@ -46,6 +46,16 @@ vi.mock('node-llama-cpp', () => ({
   LlamaChatSession: MockChatSession,
 }))
 
+describe('LlamaProvider telemetry', () => {
+  test('is local llama.cpp with synthetic tool call IDs', () => {
+    expect(new LlamaProvider().telemetry).toEqual({
+      providerName: 'llama.cpp',
+      local: true,
+      syntheticToolCallIDs: true,
+    })
+  })
+})
+
 describe('LlamaProvider streamChat', () => {
   test('returns a stream with text deltas and done', async () => {
     mockPromptWithMeta.mockImplementation(
