@@ -90,6 +90,7 @@ for (const register of [false, true]) {
         'mokei.context.id': 'test',
         'mokei.server.name': 'echo-server',
         'mcp.protocol.version': '2025-11-25',
+        'mokei.context.transport': 'direct',
       })
       expect(root?.attributes['mcp.transport']).toBeUndefined()
       expect(root?.attributes['server.name']).toBeUndefined()
@@ -232,6 +233,7 @@ test('HTTP context records its transport and negotiated session', async () => {
     await host.remove('remote')
     const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
     expect(root?.attributes).toMatchObject({
+      'mokei.context.transport': 'http',
       'network.transport': 'tcp',
       'network.protocol.name': 'http',
       'server.address': 'mcp.example.com',
@@ -256,6 +258,28 @@ test('HTTP context records its transport and negotiated session', async () => {
     await host.dispose()
     fetch.mockRestore()
   }
+})
+
+test('registerHostedContext with stdio transport marks the context span', async () => {
+  const host = new ContextHost()
+  hosts.push(host)
+  const transports = new DirectTransports<ServerMessage, ClientMessage>()
+  const client = new ContextClient({ transport: transports.client, protocolVersion: '2025-11-25' })
+  host.registerHostedContext({
+    key: 'test',
+    transport: 'stdio',
+    context: {
+      client,
+      disposer: new Disposer({ dispose: () => client.dispose() }),
+      tools: [],
+    },
+  })
+  await host.remove('test')
+  const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+  expect(root?.attributes).toMatchObject({
+    'mokei.context.transport': 'stdio',
+    'network.transport': 'pipe',
+  })
 })
 
 test('context lifetime starts a new trace even inside an active span', async () => {

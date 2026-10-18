@@ -664,6 +664,7 @@ export class ContextHost extends Disposer {
           'mokei.kind': 'context',
           'mokei.root': true,
           'mokei.context.id': key,
+          'mokei.context.transport': transport,
           ...(network === undefined
             ? {}
             : {

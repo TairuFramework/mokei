@@ -80,6 +80,9 @@ function FlowHeader({ runID, summary }: { runID: string; summary: TraceSummary }
 }
 
 function transportLabel(attributes: Record<string, unknown>): string {
+  const context = attributes['mokei.context.transport']
+  if (context === 'direct') return 'in-process'
+  if (context === 'stdio' || context === 'http') return context
   const transport = attributes['network.transport']
   if (transport === 'pipe') return 'stdio'
   if (transport === 'tcp') {

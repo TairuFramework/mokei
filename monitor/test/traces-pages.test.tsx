@@ -185,8 +185,12 @@ test('context header shows command and transport', async () => {
 })
 
 test.each([
+  [{ 'mokei.context.transport': 'direct' }, 'in-process'],
+  [{ 'mokei.context.transport': 'stdio' }, 'stdio'],
+  [{ 'mokei.context.transport': 'http' }, 'http'],
   [{ 'network.transport': 'pipe' }, 'stdio'],
   [{ 'network.transport': 'tcp', 'network.protocol.name': 'http' }, 'http'],
+  [{}, 'Unknown transport'],
 ] as const)('context header shows server name and transport from %j', async (network, label) => {
   const result = mocks.trace()
   mocks.trace.mockReturnValue({
