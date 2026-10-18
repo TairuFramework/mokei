@@ -642,6 +642,7 @@ export class ContextClient<
     const firstContext = (options as TracedRequestOptions | undefined)?.[FIRST_EXCHANGE]
     const exchange = this.#exchangeTracer.startOutgoing(method as string, params, {
       links: firstContext === undefined ? [] : [{ context: firstContext }],
+      traceAttributes: options?.traceAttributes,
     })
     const first = firstContext ?? exchange.span.spanContext()
     return withActiveContext(exchange.context, async () => {

@@ -7,6 +7,7 @@ import {
   ToolInputValidationError,
   ToolOutputValidationError,
 } from '@mokei/context-server'
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -20,6 +21,9 @@ import {
   toolsToLocalTools,
   toolToLocalTool,
 } from '../src/index.js'
+import { useTestTracing } from './support/otel.js'
+
+const { exporter } = useTestTracing()
 
 describe('Local Tools Utilities', () => {
   describe('isLocalToolID', () => {
@@ -805,5 +809,71 @@ describe('callLocalTool cancellation', () => {
     await request
 
     expect(observedAbort).toBe(true)
+  })
+})
+
+describe('local tool execute_tool spans', () => {
+  function hostWith(execute: LocalToolDefinition['execute'], payloads?: 'on') {
+    const host = new ContextHost({ tracing: payloads === undefined ? undefined : { payloads } })
+    host.addLocalTool({
+      name: 'notify',
+      description: 'Send a note',
+      inputSchema: { type: 'object' },
+      execute,
+    })
+    return host
+  }
+  const spans = () =>
+    exporter.getFinishedSpans().filter((span) => span.name.startsWith('execute_tool'))
+
+  test('success produces one INTERNAL span with attributes and UNSET status', async () => {
+    const host = hostWith(async () => ({ content: [{ type: 'text', text: 'sent' }] }))
+    await host.callNamespacedTool({
+      id: 'local:notify',
+      arguments: { to: 'a' },
+      traceAttributes: { 'gen_ai.tool.call.id': 'call_1' },
+    })
+    expect(spans()).toHaveLength(1)
+    const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
+    expect(span.name).toBe('execute_tool notify')
+    expect(span.kind).toBe(SpanKind.INTERNAL)
+    expect(span.status.code).toBe(SpanStatusCode.UNSET)
+    expect(span.attributes).toMatchObject({
+      'gen_ai.operation.name': 'execute_tool',
+      'gen_ai.tool.name': 'notify',
+      'gen_ai.tool.type': 'function',
+      'gen_ai.tool.description': 'Send a note',
+      'gen_ai.tool.call.id': 'call_1',
+    })
+    expect(span.attributes['gen_ai.tool.call.arguments']).toBeUndefined()
+    expect(span.attributes['gen_ai.tool.call.result']).toBeUndefined()
+  })
+
+  test('captures arguments and result when content capture is on', async () => {
+    const host = hostWith(async () => ({ content: [{ type: 'text', text: 'sent' }] }), 'on')
+    await host.callLocalTool({ name: 'notify', arguments: { to: 'a' } })
+    const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
+    expect(span.attributes['gen_ai.tool.call.arguments']).toBe('{"to":"a"}')
+    expect(span.attributes['gen_ai.tool.call.result']).toContain('sent')
+  })
+
+  test('a throwing tool sets error.type and ERROR status', async () => {
+    const host = hostWith(async () => {
+      throw new TypeError('boom')
+    }, 'on')
+    const result = await host.callLocalTool({ name: 'notify' })
+    expect(result.isError).toBe(true)
+    const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
+    expect(span.status.code).toBe(SpanStatusCode.ERROR)
+    expect(span.attributes['error.type']).toBe('TypeError')
+    expect(span.attributes['gen_ai.tool.call.result']).toBeUndefined()
+  })
+
+  test('an isError result sets error.type tool_error', async () => {
+    const host = hostWith(async () => ({ content: [{ type: 'text', text: 'no' }], isError: true }))
+    await host.callLocalTool({ name: 'notify' })
+    const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
+    expect(span.status.code).toBe(SpanStatusCode.ERROR)
+    expect(span.attributes['error.type']).toBe('tool_error')
   })
 })

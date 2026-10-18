@@ -89,6 +89,11 @@ export type RequestOptions = {
    * `@mokei/context-client`; `ContextRPC` itself ignores it.
    */
   maxTotalTimeout?: number
+  /**
+   * Attributes added to the request's local trace span (for example the GenAI tool call ID).
+   * Never sent on the wire. Consumed by `@mokei/context-client`; `ContextRPC` itself ignores it.
+   */
+  traceAttributes?: Record<string, string>
 }
 
 /**
@@ -97,7 +102,7 @@ export type RequestOptions = {
  *
  * The two are one object at the API surface and must be separated before the params
  * reach the wire -- see {@link splitRequestOptions}. No MCP request declares a `signal`,
- * `timeout`, `allowInputRequired` or `maxTotalTimeout` param, so the merge is unambiguous.
+ * `timeout`, `allowInputRequired`, `maxTotalTimeout` or `traceAttributes` param, so the merge is unambiguous.
  */
 export type WithRequestOptions<Params> = Params & RequestOptions
 
@@ -112,9 +117,12 @@ export type WithRequestOptions<Params> = Params & RequestOptions
 export function splitRequestOptions<Params>(
   params: WithRequestOptions<Params>,
 ): [Params, RequestOptions] {
-  const { signal, timeout, allowInputRequired, maxTotalTimeout, ...wireParams } =
+  const { signal, timeout, allowInputRequired, maxTotalTimeout, traceAttributes, ...wireParams } =
     params as WithRequestOptions<Record<string, unknown>>
-  return [wireParams as Params, { signal, timeout, allowInputRequired, maxTotalTimeout }]
+  return [
+    wireParams as Params,
+    { signal, timeout, allowInputRequired, maxTotalTimeout, traceAttributes },
+  ]
 }
 
 export type RPCTypes = {

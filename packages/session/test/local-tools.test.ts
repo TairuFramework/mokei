@@ -3,6 +3,7 @@ import type { ModelProvider, ProviderTypes } from '@mokei/model-provider'
 import { describe, expect, test, vi } from 'vitest'
 
 import { type LocalToolDefinition, Session } from '../src/index.js'
+import { useTestTracing } from './support/otel.js'
 
 describe('Session({ contextHost })', () => {
   test('uses the supplied ContextHost instead of creating one', () => {
@@ -183,5 +184,39 @@ describe('Session Local Tools', () => {
       expect(result.isError).toBe(true)
       expect(result.content[0]).toEqual({ type: 'text', text: 'Tool failed' })
     })
+  })
+})
+
+describe('executeToolCall attribution', () => {
+  const { exporter } = useTestTracing()
+  const spans = () =>
+    exporter.getFinishedSpans().filter((span) => span.name === 'execute_tool testTool')
+  function sessionWithTool() {
+    return new Session({
+      localTools: [
+        {
+          name: 'testTool',
+          inputSchema: { type: 'object' },
+          execute: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+        },
+      ],
+    })
+  }
+  const toolCall = { id: 'call_9', name: 'local:testTool', arguments: '{}', raw: {} }
+
+  test('adds gen_ai.tool.call.id and merges traceAttributes', async () => {
+    await sessionWithTool().executeToolCall({
+      toolCall,
+      traceAttributes: { 'gen_ai.agent.name': 'helper' },
+    })
+    expect(spans()[0]?.attributes).toMatchObject({
+      'gen_ai.tool.call.id': 'call_9',
+      'gen_ai.agent.name': 'helper',
+    })
+  })
+
+  test('omits gen_ai.tool.call.id for synthetic tool call IDs', async () => {
+    await sessionWithTool().executeToolCall({ toolCall, syntheticToolCallIDs: true })
+    expect(spans()[0]?.attributes['gen_ai.tool.call.id']).toBeUndefined()
   })
 })

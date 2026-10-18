@@ -3,6 +3,7 @@ import {
   type ClientTransport,
   ContextClient,
   type ContextTypes,
+  capturePayload,
   type ElicitHandler,
   endSpanError,
   getMokeiTracer,
@@ -13,6 +14,7 @@ import {
   type PayloadCapture,
   type PromptParams,
   recordMCPSession,
+  resolveContentCapture,
   type TerminationReason,
   type ToolParams,
   type TraceParentFrom,
@@ -32,7 +34,7 @@ import type {
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
 import { type FetchMiddleware, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
-import { ROOT_CONTEXT } from '@opentelemetry/api'
+import { ROOT_CONTEXT, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 
@@ -133,6 +135,8 @@ export type LocalToolParams = {
   arguments?: Record<string, unknown>
   _meta?: Record<string, JSONValue>
   signal?: AbortSignal
+  /** Attributes added to the `execute_tool` span; never sent anywhere else. */
+  traceAttributes?: Record<string, string>
 }
 
 export type AllowToolCalls = 'always' | 'ask' | 'never'
@@ -869,7 +873,7 @@ export class ContextHost extends Disposer {
   }
 
   callNamespacedTool(params: NamespacedToolParams): Promise<CallToolResult> {
-    const { id, arguments: args = {}, _meta, signal, timeout } = params
+    const { id, arguments: args = {}, _meta, signal, timeout, traceAttributes } = params
 
     // Check if this is a local tool
     if (isLocalToolID(id)) {
@@ -878,16 +882,17 @@ export class ContextHost extends Disposer {
         arguments: args,
         _meta: _meta as Record<string, JSONValue> | undefined,
         signal,
+        traceAttributes,
       })
     }
 
     const [key, name] = getContextToolInfo(id)
-    return this.callTool({ key, name, arguments: args, _meta, signal, timeout })
+    return this.callTool({ key, name, arguments: args, _meta, signal, timeout, traceAttributes })
   }
 
   /** Call a local tool by name. Local tools run in-process, so there is no request to time out. */
   async callLocalTool(params: LocalToolParams): Promise<CallToolResult> {
-    const { name, arguments: args = {}, _meta, signal } = params
+    const { name, arguments: args = {}, _meta, signal, traceAttributes } = params
 
     const localTool = this.#localTools.get(name)
     if (localTool == null) {
@@ -897,11 +902,37 @@ export class ContextHost extends Disposer {
       throw signal.reason
     }
 
+    const capture = resolveContentCapture(this.#payloads)
+    const capturedArguments = capturePayload(args, capture)
+    const span = getMokeiTracer('host').startSpan(`execute_tool ${name}`, {
+      kind: SpanKind.INTERNAL,
+      attributes: {
+        'gen_ai.operation.name': 'execute_tool',
+        'gen_ai.tool.name': name,
+        'gen_ai.tool.type': 'function',
+        ...(localTool.tool.description === undefined
+          ? {}
+          : { 'gen_ai.tool.description': localTool.tool.description }),
+        ...(capturedArguments === undefined
+          ? {}
+          : { 'gen_ai.tool.call.arguments': capturedArguments.payload }),
+        ...traceAttributes,
+      },
+    })
     try {
       // The call carries `arguments` (wire vocabulary); the handler receives `input`.
-      return await localTool.execute({ input: args, meta: _meta ?? {}, signal })
+      const result = await localTool.execute({ input: args, meta: _meta ?? {}, signal })
+      if (result.isError === true) {
+        endSpanError(span, 'tool_error')
+      } else {
+        const captured = capturePayload(result, capture)
+        if (captured !== undefined) span.setAttribute('gen_ai.tool.call.result', captured.payload)
+        span.end()
+      }
+      return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
+      endSpanError(span, error instanceof Error ? error.name : 'tool_error', errorMessage)
       return {
         content: [{ type: 'text' as const, text: errorMessage }],
         isError: true,

@@ -42,6 +42,13 @@ export type ExecuteToolCallParams<T extends ProviderTypes = ProviderTypes> = {
   signal?: AbortSignal
   /** Rejects the tool call with a RequestTimeoutError after this many ms */
   timeout?: number
+  /** Extra attributes for the tool call's trace span, e.g. the agent name; never sent on the wire */
+  traceAttributes?: Record<string, string>
+  /**
+   * Set when the provider generates tool call IDs client-side
+   * (`ProviderTelemetry.syntheticToolCallIDs`): they carry no meaning, so the span omits them
+   */
+  syntheticToolCallIDs?: boolean
 }
 
 export type AddHTTPContextParams = HTTPContextParams & {
@@ -454,13 +461,17 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   executeToolCall<P extends T = T>(params: ExecuteToolCallParams<P>): Promise<CallToolResult> {
-    const { toolCall, _meta, signal, timeout } = params
+    const { toolCall, _meta, signal, timeout, traceAttributes, syntheticToolCallIDs } = params
     return this.#contextHost.callNamespacedTool({
       id: toolCall.name,
       arguments: JSON.parse(toolCall.arguments),
       _meta,
       signal,
       timeout,
+      traceAttributes: {
+        ...(syntheticToolCallIDs === true ? {} : { 'gen_ai.tool.call.id': toolCall.id }),
+        ...traceAttributes,
+      },
     })
   }
 }

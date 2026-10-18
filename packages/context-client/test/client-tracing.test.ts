@@ -121,6 +121,34 @@ test('tools/call produces one tools/call span with attributes and response event
     { name: 'mcp.response', attributes: { 'mokei.mcp.response': JSON.stringify(result) } },
   ])
 })
+test('traceAttributes land on the span and never on the wire', async () => {
+  const f = await fixture(binding())
+  const pending = f.client.request(
+    'tools/call',
+    { name: 'echo', arguments: {} },
+    { traceAttributes: { 'gen_ai.tool.call.id': 'call_1' } },
+  )
+  const frame = await f.next()
+  await f.transports.server.write({ jsonrpc: '2.0', id: frame.id, result })
+  await pending
+  expect(required(spans()[0]).attributes).toMatchObject({ 'gen_ai.tool.call.id': 'call_1' })
+  expect(JSON.stringify(frame)).not.toContain('call_1')
+  expect(JSON.stringify(frame)).not.toContain('traceAttributes')
+})
+test('callTool strips traceAttributes from the wire params', async () => {
+  const f = await fixture(binding())
+  const pending = f.client.callTool({
+    name: 'echo',
+    arguments: {},
+    traceAttributes: { 'gen_ai.tool.call.id': 'call_2' },
+  })
+  const frame = await f.next()
+  await f.transports.server.write({ jsonrpc: '2.0', id: frame.id, result })
+  await pending
+  expect(required(spans()[0]).attributes).toMatchObject({ 'gen_ai.tool.call.id': 'call_2' })
+  expect(JSON.stringify(frame)).not.toContain('call_2')
+  expect(JSON.stringify(frame)).not.toContain('traceAttributes')
+})
 test('the request span is active when traceparent is injected', async () => {
   const f = await fixture(binding())
   const frame = await f.call()

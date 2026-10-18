@@ -51,6 +51,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     links: Array<Link>,
     id?: RequestID,
     contextTraceID?: string,
+    traceAttributes?: Record<string, string>,
   ): ExchangeSpan {
     const binding = getBinding()
     const span = getMokeiTracer('context-client').startSpan(
@@ -71,6 +72,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
               capture: resolveContentCapture(binding?.payloads),
               protocolVersion: binding?.getProtocolVersion?.(),
               network: binding?.network,
+              traceAttributes,
             }),
             ...(contextTraceID === undefined ? {} : { 'mokei.context.trace_id': contextTraceID }),
           }
@@ -146,7 +148,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     startOutgoing(
       method: string,
       params: unknown,
-      options?: { links?: Array<Link> },
+      options?: { links?: Array<Link>; traceAttributes?: Record<string, string> },
     ): ExchangeSpan {
       const binding = getBinding()
       let parent = context.active()
@@ -164,7 +166,16 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
           contextTraceID = bound.traceId
         }
       }
-      return start(method, params, 'client', parent, links, undefined, contextTraceID)
+      return start(
+        method,
+        params,
+        'client',
+        parent,
+        links,
+        undefined,
+        contextTraceID,
+        options?.traceAttributes,
+      )
     },
     startIncoming(
       method: string,
