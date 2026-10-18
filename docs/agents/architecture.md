@@ -388,8 +388,24 @@ GenAI content attributes (`gen_ai.input.messages`, `gen_ai.output.messages`, `ge
 is unset or `off`. The variable also enables raw MCP payload capture (`mokei.mcp.request` and
 `mokei.mcp.response`), redacted and capped the same way. Key redaction and the byte cap apply to every
 content attribute, except `gen_ai.tool.definitions`, which is a schema and only gets the cap. Any truncated
-content attribute sets `mokei.payload.truncated` on its span. The daemon proxy and an instrumented caller can
-both emit `tools/call` client spans and metrics for the same call.
+content attribute sets `mokei.payload.truncated` on its span. The variable also applies to daemon
+`context:message` events.
+
+A proxied request whose `_meta` carries a valid W3C `traceparent` is traced by its caller as well. The
+proxy span then sets `mokei.mcp.proxied` and records no `mcp.client.operation.duration` or
+`mcp.server.operation.duration` point; untraced requests are unchanged. Context spans carry
+`mokei.context.transport` (`direct`, `stdio` or `http`), and the monitor shows `direct` as `in-process`.
+
+Each MRTR wire round keeps its own span. A round that suspends (`input_required`) sets `mokei.mcp.round`
+and no `gen_ai.operation.name`; the final round sets both, with `gen_ai.operation.name` `execute_tool`.
+On `tools/call` spans the operation name is set at settle, not at span start. Single-round calls are
+unchanged. A call that fails between rounds emits one `INTERNAL` `execute_tool {tool}` span with
+`error.type`, linked to the first round. Proxy spans follow the same `input_required` rule but carry no
+round.
+
+`Session` inference spans end as `cancelled` when the request signal aborts, with metrics recorded. If the
+stream is garbage-collected while open, the span ends with `error.type=_OTHER` and message
+`stream abandoned`, with no metrics.
 
 `@mokei/app-node`'s `LocalTraceRecorder` is the single owner of local span, log and summary
 persistence and live trace delivery. It queues writes synchronously, then flushes spans, logs and
