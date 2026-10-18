@@ -332,25 +332,47 @@ Other plans produce an `awaiting_approval` run and an approval inbox item. Appro
 The inbox exposes `list`, `get`, `answer`, `decline` and `cancel` for approval and form input items.
 Events are `run:state`, `inbox:added` and `inbox:settled`.
 Successful runs expose outcome, output and MCP content. Failed runs expose a typed error with an optional code.
-With an OpenTelemetry SDK, runs carry a `traceID` and a `flow.run` span.
+With an OpenTelemetry SDK, runs carry a `traceID` and an `invoke_workflow` span.
 
 ### Unified traces
 
-Flows, steps and MCP traffic use one OpenTelemetry trace model. `mokei.kind` identifies each span
-for monitor icons and filters. `flow.run` and `flow.run.resume` are flow root segments;
-`decision.predict` and other flow step spans are children. `mcp.context` is a context root span,
-and `mcp.<method>` spans record request/response exchanges.
+Flows, steps, GenAI calls and MCP traffic use one OpenTelemetry trace model, following the GenAI and MCP
+semantic conventions (schema `https://opentelemetry.io/schemas/gen-ai-dev/1.42.0-dev`, status development).
+`mokei.kind` identifies each span for monitor icons and filters. Attribute keys mokei invents use the
+`mokei.` prefix; `_meta` keys use `dev.mokei/`. Successful spans leave status `UNSET`; failures set `ERROR`
+with `error.type`.
 
 | Span name | `mokei.kind` | Producer | Parent |
 |---|---|---|---|
 | `mcp.context` | `context` | `ContextHost` or daemon `spawn` handler | Root of a new trace |
-| `mcp.<method>` | `mcp` | In-process `ContextClient` or daemon `spawn` proxy | Active span or context span |
-| `flow.run` / `flow.run.resume` | `flow` | `flow-host` | Root / previous run span |
-| `decision.predict`, other step spans | `step` | Existing step nodes | Run span |
+| `<method> [target]` (target: tool or prompt name) | `mcp` | In-process `ContextClient` or daemon `spawn` proxy | Active span or context span |
+| `invoke_workflow {flowID}` | `flow` | `flow-host` (resumed runs: new segment) | Root / previous run span |
+| `predict {model}` | `step` | `decision-flow` System One call | Run span |
+| `chat {model}` | -- | `Session` inference, any provider | Active span |
+| `invoke_agent {name}` | -- | `AgentSession` | Active span |
+| `execute_tool {name}` | -- | `local:` tools; MCP `tools/call` spans carry `gen_ai.operation.name=execute_tool` instead | Agent / active span |
+
+Providers describe themselves through `ModelProvider.telemetry` (`openai`, `anthropic`, `ollama`,
+`llama.cpp`) and `Session` creates the inference span, so `@mokei/model-provider` stays free of
+OpenTelemetry. Flow runs carry `mokei.run.id`, `mokei.flow.id`, `mokei.run.label` and `mokei.run.state`
+(renamed from `run.*`/`flow.id`; stored traces are not migrated). MCP spans use `network.transport`
+(`pipe` or `tcp`), `server.address`/`server.port` and `rpc.response.status_code`; contexts record
+`mokei.server.name`; the `mcp.response` event attribute is `mokei.mcp.response`.
+
+Incoming MCP span parenting is set by `tracing.parentFrom`: `'context'` (default) parents spans on the
+context span, one trace per context; `'meta'` follows the spec, parenting on the `_meta` trace context and
+linking the context span.
+
+Metrics go through `@opentelemetry/api` meters and are exported only when OTLP is configured; the local
+recorder stays spans-only. MCP: `mcp.client.operation.duration`, `mcp.server.operation.duration`,
+`mcp.client.session.duration`. GenAI: `gen_ai.client.inference.{duration,time_to_first_chunk,time_per_output_chunk}`,
+`gen_ai.client.inference.usage.*_tokens`, `gen_ai.client.inference.operation.{input,output}_tokens`,
+`gen_ai.execute_tool.duration`, `gen_ai.client.operation.duration`,
+`gen_ai.invoke_agent.{duration,inference_calls,tool_calls}`, `gen_ai.invoke_workflow.duration`.
 
 MCP request spans have two producers. In-process `ContextClient` exchanges create spans at the
 request seam. The daemon's `spawn` proxy correlates requests and responses for proxied contexts.
-Hosted contexts have a `mcp.context` lifetime span, and a flow tool call is linked to its context
+Hosted contexts have an `mcp.context` lifetime span, and a flow tool call is linked to its context
 trace. Notifications are traced log records on the context span.
 
 Payload capture defaults to 65536 bytes and can be disabled or given another byte cap through
@@ -358,6 +380,12 @@ Payload capture defaults to 65536 bytes and can be disabled or given another byt
 OTLP export and sanitised `context:message` events. Secret-like object keys are replaced with
 `[redacted]`; `_meta` retains only `traceparent` and `dev.mokei/flow-run`. Capture limits mark
 truncated payloads, and the forwarded MCP traffic is not modified.
+
+GenAI content attributes (`gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.system_instructions`,
+`gen_ai.tool.definitions`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`,
+`gen_ai.prompt.variable.<name>`) use the same gate. They are captured when `payloads` is on or a byte cap;
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` enables them with the default cap when `payloads`
+is unset or `off`. Redaction and the byte cap apply to every content attribute.
 
 `@mokei/app-node`'s `LocalTraceRecorder` is the single owner of local span, log and summary
 persistence and live trace delivery. It queues writes synchronously, then flushes spans, logs and

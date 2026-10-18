@@ -167,7 +167,7 @@ test('server spans share the run traceID and descend from invoke_workflow', asyn
     ).toBe(true)
   }
 })
-test('decision.predict spans descend from invoke_workflow', async () => {
+test('predict spans descend from invoke_workflow', async () => {
   const definition: FlowDefinition = {
     ...emptyFlow,
     start: 'decide',
@@ -196,7 +196,7 @@ test('decision.predict spans descend from invoke_workflow', async () => {
   await state(f, run.runID, 'completed')
   const spans = exporter.getFinishedSpans()
   const runSpan = required(spans.find((span) => isStartSpan(span)))
-  const prediction = required(spans.find((span) => span.name === 'decision.predict'))
+  const prediction = required(spans.find((span) => span.name === 'predict'))
   const ancestors = []
   const visited = new Set<string>()
   let ancestor = prediction

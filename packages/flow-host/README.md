@@ -1,6 +1,6 @@
 # @mokei/flow-host
 
-Run decision flows in the background: approval, an inbox for inputs and approvals, recovery after restart, and a `invoke_workflow` trace span per run.
+Run decision flows in the background: approval, an inbox for inputs and approvals, recovery after restart, and an `invoke_workflow` trace span per run.
 
 ## Installation
 
