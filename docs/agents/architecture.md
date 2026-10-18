@@ -403,6 +403,11 @@ unchanged. A call that fails between rounds emits one `INTERNAL` `execute_tool {
 `error.type`, linked to the first round. Proxy spans follow the same `input_required` rule but carry no
 round.
 
+MRTR rounds apply to `tools/call`, `prompts/get` and `resources/read`. The `mcp.*.operation.duration`
+metric points keep `gen_ai.operation.name = execute_tool` for every `tools/call` wire request, suspended
+rounds included. A traced caller's call through the daemon still yields two `execute_tool` spans (caller
+and proxy); span-based counts should exclude `mokei.mcp.proxied = true`.
+
 `Session` inference spans end as `cancelled` when the request signal aborts, with metrics recorded. If the
 stream is garbage-collected while open, the span ends with `error.type=_OTHER` and message
 `stream abandoned`, with no metrics.
