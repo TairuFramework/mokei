@@ -74,6 +74,15 @@ function createSession(): Session<TestTypes> {
         inputSchema: { type: 'object' },
         execute: async () => ({ content: [{ type: 'text', text: '3' }] }),
       },
+      {
+        name: 'wait',
+        inputSchema: { type: 'object' },
+        execute: ({ signal }) => {
+          return new Promise((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+          })
+        },
+      },
     ],
   })
   session.contextHost.addDirectContext({
@@ -153,13 +162,13 @@ describe('invoke_agent spans', () => {
       'gen_ai.operation.name': 'invoke_agent',
       'gen_ai.agent.name': 'helper',
       'gen_ai.agent.description': 'Helps out',
-      'gen_ai.provider.name': 'openai',
       'gen_ai.request.model': 'm',
       'gen_ai.conversation.id': 'conv-1',
       'gen_ai.usage.input_tokens': 6,
       'gen_ai.usage.output_tokens': 4,
     })
     expect(root.attributes['error.type']).toBeUndefined()
+    expect(root.attributes['gen_ai.provider.name']).toBeUndefined()
     // The direct context connects lazily, so its `initialize` request runs inside the tool call.
     expect(childNames(root).filter((name) => name !== 'initialize')).toEqual([
       'chat m',
@@ -265,6 +274,24 @@ describe('invoke_agent spans', () => {
     await session.dispose()
   })
 
+  test('abandoning mid-tool ends the span once as cancelled', async () => {
+    const session = createSession()
+    const agent = createAgent(session, [makeCall('local:wait')])
+
+    for await (const event of agent.stream({ prompt: 'go' })) {
+      if (event.type === 'tool-call-start') break
+    }
+    // Let the aborted tool call settle before counting spans.
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    const root = agentSpan()
+    expect(root.attributes['error.type']).toBe('cancelled')
+    expect(root.status.code).toBe(SpanStatusCode.ERROR)
+    expect(childNames(root)).toEqual(['chat m', 'execute_tool wait'])
+    await agent.dispose()
+    await session.dispose()
+  })
+
   test('thrown errors use the error name', async () => {
     class BoomError extends Error {
       name = 'BoomError'
@@ -292,12 +319,7 @@ describe('agent metrics', () => {
     await agent.run({ prompt: 'go' })
 
     const collected = await collect()
-    const attributes = {
-      'gen_ai.operation.name': 'invoke_agent',
-      'gen_ai.agent.name': 'helper',
-      'gen_ai.provider.name': 'openai',
-      'gen_ai.request.model': 'm',
-    }
+    const attributes = { 'gen_ai.agent.name': 'helper', 'gen_ai.request.model': 'm' }
     const duration = collected.get('gen_ai.invoke_agent.duration')
     expect(duration).toHaveLength(1)
     expect(duration?.[0]?.attributes).toEqual(attributes)
@@ -313,8 +335,9 @@ describe('agent metrics', () => {
     const toolDuration = collected.get('gen_ai.execute_tool.duration')
     expect(toolDuration).toHaveLength(1)
     expect(toolDuration?.[0]?.attributes).toEqual({
-      'gen_ai.operation.name': 'execute_tool',
       'gen_ai.tool.name': 'echo',
+      'gen_ai.tool.type': 'function',
+      'gen_ai.agent.name': 'helper',
     })
     await agent.dispose()
     await session.dispose()

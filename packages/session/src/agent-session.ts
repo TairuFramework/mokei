@@ -317,16 +317,14 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
     } = this.#params
 
     // The span cannot stay active across yields; inner operations run in `agentContext` instead.
+    // In-process agent: no `gen_ai.provider.name` on the span or its metrics.
     const telemetry = provider.telemetry
-    const metricAttributes: Attributes = {
-      'gen_ai.operation.name': 'invoke_agent',
-      'gen_ai.request.model': model,
-    }
-    if (telemetry?.providerName != null) {
-      metricAttributes['gen_ai.provider.name'] = telemetry.providerName
-    }
+    const metricAttributes: Attributes = { 'gen_ai.request.model': model }
     if (name != null) metricAttributes['gen_ai.agent.name'] = name
-    const spanAttributes: Attributes = { ...metricAttributes }
+    const spanAttributes: Attributes = {
+      'gen_ai.operation.name': 'invoke_agent',
+      ...metricAttributes,
+    }
     if (description != null) spanAttributes['gen_ai.agent.description'] = description
     if (conversationID != null) spanAttributes['gen_ai.conversation.id'] = conversationID
     const agentSpan = getMokeiTracer('session').startSpan(
@@ -984,11 +982,12 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       run.activeTool = undefined
       if (genAIMetricsEnabled()) {
         const attributes: Attributes = {
-          'gen_ai.operation.name': 'execute_tool',
           'gen_ai.tool.name': isLocalToolID(toolCall.name)
             ? getLocalToolName(toolCall.name)
             : getContextToolInfo(toolCall.name)[1],
+          'gen_ai.tool.type': 'function',
         }
+        if (this.#params.name != null) attributes['gen_ai.agent.name'] = this.#params.name
         if (errorType !== undefined) attributes['error.type'] = errorType
         genAIAgentInstruments().toolDuration.record(
           ((endTime ?? performance.now()) - startTime) / 1000,
