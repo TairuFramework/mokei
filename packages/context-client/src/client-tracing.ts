@@ -14,6 +14,8 @@ import {
 } from './observation.js'
 import { endSpanError, getMokeiTracer, resolveContentCapture } from './semconv.js'
 
+/** Where incoming request spans take their parent from: the bound context span, or `_meta.traceparent`. */
+export type TraceParentFrom = 'context' | 'meta'
 export type TerminationReason = 'stopped' | 'lost'
 export type ClientTracing = {
   contextID: string
@@ -26,7 +28,7 @@ export type ClientTracing = {
   getProtocolVersion?: () => string | undefined
   network?: NetworkInfo
   /** Where incoming request spans take their parent from. Defaults to the bound context. */
-  parentFrom?: 'context' | 'meta'
+  parentFrom?: TraceParentFrom
 }
 export type ExchangeSpan = {
   span: Span
@@ -151,15 +153,26 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       id: RequestID,
       meta?: Record<string, unknown>,
     ): ExchangeSpan {
-      const bound = getBinding()?.contextSpan
-      const parent = bound === undefined ? ROOT_CONTEXT : trace.setSpan(ROOT_CONTEXT, bound)
+      const binding = getBinding()
+      const bound = binding?.contextSpan
+      const contextParent = bound === undefined ? ROOT_CONTEXT : trace.setSpan(ROOT_CONTEXT, bound)
       const remote = meta === undefined ? undefined : extractW3CTraceContext(meta)
       const remoteContext = remote === undefined ? undefined : trace.getSpanContext(remote)
+      if (binding?.parentFrom === 'meta' && remote !== undefined && remoteContext !== undefined) {
+        return start(
+          method,
+          params,
+          'server',
+          remote,
+          bound === undefined ? [] : [{ context: bound.spanContext() }],
+          id,
+        )
+      }
       return start(
         method,
         params,
         'server',
-        parent,
+        contextParent,
         remoteContext === undefined ? [] : [{ context: remoteContext }],
         id,
       )

@@ -297,6 +297,30 @@ test('incoming exchanges parent to the context and link remote traceparent', () 
     'mokei.direction': 'server',
   })
 })
+test("parentFrom 'meta' parents incoming spans to the remote and links the context", () => {
+  const bound = { ...binding(), parentFrom: 'meta' as const }
+  const remote = tracer.startSpan('remote')
+  const sc = remote.spanContext()
+  const exchanges = createExchangeTracer(() => bound)
+  exchanges
+    .startIncoming('roots/list', {}, 1, { traceparent: `00-${sc.traceId}-${sc.spanId}-01` })
+    .succeed({})
+  const span = required(exporter.getFinishedSpans().find((s) => s.name === 'roots/list'))
+  expect(span.parentSpanContext?.spanId).toBe(sc.spanId)
+  expect(span.spanContext().traceId).toBe(sc.traceId)
+  expect(span.links.map((link) => link.context.spanId)).toEqual([
+    bound.contextSpan?.spanContext().spanId,
+  ])
+})
+test("parentFrom 'meta' without traceparent falls back to the context parent", () => {
+  const bound = { ...binding(), parentFrom: 'meta' as const }
+  createExchangeTracer(() => bound)
+    .startIncoming('roots/list', {}, 1)
+    .succeed({})
+  const span = required(exporter.getFinishedSpans().find((s) => s.name === 'roots/list'))
+  expect(span.parentSpanContext?.spanId).toBe(bound.contextSpan?.spanContext().spanId)
+  expect(span.links).toEqual([])
+})
 test('stopped settles open exchanges and timeout is cancelled', async () => {
   const f = await fixture(binding())
   const pending = f.client.request('tools/call', { name: 'echo' }, { timeout: 5 })

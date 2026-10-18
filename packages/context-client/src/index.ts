@@ -17,6 +17,7 @@ export {
   createExchangeTracer,
   type ExchangeSpan,
   type TerminationReason,
+  type TraceParentFrom,
 } from './client-tracing.js'
 export {
   CapabilityNotDeclaredError,

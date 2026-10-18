@@ -28,7 +28,7 @@ export type FlowResources = { host: FlowHost; traceStore: TraceStore }
 export type FlowServiceParams = {
   configPath?: string
   database: StoreProvider
-  tracing?: { payloads?: 'on' | 'off' | number }
+  tracing?: { payloads?: 'on' | 'off' | number; parentFrom?: 'context' | 'meta' }
   traceIndex?: FlowTraceStoreParams['index']
   desktop?: FlowDesktopAdapter
   monitor?: MonitorPresence

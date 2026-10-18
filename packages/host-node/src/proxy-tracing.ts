@@ -11,6 +11,7 @@ import {
   responseAttributes,
   responseOutcome,
   type TerminationReason,
+  type TraceParentFrom,
 } from '@mokei/context-client'
 import { getMokeiLogger } from '@mokei/logger'
 import type { Span } from '@opentelemetry/api'
@@ -34,6 +35,7 @@ export function createProxyTracing(params: {
   command: string
   args: Array<string>
   payloads?: PayloadCapture
+  parentFrom?: TraceParentFrom
 }): {
   observe(from: MessageDirection, message: unknown): void
   end(reason: TerminationReason): void
@@ -78,13 +80,19 @@ export function createProxyTracing(params: {
           const meta = isRecord(message.params) ? message.params._meta : undefined
           const remote = isRecord(meta) ? extractW3CTraceContext(meta) : undefined
           const remoteContext = remote === undefined ? undefined : trace.getSpanContext(remote)
+          const fromMeta =
+            params.parentFrom === 'meta' && remote !== undefined && remoteContext !== undefined
           open.set(key, {
             method,
             span: tracer.startSpan(
               requestSpanName(method, message.params),
               {
                 kind: from === 'client' ? SpanKind.CLIENT : SpanKind.SERVER,
-                links: remoteContext === undefined ? [] : [{ context: remoteContext }],
+                links: fromMeta
+                  ? [{ context: contextSpan.spanContext() }]
+                  : remoteContext === undefined
+                    ? []
+                    : [{ context: remoteContext }],
                 get attributes() {
                   return requestAttributes({
                     method,
@@ -98,7 +106,7 @@ export function createProxyTracing(params: {
                   })
                 },
               },
-              parent,
+              fromMeta ? remote : parent,
             ),
           })
         } else if (message.id == null) {

@@ -12,6 +12,7 @@ import {
   type PromptParams,
   type TerminationReason,
   type ToolParams,
+  type TraceParentFrom,
   type UnknownContextTypes,
 } from '@mokei/context-client'
 import type {
@@ -184,7 +185,7 @@ export type ContextHostParams = {
   dispose?: () => Promise<void>
   elicit?: HostElicitHandler | true
   /** MCP payload capture defaults to 'off'. */
-  tracing?: { payloads?: PayloadCapture }
+  tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
 }
 
 export type HasContextParams = { key: string }
@@ -284,6 +285,7 @@ export type HTTPContextParams = {
 export class ContextHost extends Disposer {
   #contexts: Record<string, HostedContext> = {}
   #payloads?: PayloadCapture
+  #parentFrom?: TraceParentFrom
   #contextSettlers = new Map<string, (reason: TerminationReason) => void>()
   #localTools: Map<string, LocalTool> = new Map()
   #events: EventEmitter<HostEvents> = new EventEmitter<HostEvents>()
@@ -308,6 +310,7 @@ export class ContextHost extends Disposer {
     })
     this.#elicit = params.elicit
     this.#payloads = params.tracing?.payloads ?? 'off'
+    this.#parentFrom = params.tracing?.parentFrom
   }
 
   get contexts(): Record<string, HostedContext> {
@@ -673,6 +676,7 @@ export class ContextHost extends Disposer {
       contextID: key,
       contextSpan: span,
       payloads: this.#payloads,
+      ...(this.#parentFrom === undefined ? {} : { parentFrom: this.#parentFrom }),
       getSessionID: () => httpTransport?.sessionID ?? undefined,
       getProtocolVersion: () => currentProtocolVersion(client),
       network,

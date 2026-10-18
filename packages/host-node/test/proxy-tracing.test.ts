@@ -106,6 +106,30 @@ test('request _meta.traceparent becomes a link, not a parent', () => {
   expect(requests()[0]?.parentSpanContext?.spanId).not.toBe('1234567890123456')
 })
 
+test("parentFrom 'meta' parents request spans to _meta.traceparent and links the context", () => {
+  const proxy = createProxyTracing({
+    contextID: 'ctx',
+    command: 'node',
+    args: [],
+    parentFrom: 'meta',
+  })
+  proxy.observe('server', {
+    id: 1,
+    method: 'roots/list',
+    params: { _meta: { traceparent: '00-12345678901234567890123456789012-1234567890123456-01' } },
+  })
+  proxy.observe('client', { id: 1, result: {} })
+  proxy.observe('client', { id: 2, method: 'tools/call', params: { name: 'echo' } })
+  proxy.observe('server', { id: 2, result })
+  proxy.end('stopped')
+  const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+  const [withMeta, without] = requests()
+  expect(withMeta?.parentSpanContext?.spanId).toBe('1234567890123456')
+  expect(withMeta?.links.map((link) => link.context.spanId)).toEqual([root?.spanContext().spanId])
+  expect(without?.parentSpanContext?.spanId).toBe(root?.spanContext().spanId)
+  expect(without?.links).toEqual([])
+})
+
 test('notifications become traced log records on the context span', () => {
   const proxy = fixture()
   const logger = getMokeiLogger('mcp').getChild('notification')
