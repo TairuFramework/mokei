@@ -298,6 +298,65 @@ test.each([true, false])(
   },
 )
 
+test.each([
+  [true, 'echo'],
+  [false, undefined],
+])('context:message honours the GenAI content env var (%s)', async (enabled, expectedName) => {
+  if (enabled) vi.stubEnv('OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT', 'true')
+  else vi.stubEnv('OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT', '')
+  const events = new EventEmitter<HostEvents>()
+  const messages: Array<{ from: string; message: unknown }> = []
+  events.on('context:message', (event) => {
+    messages.push(event.data)
+  })
+  const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
+  const server = serve<BaseProtocol>({
+    handlers: createHandlers({
+      activeContexts: {},
+      children: new Map(),
+      events,
+      tracing: {},
+      startedTime: Date.now(),
+    }),
+    transport: transports.server,
+    requireAuth: false,
+  })
+  const client = new Client<BaseProtocol>({ transport: transports.client })
+  const channel = client.createChannel('spawn', {
+    param: {
+      command: process.execPath,
+      args: [
+        '-e',
+        "require('node:readline').createInterface({input:process.stdin}).on('line', line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{}})+'\\n') })",
+      ],
+    },
+  })
+  void channel.catch(() => {})
+  try {
+    const writer = channel.writable.getWriter()
+    await writer.write({
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'tools/call' as const,
+      params: { name: 'echo' },
+    })
+    writer.releaseLock()
+    const reader = channel.readable.getReader()
+    await reader.read()
+    reader.releaseLock()
+    const sent = messages.find((entry) => entry.from === 'client')?.message as
+      | { params?: { name?: string } }
+      | undefined
+    expect(sent?.params?.name).toBe(expectedName)
+  } finally {
+    vi.unstubAllEnvs()
+    channel.close()
+    await client.dispose()
+    await server.dispose()
+    await transports.dispose()
+  }
+})
+
 function eventContext(writable: WritableStream<HostEvent>, signal: AbortSignal) {
   return {
     signal,

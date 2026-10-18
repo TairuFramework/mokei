@@ -325,3 +325,80 @@ for (const reason of ['stopped', 'lost'] as const) {
     expect(points[0]?.attributes['error.type']).toBe(reason === 'lost' ? 'context.lost' : undefined)
   })
 }
+
+const TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'
+
+test('a traced request is flagged proxied and records no MCP operation metric', async () => {
+  const proxy = fixture()
+  proxy.observe('client', {
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'echo', _meta: { traceparent: TRACEPARENT } },
+  })
+  proxy.observe('server', { id: 1, result })
+  proxy.end('stopped')
+  const span = requests()[0]
+  expect(span?.name).toBe('tools/call echo')
+  expect(span?.kind).toBe(SpanKind.CLIENT)
+  expect(span?.attributes['mokei.mcp.proxied']).toBe(true)
+  const collected = await collect()
+  expect(collected.get('mcp.client.operation.duration') ?? []).toHaveLength(0)
+})
+
+test('an untraced request records the metric and is not flagged', async () => {
+  const proxy = fixture()
+  proxy.observe('client', { id: 1, method: 'tools/call', params: { name: 'echo' } })
+  proxy.observe('server', { id: 1, result })
+  proxy.end('stopped')
+  expect(requests()[0]?.attributes['mokei.mcp.proxied']).toBeUndefined()
+  expect((await collect()).get('mcp.client.operation.duration') ?? []).toHaveLength(1)
+})
+
+test('a malformed traceparent is treated as untraced', async () => {
+  const proxy = fixture()
+  proxy.observe('client', {
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'echo', _meta: { traceparent: 'garbage' } },
+  })
+  proxy.observe('server', { id: 1, result })
+  proxy.end('stopped')
+  expect(requests()[0]?.attributes['mokei.mcp.proxied']).toBeUndefined()
+  expect((await collect()).get('mcp.client.operation.duration') ?? []).toHaveLength(1)
+})
+
+test('a proxied input_required response drops execute_tool', () => {
+  const proxy = fixture()
+  const params = (name: string) => ({ name, _meta: { traceparent: TRACEPARENT } })
+  proxy.observe('client', { id: 1, method: 'tools/call', params: params('a') })
+  proxy.observe('client', { id: 2, method: 'tools/call', params: params('b') })
+  proxy.observe('server', {
+    id: 1,
+    result: { resultType: 'input_required', inputRequests: {} },
+  })
+  proxy.observe('server', { id: 2, result })
+  proxy.end('stopped')
+  const [first, second] = requests()
+  expect(first?.attributes['gen_ai.operation.name']).toBeUndefined()
+  expect(first?.attributes['mokei.mcp.round']).toBeUndefined()
+  expect(second?.attributes['gen_ai.operation.name']).toBe('execute_tool')
+  expect(second?.attributes['mokei.mcp.round']).toBeUndefined()
+})
+
+test('cancelled and terminated requests still get execute_tool', () => {
+  const proxy = fixture()
+  proxy.observe('client', { id: 1, method: 'tools/call', params: { name: 'a' } })
+  proxy.observe('client', { id: 2, method: 'tools/call', params: { name: 'b' } })
+  proxy.observe('client', { method: 'notifications/cancelled', params: { requestId: 1 } })
+  proxy.end('stopped')
+  for (const span of requests()) {
+    expect(span.attributes['gen_ai.operation.name']).toBe('execute_tool')
+  }
+})
+
+test('context span carries mokei.context.transport stdio', () => {
+  const proxy = fixture()
+  proxy.end('stopped')
+  const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+  expect(root?.attributes['mokei.context.transport']).toBe('stdio')
+})

@@ -14,9 +14,11 @@ import {
   resolveContentCapture,
   responseAttributes,
   responseOutcome,
+  settleAttributes,
   type TerminationReason,
   type TraceParentFrom,
 } from '@mokei/context-client'
+import { isInputRequiredResult } from '@mokei/context-protocol'
 import { getMokeiLogger } from '@mokei/logger'
 import type { Span } from '@opentelemetry/api'
 import { context, ROOT_CONTEXT, SpanKind, trace } from '@opentelemetry/api'
@@ -54,6 +56,7 @@ export function createProxyTracing(params: {
         'mokei.root': true,
         'mokei.context.id': params.contextID,
         'network.transport': 'pipe',
+        'mokei.context.transport': 'stdio',
         'process.command': params.command,
         'process.command_args': redactCommandArgs(params.args),
       },
@@ -63,16 +66,30 @@ export function createProxyTracing(params: {
   const parent = trace.setSpan(ROOT_CONTEXT, contextSpan)
   const open = new Map<
     string,
-    { span: Span; method: string; params: unknown; side: MessageDirection; startedAt: number }
+    {
+      span: Span
+      method: string
+      params: unknown
+      side: MessageDirection
+      startedAt: number
+      proxied: boolean
+    }
   >()
   const startedAt = performance.now()
   let protocolVersion: string | undefined
   let ended = false
-  function finish(key: string, errorType?: string, message?: string, statusCode?: string): void {
+  function finish(
+    key: string,
+    errorType?: string,
+    message?: string,
+    statusCode?: string,
+    inputRequired = false,
+  ): void {
     const entry = open.get(key)
     if (entry === undefined) return
     open.delete(key)
-    if (mcpMetricsEnabled())
+    // Proxied calls are measured by the traced caller; recording here would double count.
+    if (mcpMetricsEnabled() && !entry.proxied)
       recordMCPOperation({
         side: entry.side,
         durationS: (performance.now() - entry.startedAt) / 1000,
@@ -89,6 +106,7 @@ export function createProxyTracing(params: {
           ...(statusCode === undefined ? {} : { 'rpc.response.status_code': statusCode }),
         }),
       })
+    entry.span.setAttributes(settleAttributes({ method: entry.method, inputRequired }))
     if (statusCode !== undefined) entry.span.setAttribute('rpc.response.status_code', statusCode)
     if (errorType === undefined) entry.span.end()
     else endSpanError(entry.span, errorType, message)
@@ -112,6 +130,7 @@ export function createProxyTracing(params: {
             params: message.params,
             side: from,
             startedAt: performance.now(),
+            proxied: remoteContext !== undefined,
             span: tracer.startSpan(
               requestSpanName(method, message.params),
               {
@@ -122,16 +141,20 @@ export function createProxyTracing(params: {
                     ? []
                     : [{ context: remoteContext }],
                 get attributes() {
-                  return requestAttributes({
-                    method,
-                    params: message.params,
-                    id,
-                    direction: from,
-                    contextID: params.contextID,
-                    capture,
-                    protocolVersion,
-                    network: { transport: 'pipe' },
-                  })
+                  return {
+                    ...requestAttributes({
+                      method,
+                      params: message.params,
+                      id,
+                      direction: from,
+                      contextID: params.contextID,
+                      capture,
+                      protocolVersion,
+                      network: { transport: 'pipe' },
+                      deferOperationName: true,
+                    }),
+                    ...(remoteContext === undefined ? {} : { 'mokei.mcp.proxied': true }),
+                  }
                 },
               },
               fromMeta ? remote : parent,
@@ -202,7 +225,14 @@ export function createProxyTracing(params: {
         }
         const outcome = responseOutcome({ result: message.result, error: rpcError }, side)
         if (outcome.error) finish(key, outcome.errorType, outcome.message, outcome.statusCode)
-        else finish(key, undefined, undefined, outcome.statusCode)
+        else
+          finish(
+            key,
+            undefined,
+            undefined,
+            outcome.statusCode,
+            isInputRequiredResult(message.result),
+          )
       }
     },
     end(reason) {
