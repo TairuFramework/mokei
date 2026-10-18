@@ -53,4 +53,4 @@ status `development`), so standard GenAI backends and dashboards read mokei tele
 
 ## Status
 
-[backlog](../backlog/2026-10-18-otel-genai-semconv-follow-ons.md).
+All planned work shipped. Follow-ons were picked up on the same branch before merge.
