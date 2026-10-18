@@ -336,12 +336,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
 
       // Get tools from session
       const tools = session.getToolsForProvider(provider)
+      const toolDefinitions = session.contextHost.getCallableTools()
       // Canonical callable tool names (namespaced IDs), used to reject tool
       // calls the model hallucinates with an unknown/malformed name before they
       // reach execution and surface as an opaque error.
-      const callableToolNames = new Set(
-        session.contextHost.getCallableTools().map((tool) => tool.name),
-      )
+      const callableToolNames = new Set(toolDefinitions.map((tool) => tool.name))
 
       // Tracking
       const eventHistory: Array<AgentEvent<T>> = []
@@ -384,6 +383,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           model,
           messages,
           tools,
+          toolDefinitions,
           signal: combinedSignal,
         })
         activeChatTurn = chatTurn

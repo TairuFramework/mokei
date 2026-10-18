@@ -30,7 +30,10 @@ export class NodeSession<T extends ProviderTypes = ProviderTypes> extends Sessio
     if (contextHost && elicit != null) {
       throw new Error('Cannot provide both contextHost and elicit')
     }
-    super({ ...sessionParams, contextHost: contextHost ?? new NodeContextHost({ elicit }) })
+    super({
+      ...sessionParams,
+      contextHost: contextHost ?? new NodeContextHost({ elicit, tracing: params.tracing }),
+    })
   }
 
   override get contextHost(): NodeContextHost {
