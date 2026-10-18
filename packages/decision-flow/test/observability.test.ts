@@ -404,6 +404,10 @@ describe('decision flow observability', () => {
     await provider.forceFlush()
     const predict = exporter.getFinishedSpans().find((span) => span.name.startsWith('predict'))
     expect(predict?.name).toBe('predict node-model')
+    expect(predict?.instrumentationScope.name).toBe('mokei.decision-flow')
+    expect(predict?.instrumentationScope.schemaUrl).toBe(
+      'https://opentelemetry.io/schemas/gen-ai-dev/1.42.0-dev',
+    )
     expect(predict?.attributes).toMatchObject({
       'gen_ai.request.model': 'node-model',
       'server.address': '::1',

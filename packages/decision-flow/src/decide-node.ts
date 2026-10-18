@@ -12,7 +12,6 @@ import {
   metrics,
   SpanKind,
   SpanStatusCode,
-  trace,
 } from '@opentelemetry/api'
 import {
   type ExecuteContext,
@@ -22,6 +21,7 @@ import {
   retryPolicySchema,
   type Value,
 } from '@sozai/flow-graph'
+import { createMeterFactory, createTracerFactory } from '@sozai/otel'
 import type { Schema } from '@sozai/schema'
 
 import { checkDecide, decideTargets } from './check-decide.js'
@@ -34,21 +34,15 @@ const GEN_AI_DURATION_BUCKETS = [
 ]
 const PROVIDER_NAME = 'mokei.system_one'
 
-// trace.getTracer / metrics.getMeter drop the options argument; go through the provider.
-function getTracer() {
-  return trace
-    .getTracerProvider()
-    .getTracer('mokei.decision-flow', undefined, { schemaUrl: SEMCONV_SCHEMA_URL })
-}
+const getTracer = createTracerFactory('mokei', undefined, { schemaUrl: SEMCONV_SCHEMA_URL })
+const getMeter = createMeterFactory('mokei', undefined, { schemaUrl: SEMCONV_SCHEMA_URL })
 
 let durationHistogram: Histogram | undefined
 let durationProvider: MeterProvider | undefined
 
 function recordDuration(durationS: number, attributes: Attributes): void {
   const provider = metrics.getMeterProvider()
-  const meter = provider.getMeter('mokei.decision-flow', undefined, {
-    schemaUrl: SEMCONV_SCHEMA_URL,
-  })
+  const meter = getMeter('decision-flow')
   if (meter === createNoopMeter()) return
   if (provider !== durationProvider || durationHistogram === undefined) {
     durationProvider = provider
@@ -124,7 +118,7 @@ export function decideKind(params: { client: Predictor }): NodeKind<DecideNode> 
       }
 
       const spanName = node.model === undefined ? 'predict' : `predict ${node.model}`
-      const result = await getTracer().startActiveSpan(
+      const result = await getTracer('decision-flow').startActiveSpan(
         spanName,
         { kind: SpanKind.CLIENT },
         async (span) => {

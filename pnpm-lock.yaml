@@ -1149,6 +1149,9 @@ importers:
       '@sozai/flow-graph':
         specifier: 'catalog:'
         version: 0.2.3(@logtape/logtape@2.4.1)
+      '@sozai/otel':
+        specifier: 'catalog:'
+        version: 0.3.4(@logtape/logtape@2.4.1)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6

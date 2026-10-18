@@ -46,6 +46,7 @@
     "@opentelemetry/api": "catalog:",
     "@sozai/async": "catalog:",
     "@sozai/flow-graph": "catalog:",
+    "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:"
   },
   "devDependencies": {
