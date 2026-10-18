@@ -44,11 +44,12 @@ export function redactPayload(value: unknown): unknown {
 export function capturePayload(
   value: unknown,
   capture: PayloadCapture | undefined,
+  options?: { redact?: boolean },
 ): { payload: string; truncated: boolean } | undefined {
   const cap = resolvePayloadCap(capture)
   if (cap === null) return undefined
 
-  const serialised = JSON.stringify(redactPayload(value))
+  const serialised = JSON.stringify(options?.redact === false ? value : redactPayload(value))
   if (serialised === undefined) return { payload: 'null', truncated: false }
   return capText(serialised, cap)
 }
@@ -119,7 +120,10 @@ export function requestAttributes(params: {
     if (typeof body?.name === 'string') attributes['gen_ai.tool.name'] = body.name
     if (body?.arguments !== undefined) {
       const captured = capturePayload(body.arguments, params.capture)
-      if (captured !== undefined) attributes['gen_ai.tool.call.arguments'] = captured.payload
+      if (captured !== undefined) {
+        attributes['gen_ai.tool.call.arguments'] = captured.payload
+        if (captured.truncated) attributes['mokei.payload.truncated'] = true
+      }
     }
   } else if (params.method === 'prompts/get') {
     if (typeof body?.name === 'string') attributes['gen_ai.prompt.name'] = body.name
@@ -173,7 +177,11 @@ export function responseAttributes(
 ): Attributes {
   if (method !== 'tools/call' || (isRecord(result) && result.isError === true)) return {}
   const captured = capturePayload(result, capture)
-  return captured === undefined ? {} : { 'gen_ai.tool.call.result': captured.payload }
+  if (captured === undefined) return {}
+  return {
+    'gen_ai.tool.call.result': captured.payload,
+    ...(captured.truncated ? { 'mokei.payload.truncated': true } : {}),
+  }
 }
 
 export function responseOutcome(

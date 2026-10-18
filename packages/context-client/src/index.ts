@@ -76,6 +76,7 @@ export {
   AGENT_COUNT_BUCKETS,
   AGENT_DURATION_BUCKETS,
   endSpanError,
+  errorTypeOf,
   GEN_AI_DURATION_BUCKETS,
   getMokeiMeter,
   getMokeiTracer,

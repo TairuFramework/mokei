@@ -332,6 +332,27 @@ describe('inference spans', () => {
     }
   }
 
+  test('tool definitions keep schema property names that look like secrets', async () => {
+    const provider = createProvider([DONE])
+    const session = new Session<FakeTypes>({ tracing: { payloads: 'on' } })
+    session.addLocalTool({
+      name: 'login',
+      inputSchema: {
+        type: 'object',
+        properties: { apiKey: { type: 'string' }, user: { type: 'string' } },
+      },
+      execute: async () => ({ content: [] }),
+    })
+    const turn = session.streamChatTurn({ provider, model: 'gpt-x', messages: USER })
+    let result = await turn.next()
+    while (!result.done) result = await turn.next()
+    const definitions = JSON.parse(onlySpan().attributes['gen_ai.tool.definitions'] as string)
+    expect(definitions[0].parameters.properties).toEqual({
+      apiKey: { type: 'string' },
+      user: { type: 'string' },
+    })
+  })
+
   test('signal abort that closes the stream ends the span as cancelled', async () => {
     await abortMidStream('close')
     const span = onlySpan()

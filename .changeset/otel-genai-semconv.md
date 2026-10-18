@@ -25,4 +25,4 @@ New: `chat {model}` inference, `invoke_agent` and local `execute_tool` spans; MC
 
 Breaking, span names: `mcp.<method>` becomes `<method> [target]`, `flow.run` and `flow.run.resume` become `invoke_workflow {flowID}`, `decision.predict` becomes `predict {model}`.
 
-Breaking, attributes: `run.id`, `flow.id`, `run.label`, `run.state` become `mokei.run.id`, `mokei.flow.id`, `mokei.run.label`, `mokei.run.state`, with no migration of stored traces; `mcp.transport` becomes `network.transport`; `server.name` becomes `mokei.server.name`; `system_one.*` becomes `gen_ai.*` or `mokei.system_one.*`; the `mcp.response` event attribute `payload` becomes `mokei.mcp.response`.
+Breaking, attributes: `run.id`, `flow.id`, `run.label`, `run.state` become `mokei.run.id`, `mokei.flow.id`, `mokei.run.label`, `mokei.run.state`, with no migration of stored traces; `mcp.transport` becomes `network.transport`; `server.name` becomes `mokei.server.name`; `http.status_code` becomes `http.response.status_code`; `system_one.*` becomes `gen_ai.*` or `mokei.system_one.*`; the `mcp.response` event attribute `payload` becomes `mokei.mcp.response`.

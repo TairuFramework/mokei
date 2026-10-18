@@ -51,6 +51,7 @@ export function setupMokeiTelemetry(params: {
 }): { recorder: LocalTraceRecorder; dispose(): Promise<void> } {
   if (installed) throw new Error('Flow telemetry was already installed in this process')
   if (isSetup()) throw new Error('Logging is already configured')
+  const metricsEndpoint = params.otlp ? getMetricsEndpoint(params.otlp) : null
   // OTel's public getters return proxies even before registration. Read without probing.
   const registry: unknown = Reflect.get(globalThis, Symbol.for('opentelemetry.js.api.1'))
   if (typeof registry === 'object' && registry !== null) {
@@ -60,7 +61,7 @@ export function setupMokeiTelemetry(params: {
     if ('context' in registry && registry.context != null) {
       throw new Error('A global context manager is already registered')
     }
-    if ('metrics' in registry && registry.metrics != null) {
+    if (metricsEndpoint != null && 'metrics' in registry && registry.metrics != null) {
       throw new Error('A global meter provider is already registered')
     }
   }
@@ -100,7 +101,6 @@ export function setupMokeiTelemetry(params: {
     rollback.length = 0
     rollback.push(() => recorder.shutdown())
     rollback.push(() => shutdownProvider(provider))
-    const metricsEndpoint = params.otlp ? getMetricsEndpoint(params.otlp) : null
     let meterProvider: MeterProvider | undefined
     if (params.otlp && metricsEndpoint != null) {
       meterProvider = new MeterProvider({

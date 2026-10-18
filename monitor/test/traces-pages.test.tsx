@@ -173,7 +173,7 @@ test('context header shows command and transport', async () => {
           'child',
           {
             ...span('child'),
-            attributes: { 'process.command': 'server-command', 'mcp.transport': 'stdio' },
+            attributes: { 'process.command': 'server-command', 'network.transport': 'pipe' },
           },
         ],
       ]),
@@ -182,6 +182,29 @@ test('context header shows command and transport', async () => {
   renderPage('/traces/trace-1')
   expect(await screen.findByText('server-command')).toBeTruthy()
   expect(screen.getByText('stdio')).toBeTruthy()
+})
+
+test.each([
+  [{ 'network.transport': 'pipe' }, 'stdio'],
+  [{ 'network.transport': 'tcp', 'network.protocol.name': 'http' }, 'http'],
+] as const)('context header shows server name and transport from %j', async (network, label) => {
+  const result = mocks.trace()
+  mocks.trace.mockReturnValue({
+    ...result,
+    state: {
+      ...result.state,
+      summary: { ...summary, kind: 'context' },
+      spans: new Map([
+        [
+          'child',
+          { ...span('child'), attributes: { 'mokei.server.name': 'my-server', ...network } },
+        ],
+      ]),
+    },
+  })
+  renderPage('/traces/trace-1')
+  expect(await screen.findByText('my-server')).toBeTruthy()
+  expect(screen.getByText(label)).toBeTruthy()
 })
 
 test.each(['list', 'trace'] as const)('%s errors offer Retry', async (hook) => {

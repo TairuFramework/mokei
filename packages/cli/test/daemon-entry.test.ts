@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LocalTraceRecorder, openMokeiDatabase, type TraceRecorderEvent } from '@mokei/app-node'
@@ -25,6 +25,7 @@ test('sweepInterrupted runs before service.start', async () => {
   let publish: ((event: TraceRecorderEvent) => void) | undefined
   let hasListeners: ((type: TraceRecorderEvent['type']) => boolean) | undefined
   let observed: unknown
+  let resource: { name?: string; version?: string } | undefined
   const sweepGate = Promise.withResolvers<void>()
   const service = {
     start: vi.fn(async () => {
@@ -69,8 +70,9 @@ test('sweepInterrupted runs before service.start', async () => {
           order.push('database')
           return openMokeiDatabase({ ...options, path: join(directory, 'mokei.db') })
         },
-        setupTelemetry: ({ provider, onEvent, hasListeners: listening }) => {
+        setupTelemetry: ({ provider, onEvent, hasListeners: listening, service: serviceInfo }) => {
           order.push('telemetry')
+          resource = serviceInfo
           publish = onEvent
           hasListeners = listening
           const recorder = new LocalTraceRecorder({ provider, onEvent })
@@ -105,6 +107,10 @@ test('sweepInterrupted runs before service.start', async () => {
         }),
       }),
     )
+    const pkg = JSON.parse(
+      await readFile(join(import.meta.dirname, '../package.json'), 'utf8'),
+    ) as { version: string }
+    expect(resource).toEqual({ name: 'mokei', version: pkg.version })
     expect(publish).toBeTypeOf('function')
     expect(hasListeners?.('trace:summary')).toBe(true)
     expect(hasListeners?.('span:start')).toBe(false)

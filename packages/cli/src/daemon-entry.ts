@@ -24,6 +24,8 @@ import { settleAll } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 import type { DaemonHandle } from '@tejika/process'
 
+import { pkg } from './package-info.js'
+
 function createDesktopAdapter(): FlowDesktopAdapter {
   const surface = createDesktopInputSurface({ appName: 'mokei' })
   const notifier = createDesktopNotifier({ appName: 'mokei' })
@@ -108,6 +110,7 @@ export async function startMokeiDaemonWithDependencies(
           ...payload,
         })
       },
+      service: { name: 'mokei', version: pkg.version },
       otlp: config.tracing.otlp,
       logs: config.logs,
       reportCategories: [FLOW_REPORT_CATEGORY],

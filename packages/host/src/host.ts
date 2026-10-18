@@ -6,6 +6,7 @@ import {
   capturePayload,
   type ElicitHandler,
   endSpanError,
+  errorTypeOf,
   getMokeiTracer,
   type ListParams,
   mcpMetricsEnabled,
@@ -65,7 +66,7 @@ function networkInfo(transport: ContextTransport, url?: string): NetworkInfo | u
   if (url === undefined) return info
   try {
     const parsed = new URL(url)
-    info.serverAddress = parsed.hostname
+    info.serverAddress = parsed.hostname.replace(/^\[|\]$/g, '')
     info.serverPort =
       parsed.port === '' ? (parsed.protocol === 'https:' ? 443 : 80) : Number(parsed.port)
   } catch {
@@ -903,7 +904,6 @@ export class ContextHost extends Disposer {
     }
 
     const capture = resolveContentCapture(this.#payloads)
-    const capturedArguments = capturePayload(args, capture)
     const span = getMokeiTracer('host').startSpan(`execute_tool ${name}`, {
       kind: SpanKind.INTERNAL,
       attributes: {
@@ -913,26 +913,31 @@ export class ContextHost extends Disposer {
         ...(localTool.tool.description === undefined
           ? {}
           : { 'gen_ai.tool.description': localTool.tool.description }),
-        ...(capturedArguments === undefined
-          ? {}
-          : { 'gen_ai.tool.call.arguments': capturedArguments.payload }),
         ...traceAttributes,
       },
     })
+    // Serializing and redacting payloads is costly; skip it for unsampled or no-op spans.
+    const recording = span.isRecording()
+    const setContent = (key: string, value: unknown): void => {
+      const captured = capturePayload(value, capture)
+      if (captured === undefined) return
+      span.setAttribute(key, captured.payload)
+      if (captured.truncated) span.setAttribute('mokei.payload.truncated', true)
+    }
+    if (recording) setContent('gen_ai.tool.call.arguments', args)
     try {
       // The call carries `arguments` (wire vocabulary); the handler receives `input`.
       const result = await localTool.execute({ input: args, meta: _meta ?? {}, signal })
       if (result.isError === true) {
         endSpanError(span, 'tool_error')
       } else {
-        const captured = capturePayload(result, capture)
-        if (captured !== undefined) span.setAttribute('gen_ai.tool.call.result', captured.payload)
+        if (recording) setContent('gen_ai.tool.call.result', result)
         span.end()
       }
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      endSpanError(span, error instanceof Error ? error.name : 'tool_error', errorMessage)
+      endSpanError(span, errorTypeOf(error), errorMessage)
       return {
         content: [{ type: 'text' as const, text: errorMessage }],
         isError: true,

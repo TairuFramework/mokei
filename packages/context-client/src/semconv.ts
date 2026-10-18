@@ -64,3 +64,13 @@ export function endSpanError(span: Span, errorType: string, message?: string): v
   span.setStatus({ code: SpanStatusCode.ERROR, message })
   span.end()
 }
+
+/**
+ * `error.type` of a thrown value: aborts are `cancelled`, errors with a specific name keep it,
+ * everything else is `_OTHER`.
+ */
+export function errorTypeOf(error: unknown): string {
+  if (!(error instanceof Error)) return '_OTHER'
+  if (error.name === 'AbortError') return 'cancelled'
+  return error.name !== 'Error' ? error.name : '_OTHER'
+}

@@ -79,6 +79,15 @@ function FlowHeader({ runID, summary }: { runID: string; summary: TraceSummary }
   )
 }
 
+function transportLabel(attributes: Record<string, unknown>): string {
+  const transport = attributes['network.transport']
+  if (transport === 'pipe') return 'stdio'
+  if (transport === 'tcp') {
+    return attributes['network.protocol.name'] === 'http' ? 'http' : 'tcp'
+  }
+  return 'Unknown transport'
+}
+
 export function TraceHeader({
   summary,
   rootSpan,
@@ -109,13 +118,10 @@ export function TraceHeader({
         <Group>
           <Text>
             {String(
-              attributes['mcp.server.name'] ??
-                attributes['server.name'] ??
-                attributes['process.command'] ??
-                summary.name,
+              attributes['mokei.server.name'] ?? attributes['process.command'] ?? summary.name,
             )}
           </Text>
-          <Text>{String(attributes['mcp.transport'] ?? 'Unknown transport')}</Text>
+          <Text>{transportLabel(attributes)}</Text>
           <Text>
             Uptime:{' '}
             {Math.max(

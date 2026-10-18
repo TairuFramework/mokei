@@ -25,7 +25,7 @@ import {
 import type { Schema } from '@sozai/schema'
 
 import { checkDecide, decideTargets } from './check-decide.js'
-import { describeDecisionError, retryableDecision } from './decide-error.js'
+import { describeDecisionError, errorTypeOf, retryableDecision } from './decide-error.js'
 import { decideResultSchema } from './result-schema.js'
 
 const SEMCONV_SCHEMA_URL = 'https://opentelemetry.io/schemas/gen-ai-dev/1.42.0-dev'
@@ -154,7 +154,9 @@ export function decideKind(params: { client: Predictor }): NodeKind<DecideNode> 
           const onAbort = () => {
             if (ended) return
             const reason = ctx.signal.reason
-            const errorType = reason instanceof Error ? reason.name : 'AbortError'
+            // An abort is a cancellation unless its reason names a more specific cause (e.g. a timeout).
+            const reasonType = errorTypeOf(reason)
+            const errorType = reasonType === '_OTHER' ? 'cancelled' : reasonType
             span.setAttribute('error.type', errorType)
             span.setStatus({ code: SpanStatusCode.ERROR })
             endSpan(errorType)
@@ -184,8 +186,14 @@ export function decideKind(params: { client: Predictor }): NodeKind<DecideNode> 
           } catch (error) {
             if (!ended) {
               const metadata = describeDecisionError(error)
-              errorType = metadata.type
-              span.setAttribute('error.type', metadata.type)
+              // describeDecisionError names every thrown Error; align with errorTypeOf.
+              errorType =
+                errorTypeOf(error) === 'cancelled'
+                  ? 'cancelled'
+                  : metadata.type === 'Error'
+                    ? '_OTHER'
+                    : metadata.type
+              span.setAttribute('error.type', errorType)
               if (metadata.status !== undefined) {
                 span.setAttribute('http.response.status_code', metadata.status)
               }

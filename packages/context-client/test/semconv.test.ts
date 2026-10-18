@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 
 import {
   endSpanError,
+  errorTypeOf,
   getMokeiTracer,
   resolveContentCapture,
   SEMCONV_SCHEMA_URL,
@@ -62,5 +63,24 @@ describe('tracer and span helpers', () => {
     const [span] = exporter.getFinishedSpans()
     expect(span?.status).toEqual({ code: SpanStatusCode.ERROR, message: 'it broke' })
     expect(span?.attributes['error.type']).toBe('boom')
+  })
+})
+
+describe('errorTypeOf', () => {
+  test('abort errors map to cancelled', () => {
+    const abort = new Error('stop')
+    abort.name = 'AbortError'
+    expect(errorTypeOf(abort)).toBe('cancelled')
+    expect(errorTypeOf(new DOMException('stop', 'AbortError'))).toBe('cancelled')
+  })
+
+  test('named errors keep their name', () => {
+    expect(errorTypeOf(new TypeError('x'))).toBe('TypeError')
+  })
+
+  test('generic Error and non-Error values map to _OTHER', () => {
+    expect(errorTypeOf(new Error('x'))).toBe('_OTHER')
+    expect(errorTypeOf('boom')).toBe('_OTHER')
+    expect(errorTypeOf(undefined)).toBe('_OTHER')
   })
 })

@@ -1,4 +1,4 @@
-import { endSpanError, getMokeiTracer } from '@mokei/context-client'
+import { endSpanError, errorTypeOf, getMokeiTracer } from '@mokei/context-client'
 import type { CallToolResult, ElicitResult } from '@mokei/context-protocol'
 import {
   type ElicitFallback,
@@ -50,10 +50,6 @@ const FINISH_ERROR_TYPES: Record<AgentFinishReason, string | undefined> = {
   aborted: 'cancelled',
   'max-iterations': 'max_iterations',
   error: '_OTHER',
-}
-
-function thrownErrorType(error: Error): string {
-  return error.name !== 'Error' ? error.name : '_OTHER'
 }
 
 type AgentToolState = {
@@ -746,7 +742,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           ? 'timeout'
           : combinedSignal.aborted
             ? 'cancelled'
-            : thrownErrorType(err),
+            : errorTypeOf(err),
         message: err.message,
       }
       if (timeoutController.signal.aborted) {
@@ -965,7 +961,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           ? 'cancelled'
           : err instanceof ToolCallTimeoutError
             ? 'timeout'
-            : thrownErrorType(err)
+            : errorTypeOf(err)
 
       await this.#settleToolEvents(run, activeTool, () => ({
         type: 'tool-call-error',

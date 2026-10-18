@@ -5,11 +5,32 @@ import {
   redactPayload,
   requestAttributes,
   requestSpanName,
+  responseAttributes,
   responseOutcome,
   sanitizeMessage,
 } from '../src/observation.js'
 
 describe('MCP observation', () => {
+  test('responseAttributes flags a truncated tool result', () => {
+    const result = { content: [{ type: 'text', text: 'x'.repeat(100) }] }
+    expect(responseAttributes('tools/call', result, 10)).toMatchObject({
+      'mokei.payload.truncated': true,
+    })
+    expect(responseAttributes('tools/call', { content: [] }, 'on')).not.toHaveProperty(
+      'mokei.payload.truncated',
+    )
+  })
+
+  test('requestAttributes flags truncated tool arguments', () => {
+    const attributes = requestAttributes({
+      method: 'tools/call',
+      params: { name: 't', arguments: { a: 'x'.repeat(100) } },
+      direction: 'client',
+      capture: 10,
+    })
+    expect(attributes['mokei.payload.truncated']).toBe(true)
+  })
+
   test('redactPayload drops non-allow-listed _meta keys', () => {
     expect(
       redactPayload({

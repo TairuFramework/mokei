@@ -361,3 +361,39 @@ for (const reason of ['stopped', 'lost'] as const) {
     expect(points[0]?.attributes['mcp.protocol.version']).toBe('2025-11-25')
   })
 }
+
+test('IPv6 HTTP context strips brackets from server.address', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, options) => {
+    const message = JSON.parse(String(options?.body)) as { id?: number; method?: string }
+    if (message.method === 'initialize')
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: message.id,
+          result: {
+            protocolVersion: '2025-11-25',
+            capabilities: {},
+            serverInfo: { name: 'remote', version: '1' },
+          },
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+    return new Response(null, { status: 202 })
+  })
+  const host = new ContextHost()
+  hosts.push(host)
+  try {
+    await host.addHTTPContext({
+      key: 'remote',
+      url: 'http://[::1]:8443/api',
+      protocolVersion: '2025-11-25',
+    })
+    await host.remove('remote')
+    const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+    expect(root?.attributes['server.address']).toBe('::1')
+    expect(root?.attributes['server.port']).toBe(8443)
+  } finally {
+    await host.dispose()
+    fetch.mockRestore()
+  }
+})

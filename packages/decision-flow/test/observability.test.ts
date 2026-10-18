@@ -336,6 +336,20 @@ describe('decision flow observability', () => {
     expect(predict?.attributes['error.type']).toBe('TimeoutInterruption')
   })
 
+  test('maps a generic backend Error to _OTHER', async () => {
+    const graph = createDecisionFlowGraph({
+      client: new SystemOneClient({
+        backend: { predict: () => Promise.reject(new Error('generic')) },
+        defaultModel: 'default-model',
+      }),
+      retryDefaults: { decide: { maxAttempts: 1 } },
+    })
+    await graph.run({ definition: makeDefinition(), input: { message: 'refund' } })
+    await provider.forceFlush()
+    const predict = exporter.getFinishedSpans().find((span) => span.name.startsWith('predict'))
+    expect(predict?.attributes['error.type']).toBe('_OTHER')
+  })
+
   test('ends predict span with abort metadata when the caller cancels a run', async () => {
     let markBackendStarted: (() => void) | undefined
     const backendStarted = new Promise<void>((resolve) => {
@@ -367,7 +381,7 @@ describe('decision flow observability', () => {
 
     const predict = exporter.getFinishedSpans().find((span) => span.name.startsWith('predict'))
     expect(predict?.status.code).toBe(2)
-    expect(predict?.attributes['error.type']).toBe('AbortError')
+    expect(predict?.attributes['error.type']).toBe('cancelled')
     expect(predict?.attributes['error.type']).not.toBe('TimeoutInterruption')
   })
 

@@ -385,7 +385,11 @@ GenAI content attributes (`gen_ai.input.messages`, `gen_ai.output.messages`, `ge
 `gen_ai.tool.definitions`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`,
 `gen_ai.prompt.variable.<name>`) use the same gate. They are captured when `payloads` is on or a byte cap;
 `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` enables them with the default cap when `payloads`
-is unset or `off`. Redaction and the byte cap apply to every content attribute.
+is unset or `off`. The variable also enables raw MCP payload capture (`mokei.mcp.request` and
+`mokei.mcp.response`), redacted and capped the same way. Key redaction and the byte cap apply to every
+content attribute, except `gen_ai.tool.definitions`, which is a schema and only gets the cap. Any truncated
+content attribute sets `mokei.payload.truncated` on its span. The daemon proxy and an instrumented caller can
+both emit `tools/call` client spans and metrics for the same call.
 
 `@mokei/app-node`'s `LocalTraceRecorder` is the single owner of local span, log and summary
 persistence and live trace delivery. It queues writes synchronously, then flushes spans, logs and

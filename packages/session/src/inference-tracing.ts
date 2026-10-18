@@ -1,6 +1,7 @@
 import {
   capturePayload,
   endSpanError,
+  errorTypeOf,
   getMokeiTracer,
   type PayloadCapture,
   resolvePayloadCap,
@@ -41,8 +42,7 @@ export type TraceStreamChatParams<TPart, TCall> = {
 type DonePart = Extract<MessagePart<unknown, unknown>, { type: 'done' }>
 
 function errorType(error: unknown, aborted: boolean): string {
-  if (aborted || (error instanceof Error && error.name === 'AbortError')) return 'cancelled'
-  return error instanceof Error && error.name !== 'Error' ? error.name : '_OTHER'
+  return aborted ? 'cancelled' : errorTypeOf(error)
 }
 
 function errorMessage(error: unknown): string | undefined {
@@ -97,8 +97,8 @@ export function traceStreamChat<TPart, TCall>(
   // Content is costly to build and redact; skip it for unsampled or no-op spans.
   const captureContent = span.isRecording() && resolvePayloadCap(capture) !== null
   let truncated = false
-  function setContent(key: string, value: unknown): void {
-    const captured = capturePayload(value, capture)
+  function setContent(key: string, value: unknown, redact = true): void {
+    const captured = capturePayload(value, capture, { redact })
     if (captured === undefined) return
     span.setAttribute(key, captured.payload)
     if (captured.truncated && !truncated) {
@@ -111,7 +111,8 @@ export function traceStreamChat<TPart, TCall>(
     const instructions = toSystemInstructions(request.messages)
     if (instructions !== undefined) setContent('gen_ai.system_instructions', instructions)
     if (params.tools !== undefined && params.tools.length > 0) {
-      setContent('gen_ai.tool.definitions', toToolDefinitions(params.tools))
+      // Definitions are schemas: property names like `apiKey` are not secret values.
+      setContent('gen_ai.tool.definitions', toToolDefinitions(params.tools), false)
     }
   }
 

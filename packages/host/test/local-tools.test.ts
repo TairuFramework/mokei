@@ -7,7 +7,8 @@ import {
   ToolInputValidationError,
   ToolOutputValidationError,
 } from '@mokei/context-server'
-import { SpanKind, SpanStatusCode } from '@opentelemetry/api'
+import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
+import { AlwaysOffSampler, BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -875,5 +876,77 @@ describe('local tool execute_tool spans', () => {
     const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
     expect(span.status.code).toBe(SpanStatusCode.ERROR)
     expect(span.attributes['error.type']).toBe('tool_error')
+  })
+
+  test('a plain Error maps to _OTHER', async () => {
+    const host = hostWith(async () => {
+      throw new Error('boom')
+    })
+    await host.callLocalTool({ name: 'notify' })
+    const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
+    expect(span.attributes['error.type']).toBe('_OTHER')
+  })
+
+  test('an abort error maps to cancelled', async () => {
+    const host = hostWith(async () => {
+      throw new DOMException('stop', 'AbortError')
+    })
+    await host.callLocalTool({ name: 'notify' })
+    const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
+    expect(span.attributes['error.type']).toBe('cancelled')
+  })
+
+  test('truncated arguments or result set mokei.payload.truncated', async () => {
+    const big = 'x'.repeat(200)
+    const argumentsHost = new ContextHost({ tracing: { payloads: 20 } })
+    argumentsHost.addLocalTool({
+      name: 'notify',
+      inputSchema: { type: 'object' },
+      execute: async () => ({ content: [] }),
+    })
+    await argumentsHost.callLocalTool({ name: 'notify', arguments: { big } })
+    const resultHost = new ContextHost({ tracing: { payloads: 20 } })
+    resultHost.addLocalTool({
+      name: 'notify',
+      inputSchema: { type: 'object' },
+      execute: async () => ({ content: [{ type: 'text', text: big }] }),
+    })
+    await resultHost.callLocalTool({ name: 'notify' })
+    const smallHost = new ContextHost({ tracing: { payloads: 'on' } })
+    smallHost.addLocalTool({
+      name: 'notify',
+      inputSchema: { type: 'object' },
+      execute: async () => ({ content: [] }),
+    })
+    await smallHost.callLocalTool({ name: 'notify', arguments: { a: 1 } })
+    const [fromArguments, fromResult, small] = spans()
+    expect(fromArguments?.attributes['mokei.payload.truncated']).toBe(true)
+    expect(fromResult?.attributes['mokei.payload.truncated']).toBe(true)
+    expect(small?.attributes).not.toHaveProperty('mokei.payload.truncated')
+  })
+
+  test('arguments and result are not serialized for a non-recording span', async () => {
+    let reads = 0
+    const args = {
+      get probe() {
+        reads += 1
+        return 1
+      },
+    }
+    const run = async (payloads: 'on') => {
+      const host = hostWith(async () => ({ content: [] }), payloads)
+      await host.callLocalTool({ name: 'notify', arguments: args })
+    }
+    await run('on')
+    expect(reads).toBeGreaterThan(0)
+    reads = 0
+    trace.disable()
+    trace.setGlobalTracerProvider(new BasicTracerProvider({ sampler: new AlwaysOffSampler() }))
+    try {
+      await run('on')
+    } finally {
+      trace.disable()
+    }
+    expect(reads).toBe(0)
   })
 })
