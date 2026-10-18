@@ -9,14 +9,30 @@ import type {
   StreamChatParams,
   StreamChatRequest,
 } from '@mokei/model-provider'
-import { SpanKind, SpanStatusCode } from '@opentelemetry/api'
-import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
+import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
+import {
+  AlwaysOffSampler,
+  BasicTracerProvider,
+  type ReadableSpan,
+} from '@opentelemetry/sdk-trace-base'
 import { fromStream } from '@sozai/generator'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
+import * as content from '../src/gen-ai-content.js'
 import { AgentSession, Session, type SessionParams, traceStreamChat } from '../src/index.js'
 import { useTestMetrics } from './support/metrics.js'
 import { useTestTracing } from './support/otel.js'
+
+vi.mock('../src/gen-ai-content.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/gen-ai-content.js')>()
+  return {
+    ...original,
+    toInputMessages: vi.fn(original.toInputMessages),
+    toSystemInstructions: vi.fn(original.toSystemInstructions),
+    toOutputMessages: vi.fn(original.toOutputMessages),
+    toToolDefinitions: vi.fn(original.toToolDefinitions),
+  }
+})
 
 type FakeToolCall = { id: string }
 type FakeTypes = {
@@ -53,6 +69,8 @@ const DONE: Part = {
 function createProvider(
   parts: Array<Part>,
   telemetry: ProviderTelemetry | undefined = OPENAI,
+  // How the fake stream reacts once the request signal aborts.
+  onAbort: 'ignore' | 'close' | 'error' = 'ignore',
 ): ModelProvider<FakeTypes> & {
   calls: Array<StreamChatParams<unknown, FakeToolCall, { name: string }>>
 } {
@@ -84,6 +102,14 @@ function createProvider(
         async pull(streamController) {
           // A real delay so time-to-first-chunk is measurable.
           await new Promise((resolve) => setTimeout(resolve, 2))
+          if (params.signal?.aborted && onAbort !== 'ignore') {
+            if (onAbort === 'close') {
+              streamController.close()
+            } else {
+              streamController.error(new DOMException('aborted', 'AbortError'))
+            }
+            return
+          }
           const part = parts[index++]
           if (part == null) {
             streamController.close()
@@ -250,6 +276,74 @@ describe('inference spans', () => {
       'gen_ai.usage.reasoning.output_tokens': 1,
       'gen_ai.response.finish_reasons': ['stop'],
     })
+    // Only output-bearing parts are timed.
+    expect(span.attributes['gen_ai.response.time_to_first_chunk']).toBeUndefined()
+    const metrics = await collect()
+    expect(metrics.get('gen_ai.client.inference.time_to_first_chunk') ?? []).toHaveLength(0)
+  })
+
+  test('skips content work when the span is not recording', async () => {
+    trace.disable()
+    const offProvider = new BasicTracerProvider({ sampler: new AlwaysOffSampler() })
+    trace.setGlobalTracerProvider(offProvider)
+    try {
+      vi.mocked(content.toInputMessages).mockClear()
+      vi.mocked(content.toSystemInstructions).mockClear()
+      vi.mocked(content.toOutputMessages).mockClear()
+      vi.mocked(content.toToolDefinitions).mockClear()
+      const provider = createProvider([{ type: 'text-delta', text: 'Hi', raw: {} }, DONE])
+      await runTurn(provider, { tracing: { payloads: 'on' } })
+      expect(content.toInputMessages).not.toHaveBeenCalled()
+      expect(content.toSystemInstructions).not.toHaveBeenCalled()
+      expect(content.toOutputMessages).not.toHaveBeenCalled()
+      expect(content.toToolDefinitions).not.toHaveBeenCalled()
+      expect(exporter.getFinishedSpans()).toHaveLength(0)
+    } finally {
+      // useTestTracing re-registers its provider before the next test.
+      trace.disable()
+      await offProvider.shutdown()
+    }
+  })
+
+  async function abortMidStream(onAbort: 'close' | 'error'): Promise<void> {
+    const provider = createProvider(
+      [
+        { type: 'text-delta', text: 'a', raw: {} },
+        { type: 'text-delta', text: 'b', raw: {} },
+        DONE,
+      ],
+      OPENAI,
+      onAbort,
+    )
+    const controller = new AbortController()
+    const session = new Session<FakeTypes>()
+    const turn = session.streamChatTurn({
+      provider,
+      model: 'gpt-x',
+      messages: USER,
+      signal: controller.signal,
+    })
+    const first = await turn.next()
+    expect(first.value).toMatchObject({ type: 'text-delta' })
+    controller.abort()
+    let result = await turn.next()
+    while (!result.done) {
+      result = await turn.next()
+    }
+  }
+
+  test('signal abort that closes the stream ends the span as cancelled', async () => {
+    await abortMidStream('close')
+    const span = onlySpan()
+    expect(span.status.code).toBe(SpanStatusCode.ERROR)
+    expect(span.attributes['error.type']).toBe('cancelled')
+  })
+
+  test('signal abort that errors the stream ends the span as cancelled', async () => {
+    await expect(abortMidStream('error')).rejects.toThrow('aborted')
+    const span = onlySpan()
+    expect(span.status.code).toBe(SpanStatusCode.ERROR)
+    expect(span.attributes['error.type']).toBe('cancelled')
   })
 
   test('captures redacted content when payloads are on', async () => {
@@ -443,9 +537,9 @@ describe('inference spans', () => {
     expect(metrics.get('gen_ai.client.inference.time_to_first_chunk')?.[0]?.value).toMatchObject({
       count: 1,
     })
-    // Three content chunks plus done: three chunks after the first.
+    // Three content chunks: two after the first; `done` is not an output chunk.
     expect(metrics.get('gen_ai.client.inference.time_per_output_chunk')?.[0]?.value).toMatchObject({
-      count: 3,
+      count: 2,
     })
 
     expect(metrics.get('gen_ai.client.inference.usage.input_tokens')).toEqual([

@@ -94,7 +94,8 @@ export function traceStreamChat<TPart, TCall>(
     attributes: spanAttributes,
   })
 
-  const captureContent = resolvePayloadCap(capture) !== null
+  // Content is costly to build and redact; skip it for unsampled or no-op spans.
+  const captureContent = span.isRecording() && resolvePayloadCap(capture) !== null
   let truncated = false
   function setContent(key: string, value: unknown): void {
     const captured = capturePayload(value, capture)
@@ -141,7 +142,8 @@ export function traceStreamChat<TPart, TCall>(
     )
   }
 
-  function onChunk(part: MessagePart<TPart, TCall>): void {
+  // Only output-bearing parts are timed; `done` and `error` carry no generated content.
+  function timeOutputChunk(): void {
     const now = performance.now()
     if (lastChunkAt === undefined) {
       const seconds = (now - startTime) / 1000
@@ -151,6 +153,16 @@ export function traceStreamChat<TPart, TCall>(
       genAIInstruments().timePerOutputChunk.record((now - lastChunkAt) / 1000, baseAttributes)
     }
     lastChunkAt = now
+  }
+
+  function onChunk(part: MessagePart<TPart, TCall>): void {
+    if (
+      part.type === 'text-delta' ||
+      part.type === 'reasoning-delta' ||
+      part.type === 'tool-call'
+    ) {
+      timeOutputChunk()
+    }
 
     switch (part.type) {
       case 'text-delta':
@@ -218,7 +230,8 @@ export function traceStreamChat<TPart, TCall>(
               throw error
             }
             if (result.done) {
-              finish()
+              // Providers may close gracefully on abort; without `done` the turn was cut short.
+              finish(done === undefined && isAborted() ? { type: 'cancelled' } : undefined)
               controller.close()
               return
             }
