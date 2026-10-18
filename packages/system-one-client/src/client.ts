@@ -32,6 +32,12 @@ export class SystemOneClient {
     this.#defaultModel = params.defaultModel
   }
 
+  /** Backend URL when the backend exposes one (HTTP backends); used for telemetry. */
+  get url(): string | undefined {
+    const url = (this.#backend as { url?: unknown }).url
+    return typeof url === 'string' ? url : undefined
+  }
+
   #resolveModel(model?: string): string | undefined {
     return model ?? this.#defaultModel
   }

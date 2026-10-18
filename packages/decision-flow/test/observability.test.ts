@@ -8,7 +8,7 @@ import {
   SystemOneRateLimitError,
   type SystemOneResult,
 } from '@mokei/system-one-client'
-import { type Context, context, ROOT_CONTEXT, trace } from '@opentelemetry/api'
+import { type Context, context, ROOT_CONTEXT, SpanKind, trace } from '@opentelemetry/api'
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -19,7 +19,9 @@ import { type LogRecord, reset as resetLogging, setup as setupLogging } from '@s
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { createDecisionFlowGraph } from '../src/index.js'
+import { useTestMetrics } from './support/metrics.js'
 
+const testMetrics = useTestMetrics()
 const storage = new AsyncLocalStorage<Context>()
 const exporter = new InMemorySpanExporter()
 const provider = new BasicTracerProvider({
@@ -147,7 +149,7 @@ describe('decision flow observability', () => {
     })
     await provider.forceFlush()
     const spans = exporter.getFinishedSpans()
-    const predict = spans.find((span) => span.name === 'decision.predict')
+    const predict = spans.find((span) => span.name.startsWith('predict'))
     const node = spans.find((span) => span.name === 'flow.node')
     const serialized = JSON.stringify(
       spans.map((span) => ({
@@ -162,11 +164,19 @@ describe('decision flow observability', () => {
     expect(predict?.parentSpanContext?.spanId).toBe(node?.spanContext().spanId)
     expect(predict?.attributes).toMatchObject({
       'mokei.kind': 'step',
-      'system_one.model': 'system-one-model',
-      'system_one.question.count': 3,
-      'system_one.usage.input_tokens': 17,
-      'system_one.usage.output_tokens': 9,
+      'gen_ai.operation.name': 'predict',
+      'gen_ai.provider.name': 'mokei.system_one',
+      'gen_ai.response.model': 'system-one-model',
+      'mokei.system_one.question.count': 3,
+      'gen_ai.usage.input_tokens': 17,
+      'gen_ai.usage.output_tokens': 9,
     })
+    expect(predict?.kind).toBe(SpanKind.CLIENT)
+    expect(predict?.status.code).toBe(0)
+    expect(predict?.name).toBe('predict')
+    expect(
+      Object.keys(predict?.attributes ?? {}).filter((k) => k.startsWith('system_one.')),
+    ).toEqual([])
     expect(
       node?.events
         .filter((event) => event.name === 'decision.answer')
@@ -219,7 +229,7 @@ describe('decision flow observability', () => {
     })
     await provider.forceFlush()
     const spans = exporter.getFinishedSpans()
-    const predict = spans.find((span) => span.name === 'decision.predict')
+    const predict = spans.find((span) => span.name.startsWith('predict'))
     const serialized = JSON.stringify(
       spans.map((span) => ({
         name: span.name,
@@ -232,9 +242,11 @@ describe('decision flow observability', () => {
     expect(predict?.status.code).toBe(2)
     expect(predict?.attributes).toMatchObject({
       'error.type': 'SystemOneRateLimitError',
-      'http.status_code': 429,
-      'system_one.retry_after_ms': 125,
+      'http.response.status_code': 429,
+      'mokei.system_one.retry_after_ms': 125,
     })
+    expect(predict?.attributes).not.toHaveProperty('http.status_code')
+    expect(predict?.attributes).not.toHaveProperty('system_one.retry_after_ms')
     expect(predict?.events).toEqual([])
     expect(serialized).not.toContain('PRIVATE_STATE')
     expect(serialized).not.toContain('PRIVATE_BACKEND_MESSAGE')
@@ -319,7 +331,7 @@ describe('decision flow observability', () => {
     await runPromise
     await provider.forceFlush()
 
-    const predict = exporter.getFinishedSpans().find((span) => span.name === 'decision.predict')
+    const predict = exporter.getFinishedSpans().find((span) => span.name.startsWith('predict'))
     expect(predict?.status.code).toBe(2)
     expect(predict?.attributes['error.type']).toBe('TimeoutInterruption')
   })
@@ -353,10 +365,45 @@ describe('decision flow observability', () => {
     await runPromise
     await provider.forceFlush()
 
-    const predict = exporter.getFinishedSpans().find((span) => span.name === 'decision.predict')
+    const predict = exporter.getFinishedSpans().find((span) => span.name.startsWith('predict'))
     expect(predict?.status.code).toBe(2)
     expect(predict?.attributes['error.type']).toBe('AbortError')
     expect(predict?.attributes['error.type']).not.toBe('TimeoutInterruption')
+  })
+
+  test('names the span after the node model and records server address and duration metric', async () => {
+    const backend = makeBackend(new SystemOneRateLimitError({ message: 'x', status: 429 }))
+    const inner = new SystemOneClient({ backend, defaultModel: 'default-model' })
+    const client = {
+      url: 'https://[::1]:8443/v1',
+      predict: inner.predict.bind(inner),
+    }
+    const graph = createDecisionFlowGraph({
+      client,
+      retryDefaults: { decide: { maxAttempts: 1 } },
+    })
+
+    await graph.run({
+      definition: makeDefinition({ model: 'node-model' }),
+      input: { message: 'm' },
+    })
+    await provider.forceFlush()
+    const predict = exporter.getFinishedSpans().find((span) => span.name.startsWith('predict'))
+    expect(predict?.name).toBe('predict node-model')
+    expect(predict?.attributes).toMatchObject({
+      'gen_ai.request.model': 'node-model',
+      'server.address': '::1',
+      'server.port': 8443,
+    })
+    const points = (await testMetrics.collect()).get('gen_ai.client.operation.duration') ?? []
+    expect(points).toHaveLength(1)
+    expect(points[0]?.attributes).toEqual({
+      'gen_ai.operation.name': 'predict',
+      'gen_ai.provider.name': 'mokei.system_one',
+      'gen_ai.request.model': 'node-model',
+      'error.type': 'SystemOneRateLimitError',
+    })
+    expect(points[0]?.schemaUrl).toBe('https://opentelemetry.io/schemas/gen-ai-dev/1.42.0-dev')
   })
 
   test('leaves one engine log record per retried, handled, and terminal failure', async () => {

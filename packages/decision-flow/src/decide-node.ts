@@ -5,6 +5,16 @@ import {
   type SystemOnePredictParams,
 } from '@mokei/system-one-client'
 import {
+  type Attributes,
+  createNoopMeter,
+  type Histogram,
+  type MeterProvider,
+  metrics,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+} from '@opentelemetry/api'
+import {
   type ExecuteContext,
   type Filter,
   type FlowRetryPolicy,
@@ -12,14 +22,58 @@ import {
   retryPolicySchema,
   type Value,
 } from '@sozai/flow-graph'
-import { createTracerFactory, SpanStatusCode } from '@sozai/otel'
 import type { Schema } from '@sozai/schema'
 
 import { checkDecide, decideTargets } from './check-decide.js'
 import { describeDecisionError, retryableDecision } from './decide-error.js'
 import { decideResultSchema } from './result-schema.js'
 
-const tracer = createTracerFactory('mokei')('decision-flow')
+const SEMCONV_SCHEMA_URL = 'https://opentelemetry.io/schemas/gen-ai-dev/1.42.0-dev'
+const GEN_AI_DURATION_BUCKETS = [
+  0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92,
+]
+const PROVIDER_NAME = 'mokei.system_one'
+
+// trace.getTracer / metrics.getMeter drop the options argument; go through the provider.
+function getTracer() {
+  return trace
+    .getTracerProvider()
+    .getTracer('mokei.decision-flow', undefined, { schemaUrl: SEMCONV_SCHEMA_URL })
+}
+
+let durationHistogram: Histogram | undefined
+let durationProvider: MeterProvider | undefined
+
+function recordDuration(durationS: number, attributes: Attributes): void {
+  const provider = metrics.getMeterProvider()
+  const meter = provider.getMeter('mokei.decision-flow', undefined, {
+    schemaUrl: SEMCONV_SCHEMA_URL,
+  })
+  if (meter === createNoopMeter()) return
+  if (provider !== durationProvider || durationHistogram === undefined) {
+    durationProvider = provider
+    durationHistogram = meter.createHistogram('gen_ai.client.operation.duration', {
+      description: 'GenAI operation duration',
+      unit: 's',
+      advice: { explicitBucketBoundaries: GEN_AI_DURATION_BUCKETS },
+    })
+  }
+  durationHistogram.record(durationS, attributes)
+}
+
+function serverAttributes(url: unknown): Attributes {
+  if (typeof url !== 'string') return {}
+  try {
+    const parsed = new URL(url)
+    return {
+      'server.address': parsed.hostname.replace(/^\[|\]$/g, ''),
+      'server.port':
+        parsed.port !== '' ? Number(parsed.port) : parsed.protocol === 'https:' ? 443 : 80,
+    }
+  } catch {
+    return {}
+  }
+}
 
 export type PredictCall = { runID: string; invocationID: string; attempt: number }
 
@@ -69,60 +123,84 @@ export function decideKind(params: { client: Predictor }): NodeKind<DecideNode> 
         throw new InvalidDecisionStateError()
       }
 
-      const result = await tracer.startActiveSpan('decision.predict', async (span) => {
-        span.setAttribute('mokei.kind', 'step')
-        let ended = false
-        const endSpan = () => {
-          if (ended) return
-          ended = true
-          span.end()
-        }
-        const onAbort = () => {
-          if (ended) return
-          const reason = ctx.signal.reason
-          span.setAttribute('error.type', reason instanceof Error ? reason.name : 'AbortError')
-          span.setStatus({ code: SpanStatusCode.ERROR })
-          endSpan()
-        }
-
-        span.setAttribute('system_one.question.count', Object.keys(node.questions).length)
-        ctx.signal.addEventListener('abort', onAbort, { once: true })
-        if (ctx.signal.aborted) onAbort()
-        try {
-          const prediction = await params.client.predict({
-            state,
-            questions: node.questions,
-            model: node.model,
-            signal: ctx.signal,
-            call: {
-              runID: ctx.runID,
-              invocationID: ctx.invocationID,
-              attempt: ctx.attempt,
-            },
+      const spanName = node.model === undefined ? 'predict' : `predict ${node.model}`
+      const result = await getTracer().startActiveSpan(
+        spanName,
+        { kind: SpanKind.CLIENT },
+        async (span) => {
+          const startedAt = performance.now()
+          const metricAttributes: Attributes = {
+            'gen_ai.operation.name': 'predict',
+            'gen_ai.provider.name': PROVIDER_NAME,
+          }
+          span.setAttributes({
+            ...metricAttributes,
+            'mokei.kind': 'step',
+            'mokei.system_one.question.count': Object.keys(node.questions).length,
+            ...serverAttributes((params.client as { url?: unknown }).url),
           })
-          if (!ended) {
-            span.setAttribute('system_one.model', prediction.model)
-            span.setAttribute('system_one.usage.input_tokens', prediction.usage.inputTokens)
-            span.setAttribute('system_one.usage.output_tokens', prediction.usage.outputTokens)
+          if (node.model !== undefined) {
+            span.setAttribute('gen_ai.request.model', node.model)
+            metricAttributes['gen_ai.request.model'] = node.model
           }
-          return prediction
-        } catch (error) {
-          if (!ended) {
-            const metadata = describeDecisionError(error)
-            span.setAttribute('error.type', metadata.type)
-            if (metadata.status !== undefined)
-              span.setAttribute('http.status_code', metadata.status)
-            if (metadata.retryAfterMs !== undefined) {
-              span.setAttribute('system_one.retry_after_ms', metadata.retryAfterMs)
-            }
+          let ended = false
+          const endSpan = (errorType?: string) => {
+            if (ended) return
+            ended = true
+            if (errorType !== undefined) metricAttributes['error.type'] = errorType
+            recordDuration((performance.now() - startedAt) / 1000, metricAttributes)
+            span.end()
+          }
+          const onAbort = () => {
+            if (ended) return
+            const reason = ctx.signal.reason
+            const errorType = reason instanceof Error ? reason.name : 'AbortError'
+            span.setAttribute('error.type', errorType)
             span.setStatus({ code: SpanStatusCode.ERROR })
+            endSpan(errorType)
           }
-          throw error
-        } finally {
-          ctx.signal.removeEventListener('abort', onAbort)
-          endSpan()
-        }
-      })
+
+          ctx.signal.addEventListener('abort', onAbort, { once: true })
+          if (ctx.signal.aborted) onAbort()
+          let errorType: string | undefined
+          try {
+            const prediction = await params.client.predict({
+              state,
+              questions: node.questions,
+              model: node.model,
+              signal: ctx.signal,
+              call: {
+                runID: ctx.runID,
+                invocationID: ctx.invocationID,
+                attempt: ctx.attempt,
+              },
+            })
+            if (!ended) {
+              span.setAttribute('gen_ai.response.model', prediction.model)
+              span.setAttribute('gen_ai.usage.input_tokens', prediction.usage.inputTokens)
+              span.setAttribute('gen_ai.usage.output_tokens', prediction.usage.outputTokens)
+            }
+            return prediction
+          } catch (error) {
+            if (!ended) {
+              const metadata = describeDecisionError(error)
+              errorType = metadata.type
+              span.setAttribute('error.type', metadata.type)
+              if (metadata.status !== undefined) {
+                span.setAttribute('http.response.status_code', metadata.status)
+              }
+              if (metadata.retryAfterMs !== undefined) {
+                span.setAttribute('mokei.system_one.retry_after_ms', metadata.retryAfterMs)
+              }
+              span.setStatus({ code: SpanStatusCode.ERROR })
+            }
+            throw error
+          } finally {
+            ctx.signal.removeEventListener('abort', onAbort)
+            endSpan(errorType)
+          }
+        },
+      )
 
       const answers: typeof result.answers = {}
       for (const question of Object.keys(node.questions)) {
