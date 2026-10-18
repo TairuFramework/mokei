@@ -704,13 +704,30 @@ export class ContextClient<
       // `ContextServer._handleRequest`'s own two-part gate (`server.ts`'s `inputRequestMethods.size`
       // and `MRTR_METHODS` checks) so a `2025-11-25` peer or a non-MRTR method on `2026-07-28` (e.g.
       // `tools/list`) cannot talk this client into driving rounds `MRTR_METHODS` never grants it.
+      // The first leg settled as suspended (no `execute_tool`), so a refusal records the local
+      // failure span the logical call would otherwise lack.
+      const refuse = (error: InputRequiredNotSupportedError): InputRequiredNotSupportedError => {
+        if (method === 'tools/call') {
+          this.#exchangeTracer.recordLocalFailure({
+            method,
+            params,
+            links: [{ context: first }],
+            traceAttributes: options?.traceAttributes,
+            round: 0,
+            error,
+          })
+        }
+        return error
+      }
       if (protocol.inputRequestMethods.size === 0 || !MRTR_METHODS.has(method as string)) {
-        throw new InputRequiredNotSupportedError({
-          reason:
-            protocol.inputRequestMethods.size === 0
-              ? `protocol version ${protocol.version} has no multi round-trip requests`
-              : `${method as string} cannot suspend on input`,
-        })
+        throw refuse(
+          new InputRequiredNotSupportedError({
+            reason:
+              protocol.inputRequestMethods.size === 0
+                ? `protocol version ${protocol.version} has no multi round-trip requests`
+                : `${method as string} cannot suspend on input`,
+          }),
+        )
       }
       // The opt-in path: hand the suspension back and let the caller drive its own rounds. Also how
       // the driver below reads each retry leg, so the loop lives in exactly one place.
@@ -718,10 +735,12 @@ export class ContextClient<
         return result as ClientTypes['SendRequests'][Method]['Result']
       }
       if (!this.#inputRequired.autoFulfill) {
-        throw new InputRequiredNotSupportedError({
-          reason:
-            'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
-        })
+        throw refuse(
+          new InputRequiredNotSupportedError({
+            reason:
+              'auto-fulfilment is disabled (pass `allowInputRequired` to receive it, or enable `inputRequired.autoFulfill`)',
+          }),
+        )
       }
       // `legs` is the next retry's round index; `suspended` is true while no retry leg is in
       // flight and the last settled round was `input_required`, i.e. when a rejection is local.

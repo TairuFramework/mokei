@@ -395,6 +395,19 @@ test('a failure between rounds emits one execute_tool INTERNAL span', async () =
     span.links.some((link) => link.context.spanId === required(spans()[0]).spanContext().spanId),
   ).toBe(true)
 })
+test('autoFulfill off emits one execute_tool INTERNAL span for the refused suspension', async () => {
+  const f = await suspendOnce({ inputRequired: { autoFulfill: false } })
+  await expect(f.pending).rejects.toThrow('auto-fulfilment is disabled')
+  expect(internalSpans()).toHaveLength(1)
+  const span = required(internalSpans()[0])
+  expect(span.name).toBe('execute_tool echo')
+  expect(span.attributes['mokei.mcp.round']).toBe(0)
+  expect(span.attributes['error.type']).toBe('InputRequiredNotSupportedError')
+  expect(span.status.code).toBe(SpanStatusCode.ERROR)
+  expect(
+    span.links.some((link) => link.context.spanId === required(spans()[0]).spanContext().spanId),
+  ).toBe(true)
+})
 test('an abort between rounds records the local failure span as cancelled', async () => {
   const controller = new AbortController()
   const reason = new Error('caller stopped')

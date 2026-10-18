@@ -81,7 +81,9 @@ export type RequestOptions = {
   timeout?: number
   /**
    * Returns a suspended MRTR result to the caller instead of driving the retry rounds
-   * (SEP-2322). Consumed by `@mokei/context-client`; `ContextRPC` itself ignores it.
+   * (SEP-2322). Consumed by `@mokei/context-client`; `ContextRPC` itself ignores it. When the
+   * caller drives its own rounds, tracing marks every suspended leg `mokei.mcp.round = 0` and
+   * the final leg carries no round.
    */
   allowInputRequired?: boolean
   /**
