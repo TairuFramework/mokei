@@ -4,6 +4,7 @@ import {
   capturePayload,
   redactPayload,
   requestAttributes,
+  requestSpanName,
   responseOutcome,
   sanitizeMessage,
 } from '../src/observation.js'
@@ -73,6 +74,8 @@ describe('MCP observation', () => {
     ).toEqual({
       'mokei.kind': 'mcp',
       'mcp.method.name': 'tools/call',
+      'gen_ai.operation.name': 'execute_tool',
+      'gen_ai.tool.call.arguments': '{"q":1}',
       'gen_ai.tool.name': 'search',
       'jsonrpc.request.id': '7',
       'mokei.direction': 'client',
@@ -91,18 +94,6 @@ describe('MCP observation', () => {
         capture: 50,
       })['mokei.payload.truncated'],
     ).toBe(true)
-  })
-
-  test('responseOutcome maps JSON-RPC errors and tool errors', () => {
-    expect(responseOutcome({ result: {} })).toEqual({ error: false })
-    expect(responseOutcome({ error: { code: -32602 } })).toEqual({
-      error: true,
-      errorType: '-32602',
-    })
-    expect(responseOutcome({ result: { isError: true } })).toEqual({
-      error: true,
-      errorType: 'tool_error',
-    })
   })
 
   test('sanitizeMessage redacts and caps, and reduces to the envelope when off', () => {
@@ -161,4 +152,83 @@ test('exact token count and progress keys survive redaction while access tokens 
   expect(
     redactPayload({ ...allowed, accessToken: 'secret', MaxTokens: 'secret', nested: [allowed] }),
   ).toEqual({ ...allowed, accessToken: '[redacted]', MaxTokens: '[redacted]', nested: [allowed] })
+})
+
+describe('MCP span shape', () => {
+  test('requestSpanName appends tool and prompt names', () => {
+    expect(requestSpanName('tools/call', { name: 'get-weather' })).toBe('tools/call get-weather')
+    expect(requestSpanName('prompts/get', { name: 'greet' })).toBe('prompts/get greet')
+    expect(requestSpanName('initialize')).toBe('initialize')
+    expect(requestSpanName('tools/call', {})).toBe('tools/call')
+  })
+
+  test('requestAttributes sets GenAI attributes per method', () => {
+    const base = { direction: 'client' as const, capture: 'on' as const }
+    const call = requestAttributes({
+      ...base,
+      method: 'tools/call',
+      params: { name: 't', arguments: { apiKey: 'k', q: 1 } },
+    })
+    expect(call['gen_ai.operation.name']).toBe('execute_tool')
+    expect(call['gen_ai.tool.name']).toBe('t')
+    expect(call['gen_ai.tool.call.arguments']).toBe('{"apiKey":"[redacted]","q":1}')
+    expect(
+      requestAttributes({
+        ...base,
+        capture: 'off',
+        method: 'tools/call',
+        params: { name: 't', arguments: { q: 1 } },
+      }),
+    ).not.toHaveProperty('gen_ai.tool.call.arguments')
+    expect(requestAttributes({ ...base, method: 'tools/list' })).not.toHaveProperty(
+      'gen_ai.operation.name',
+    )
+    expect(
+      requestAttributes({
+        ...base,
+        method: 'prompts/get',
+        params: { name: 'greet', arguments: { city: 'Paris' } },
+      }),
+    ).toMatchObject({ 'gen_ai.prompt.name': 'greet', 'gen_ai.prompt.variable.city': 'Paris' })
+    expect(
+      requestAttributes({ ...base, method: 'resources/read', params: { uri: 'file:///a' } }),
+    ).toMatchObject({ 'mcp.resource.uri': 'file:///a' })
+  })
+
+  test('requestAttributes sets network and protocol version', () => {
+    expect(
+      requestAttributes({
+        direction: 'client',
+        method: 'tools/list',
+        protocolVersion: '2026-07-28',
+        network: {
+          transport: 'tcp',
+          protocolName: 'http',
+          serverAddress: 'mcp.example.com',
+          serverPort: 443,
+        },
+      }),
+    ).toMatchObject({
+      'mcp.protocol.version': '2026-07-28',
+      'network.transport': 'tcp',
+      'network.protocol.name': 'http',
+      'server.address': 'mcp.example.com',
+      'server.port': 443,
+    })
+  })
+
+  test('responseOutcome treats protocol-level server codes as non-errors', () => {
+    const error = { code: -32602, message: 'bad' }
+    expect(responseOutcome({ error }, 'server')).toEqual({ error: false, statusCode: '-32602' })
+    expect(responseOutcome({ error }, 'client')).toEqual({
+      error: true,
+      errorType: '-32602',
+      statusCode: '-32602',
+      message: 'bad',
+    })
+    expect(responseOutcome({ result: { isError: true } }, 'client')).toEqual({
+      error: true,
+      errorType: 'tool_error',
+    })
+  })
 })

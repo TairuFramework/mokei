@@ -77,7 +77,7 @@ export function createProxyTracing(params: {
           open.set(
             key,
             tracer.startSpan(
-              requestSpanName(method),
+              requestSpanName(method, message.params),
               {
                 kind: from === 'client' ? SpanKind.CLIENT : SpanKind.SERVER,
                 links: remoteContext === undefined ? [] : [{ context: remoteContext }],
@@ -141,7 +141,7 @@ export function createProxyTracing(params: {
           isRecord(message.error) && typeof message.error.code === 'number'
             ? { code: message.error.code }
             : undefined
-        const outcome = responseOutcome({ result: message.result, error })
+        const outcome = responseOutcome({ result: message.result, error }, 'client')
         finish(key, outcome.error ? outcome.errorType : undefined)
       }
     },

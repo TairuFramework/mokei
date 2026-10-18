@@ -28,7 +28,7 @@ test('pairs a client request with the server response', () => {
   const span = requests()[0]
   const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
   expect(requests()).toHaveLength(1)
-  expect(span?.name).toBe('mcp.tools/call')
+  expect(span?.name).toBe('tools/call echo')
   expect(span?.kind).toBe(SpanKind.CLIENT)
   expect(span?.parentSpanContext?.spanId).toBe(root?.spanContext().spanId)
   expect(root?.parentSpanContext).toBeUndefined()
@@ -60,16 +60,12 @@ test('keys by direction and id type', () => {
   proxy.observe('client', { id: '1', method: 'tools/list' })
   proxy.observe('server', { id: 1, method: 'roots/list' })
   proxy.observe('client', { id: 1, result: {} })
-  expect(requests().map((span) => span.name)).toEqual(['mcp.roots/list'])
+  expect(requests().map((span) => span.name)).toEqual(['roots/list'])
   expect(requests()[0]?.kind).toBe(SpanKind.SERVER)
   proxy.observe('server', { id: '1', result: {} })
-  expect(requests().map((span) => span.name)).toEqual(['mcp.roots/list', 'mcp.tools/list'])
+  expect(requests().map((span) => span.name)).toEqual(['roots/list', 'tools/list'])
   proxy.observe('server', { id: 1, result })
-  expect(requests().map((span) => span.name)).toEqual([
-    'mcp.roots/list',
-    'mcp.tools/list',
-    'mcp.tools/call',
-  ])
+  expect(requests().map((span) => span.name)).toEqual(['roots/list', 'tools/list', 'tools/call'])
   proxy.end('stopped')
 })
 
@@ -79,7 +75,7 @@ test('notifications/cancelled ends the span with error.type cancelled and a late
   proxy.observe('server', { id: 1, method: 'roots/list' })
   proxy.observe('client', { method: 'notifications/cancelled', params: { requestId: 1 } })
   expect(requests()).toHaveLength(1)
-  expect(requests()[0]?.name).toBe('mcp.tools/call')
+  expect(requests()[0]?.name).toBe('tools/call')
   expect(requests()[0]?.attributes['error.type']).toBe('cancelled')
   expect(requests()[0]?.status.code).toBe(SpanStatusCode.ERROR)
   proxy.observe('server', { id: 1, result })

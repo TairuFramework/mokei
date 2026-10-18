@@ -573,7 +573,7 @@ test.each(['cleanup', 'close', 'rpc', 'abort', 'SIGTERM', 'SIGINT'] as const)(
     expect(spansAtKill[0]).toEqual(
       expect.arrayContaining([
         { name: 'mcp.context', status: SpanStatusCode.OK, errorType: undefined },
-        { name: 'mcp.tools/call', status: SpanStatusCode.ERROR, errorType: 'context.stopped' },
+        { name: 'tools/call pending', status: SpanStatusCode.ERROR, errorType: 'context.stopped' },
       ]),
     )
   },

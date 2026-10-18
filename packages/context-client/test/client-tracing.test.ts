@@ -100,13 +100,13 @@ function required<T>(value: T | undefined): T {
   return value
 }
 function spans() {
-  return exporter.getFinishedSpans().filter((span) => span.name === 'mcp.tools/call')
+  return exporter.getFinishedSpans().filter((span) => span.name.startsWith('tools/call'))
 }
 function binding(): ClientTracing {
   return { contextID: 'ctx', contextSpan: tracer.startSpan('mcp.context'), payloads: 'on' }
 }
 
-test('tools/call produces one mcp.tools/call span with attributes and response event', async () => {
+test('tools/call produces one tools/call span with attributes and response event', async () => {
   const f = await fixture(binding())
   const frame = await f.call()
   expect(spans()).toHaveLength(1)
@@ -118,7 +118,7 @@ test('tools/call produces one mcp.tools/call span with attributes and response e
     'mokei.direction': 'client',
   })
   expect(required(spans()[0]).events).toMatchObject([
-    { name: 'mcp.response', attributes: { payload: JSON.stringify(result) } },
+    { name: 'mcp.response', attributes: { 'mokei.mcp.response': JSON.stringify(result) } },
   ])
 })
 test('the request span is active when traceparent is injected', async () => {
@@ -356,7 +356,7 @@ for (const protocolVersion of ['2025-11-25', '2026-07-28'] as const) {
   test(`${method} produces an exchange span and the frame carries traceparent`, async () => {
     const bound = binding()
     const f = await fixture(bound, protocolVersion)
-    const span = required(f.setupSpans.find((span) => span.name === `mcp.${method}`))
+    const span = required(f.setupSpans.find((span) => span.name === method))
     expect(span.attributes).toMatchObject({
       'jsonrpc.request.id': String(f.setupFrame.id),
       'mokei.direction': 'client',
@@ -369,7 +369,7 @@ for (const protocolVersion of ['2025-11-25', '2026-07-28'] as const) {
           | undefined
       )?.traceparent,
     ).toContain(span.spanContext().spanId)
-    expect(span.status.code).toBe(SpanStatusCode.OK)
+    expect(span.status.code).toBe(SpanStatusCode.UNSET)
   })
 
   for (const payloads of ['on', 'off', 8] as const) {
@@ -378,18 +378,18 @@ for (const protocolVersion of ['2025-11-25', '2026-07-28'] as const) {
       const probe = vi
         .spyOn(SimpleSpanProcessor.prototype, 'onStart')
         .mockImplementation((span) => {
-          if (span.name === `mcp.${method}`) attributes = { ...span.attributes }
+          if (span.name === method) attributes = { ...span.attributes }
         })
       try {
         const clientInfo = { name: 'setup-test', version: '1' }
         const f = await fixture({ ...binding(), payloads }, protocolVersion, { clientInfo })
-        const span = required(f.setupSpans.find((span) => span.name === `mcp.${method}`))
+        const span = required(f.setupSpans.find((span) => span.name === method))
         const captured = required(attributes)
         if (payloads === 'off') {
           expect(captured).not.toHaveProperty('mokei.mcp.request')
           expect(captured).not.toHaveProperty('mokei.payload.truncated')
           expect(span.attributes).not.toHaveProperty('mokei.mcp.request')
-          expect(required(span.events[0]).attributes).not.toHaveProperty('payload')
+          expect(required(span.events[0]).attributes).not.toHaveProperty('mokei.mcp.response')
         } else if (payloads === 'on') {
           expect(JSON.parse(captured['mokei.mcp.request'] as string)).toEqual(
             protocolVersion === '2025-11-25'
@@ -435,12 +435,12 @@ test('subscriptions/listen produces one span settled when the stream settles', a
   })
   await vi.waitFor(() => expect(exporter.getFinishedSpans()).toHaveLength(1))
   const span = required(exporter.getFinishedSpans()[0])
-  expect(span.name).toBe('mcp.subscriptions/listen')
+  expect(span.name).toBe('subscriptions/listen')
   expect(span.attributes['jsonrpc.request.id']).toBe(String(frame.id))
   expect((frame.params?._meta as Record<string, unknown>)?.traceparent).toContain(
     span.spanContext().spanId,
   )
-  expect(span.status.code).toBe(SpanStatusCode.OK)
+  expect(span.status.code).toBe(SpanStatusCode.UNSET)
 })
 
 test('incoming elicitation/create parents to the context and links the remote traceparent', async () => {
@@ -465,12 +465,12 @@ test('incoming elicitation/create parents to the context and links the remote tr
   })
   await f.transports.server.read()
   const span = required(exporter.getFinishedSpans()[0])
-  expect(span.name).toBe('mcp.elicitation/create')
+  expect(span.name).toBe('elicitation/create')
   expect(span.attributes['mokei.direction']).toBe('server')
   expect(span.parentSpanContext?.spanId).toBe(bound.contextSpan?.spanContext().spanId)
   expect(required(span.links[0]).context.spanId).toBe(remote.spanId)
   expect(activeID).toBe(span.spanContext().spanId)
-  expect(span.status.code).toBe(SpanStatusCode.OK)
+  expect(span.status.code).toBe(SpanStatusCode.UNSET)
 })
 
 test('incoming request cancelled by notifications/cancelled ends with error.type cancelled', async () => {
@@ -505,7 +505,7 @@ test('incoming request cancelled by notifications/cancelled ends with error.type
   }
   await f.call()
   expect(
-    exporter.getFinishedSpans().filter((span) => span.name === 'mcp.elicitation/create'),
+    exporter.getFinishedSpans().filter((span) => span.name === 'elicitation/create'),
   ).toHaveLength(1)
 })
 
@@ -560,7 +560,7 @@ test('notifications in either direction log on the bound context with redacted c
     f.client.setTracing({ ...bound, payloads: 'off' })
     await f.client.notify('roots/list_changed', {})
     await f.transports.server.read()
-    expect(records.at(-1)?.properties).not.toHaveProperty('payload')
+    expect(records.at(-1)?.properties).not.toHaveProperty('mokei.mcp.response')
     const unbound = await fixture()
     await unbound.client.notify('roots/list_changed', {})
     await unbound.transports.server.read()
@@ -632,9 +632,7 @@ for (const termination of ['timeout', 'closed', 'rpc-error', 'write-error'] as c
         })
     }
     await pending
-    const span = required(
-      exporter.getFinishedSpans().find((span) => span.name === 'mcp.initialize'),
-    )
+    const span = required(exporter.getFinishedSpans().find((span) => span.name === 'initialize'))
     expect(span.attributes['error.type']).toBe(
       termination === 'timeout'
         ? 'cancelled'
@@ -681,7 +679,9 @@ test('standalone and bound clients omit payloads unless explicitly enabled', asy
     exporter.reset()
     await (await fixture(tracing)).call()
     expect(required(spans()[0]).attributes).not.toHaveProperty('mokei.mcp.request')
-    expect(required(required(spans()[0]).events[0]).attributes).not.toHaveProperty('payload')
+    expect(required(required(spans()[0]).events[0]).attributes).not.toHaveProperty(
+      'mokei.mcp.response',
+    )
   }
 })
 
@@ -722,7 +722,7 @@ test('outgoing context link is explicitly identified at span start even after re
     probe.mockRestore()
   }
   const request = required(
-    exporter.getFinishedSpans().find((span) => span.name === 'mcp.tools/call'),
+    exporter.getFinishedSpans().find((span) => span.name.startsWith('tools/call')),
   )
   expect(request.attributes['mokei.context.trace_id']).toBe(
     bound.contextSpan?.spanContext().traceId,
@@ -737,7 +737,70 @@ test('outgoing context link is explicitly identified at span start even after re
       traceparent: `00-${first.spanContext().traceId}-${first.spanContext().spanId}-01`,
     })
     .succeed({})
-  for (const span of exporter.getFinishedSpans().filter((span) => span.name !== 'mcp.tools/call')) {
+  for (const span of exporter
+    .getFinishedSpans()
+    .filter((span) => !span.name.startsWith('tools/call'))) {
     expect(span.attributes['mokei.context.trace_id']).toBeUndefined()
   }
+})
+
+test('successful tools/call span is named with the tool and keeps UNSET status', async () => {
+  await (await fixture(binding())).call()
+  const span = required(spans()[0])
+  expect(span.name).toBe('tools/call echo')
+  expect(span.status.code).toBe(SpanStatusCode.UNSET)
+})
+test('JSON-RPC error span carries the error message and rpc.response.status_code', async () => {
+  const f = await fixture(binding())
+  const pending = f.client.request('tools/call', { name: 'missing' })
+  const rejected = expect(pending).rejects.toThrow('nope')
+  const frame = await f.next()
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: frame.id,
+    error: { code: -32601, message: 'nope' },
+  })
+  await rejected
+  const span = required(spans()[0])
+  expect(span.status).toMatchObject({ code: SpanStatusCode.ERROR, message: 'nope' })
+  expect(span.attributes['rpc.response.status_code']).toBe('-32601')
+})
+test('success records gen_ai.tool.call.result when capture is on, not for isError', async () => {
+  await (await fixture(binding())).call()
+  expect(required(spans()[0]).attributes['gen_ai.tool.call.result']).toBe(JSON.stringify(result))
+  exporter.reset()
+  const f = await fixture(binding())
+  const pending = f.client.request('tools/call', { name: 'bad' })
+  const frame = await f.next()
+  await f.transports.server.write({
+    jsonrpc: '2.0',
+    id: frame.id,
+    result: { ...result, isError: true },
+  })
+  await pending
+  expect(required(spans()[0]).attributes).not.toHaveProperty('gen_ai.tool.call.result')
+})
+test('binding protocol version and network are read into span attributes', () => {
+  const exchange = createExchangeTracer(() => ({
+    ...binding(),
+    getProtocolVersion: () => '2026-07-28',
+    network: { transport: 'tcp', protocolName: 'http', serverAddress: 'h', serverPort: 443 },
+  })).startOutgoing('tools/list', {})
+  exchange.succeed({})
+  expect(required(exporter.getFinishedSpans()[0]).attributes).toMatchObject({
+    'mcp.protocol.version': '2026-07-28',
+    'network.transport': 'tcp',
+    'server.port': 443,
+  })
+})
+test('no-op tracer computes no attributes', () => {
+  // beforeEach re-registers the test provider.
+  trace.disable()
+  const getProtocolVersion = vi.fn(() => '2026-07-28')
+  const exchange = createExchangeTracer(() => ({ ...binding(), getProtocolVersion })).startOutgoing(
+    'tools/call',
+    { name: 'echo' },
+  )
+  exchange.succeed(result)
+  expect(getProtocolVersion).not.toHaveBeenCalled()
 })

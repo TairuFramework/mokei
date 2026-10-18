@@ -147,7 +147,7 @@ test('server spans share the run traceID and descend from flow.run', async () =>
     expect(chain).toContain(parent)
     expect(
       chain.some(
-        (span) => span.name === 'mcp.tools/call' && span.attributes['mokei.kind'] === 'mcp',
+        (span) => span.name.startsWith('tools/call') && span.attributes['mokei.kind'] === 'mcp',
       ),
     ).toBe(true)
   }

@@ -64,8 +64,25 @@ export function capturePayload(
   return { payload, truncated: true }
 }
 
-export function requestSpanName(method: string): string {
-  return `mcp.${method}`
+export type NetworkInfo = {
+  transport: 'pipe' | 'tcp'
+  protocolName?: 'http'
+  serverAddress?: string
+  serverPort?: number
+}
+
+/** JSON-RPC protocol-level codes a server returns for bad requests; not server faults. */
+export const SERVER_NON_ERROR_CODES = new Set([-32700, -32600, -32601, -32602, -32002])
+
+export function requestSpanName(method: string, params?: unknown): string {
+  if (
+    (method === 'tools/call' || method === 'prompts/get') &&
+    isRecord(params) &&
+    typeof params.name === 'string'
+  ) {
+    return `${method} ${params.name}`
+  }
+  return method
 }
 
 export function requestAttributes(params: {
@@ -76,18 +93,48 @@ export function requestAttributes(params: {
   contextID?: string
   sessionID?: string
   capture?: PayloadCapture
+  protocolVersion?: string
+  network?: NetworkInfo
+  traceAttributes?: Attributes
 }): Attributes {
   const attributes: Attributes = {
     'mokei.kind': 'mcp',
     'mcp.method.name': params.method,
     'mokei.direction': params.direction,
   }
-  if (
-    params.method === 'tools/call' &&
-    isRecord(params.params) &&
-    typeof params.params.name === 'string'
-  ) {
-    attributes['gen_ai.tool.name'] = params.params.name
+  const body = isRecord(params.params) ? params.params : undefined
+  if (params.method === 'tools/call') {
+    attributes['gen_ai.operation.name'] = 'execute_tool'
+    if (typeof body?.name === 'string') attributes['gen_ai.tool.name'] = body.name
+    if (body?.arguments !== undefined) {
+      const captured = capturePayload(body.arguments, params.capture)
+      if (captured !== undefined) attributes['gen_ai.tool.call.arguments'] = captured.payload
+    }
+  } else if (params.method === 'prompts/get') {
+    if (typeof body?.name === 'string') attributes['gen_ai.prompt.name'] = body.name
+    if (isRecord(body?.arguments) && resolvePayloadCap(params.capture) !== null) {
+      for (const [key, value] of Object.entries(body.arguments)) {
+        const captured = capturePayload(value, params.capture)
+        if (captured === undefined) continue
+        attributes[`gen_ai.prompt.variable.${key}`] =
+          typeof value === 'string' ? value : captured.payload
+      }
+    }
+  } else if (params.method === 'resources/read' && typeof body?.uri === 'string') {
+    attributes['mcp.resource.uri'] = body.uri
+  }
+  if (params.protocolVersion !== undefined)
+    attributes['mcp.protocol.version'] = params.protocolVersion
+  if (params.network !== undefined) {
+    attributes['network.transport'] = params.network.transport
+    if (params.network.protocolName !== undefined) {
+      attributes['network.protocol.name'] = params.network.protocolName
+    }
+    if (params.network.serverAddress !== undefined) {
+      attributes['server.address'] = params.network.serverAddress
+    }
+    if (params.network.serverPort !== undefined)
+      attributes['server.port'] = params.network.serverPort
   }
   if (params.id !== undefined) attributes['jsonrpc.request.id'] = String(params.id)
   if (params.contextID !== undefined) attributes['mokei.context.id'] = params.contextID
@@ -99,14 +146,32 @@ export function requestAttributes(params: {
       if (captured.truncated) attributes['mokei.payload.truncated'] = true
     }
   }
-  return attributes
+  return { ...attributes, ...params.traceAttributes }
 }
 
-export function responseOutcome(message: {
-  result?: unknown
-  error?: { code: number }
-}): { error: false } | { error: true; errorType: string } {
-  if (message.error !== undefined) return { error: true, errorType: String(message.error.code) }
+export function responseAttributes(
+  method: string,
+  result: unknown,
+  capture: PayloadCapture | undefined,
+): Attributes {
+  if (method !== 'tools/call' || (isRecord(result) && result.isError === true)) return {}
+  const captured = capturePayload(result, capture)
+  return captured === undefined ? {} : { 'gen_ai.tool.call.result': captured.payload }
+}
+
+export function responseOutcome(
+  message: { result?: unknown; error?: { code: number; message?: string } },
+  side: MessageDirection,
+):
+  | { error: false; statusCode?: string }
+  | { error: true; errorType: string; statusCode?: string; message?: string } {
+  if (message.error !== undefined) {
+    const statusCode = String(message.error.code)
+    if (side === 'server' && SERVER_NON_ERROR_CODES.has(message.error.code)) {
+      return { error: false, statusCode }
+    }
+    return { error: true, errorType: statusCode, statusCode, message: message.error.message }
+  }
   if (isRecord(message.result) && message.result.isError === true) {
     return { error: true, errorType: 'tool_error' }
   }

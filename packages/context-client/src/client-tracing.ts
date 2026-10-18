@@ -1,15 +1,18 @@
 import type { RequestID } from '@mokei/context-protocol'
 import type { Context, Link, Span } from '@opentelemetry/api'
-import { context, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
-import { createTracerFactory, extractW3CTraceContext } from '@sozai/otel'
+import { context, ROOT_CONTEXT, SpanKind, trace } from '@opentelemetry/api'
+import { extractW3CTraceContext } from '@sozai/otel'
 
 import {
   capturePayload,
+  type NetworkInfo,
   type PayloadCapture,
   requestAttributes,
   requestSpanName,
+  responseAttributes,
   responseOutcome,
 } from './observation.js'
+import { endSpanError, getMokeiTracer, resolveContentCapture } from './semconv.js'
 
 export type TerminationReason = 'stopped' | 'lost'
 export type ClientTracing = {
@@ -19,6 +22,11 @@ export type ClientTracing = {
   payloads?: PayloadCapture
   /** Read the current negotiated session at request start. */
   getSessionID?: () => string | undefined
+  /** Read the negotiated protocol revision at request start. */
+  getProtocolVersion?: () => string | undefined
+  network?: NetworkInfo
+  /** Where incoming request spans take their parent from. Defaults to the bound context. */
+  parentFrom?: 'context' | 'meta'
 }
 export type ExchangeSpan = {
   span: Span
@@ -27,8 +35,6 @@ export type ExchangeSpan = {
   succeed(result: unknown): void
   fail(errorType: string, message?: string): void
 }
-
-const createTracer = createTracerFactory('mokei')
 
 export function createExchangeTracer(getBinding: () => ClientTracing | undefined) {
   const open = new Set<ExchangeSpan>()
@@ -42,8 +48,8 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     contextTraceID?: string,
   ): ExchangeSpan {
     const binding = getBinding()
-    const span = createTracer('context-client').startSpan(
-      requestSpanName(method),
+    const span = getMokeiTracer('context-client').startSpan(
+      requestSpanName(method, params),
       {
         kind: direction === 'client' ? SpanKind.CLIENT : SpanKind.SERVER,
         links,
@@ -57,7 +63,9 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
               direction,
               contextID: binding?.contextID,
               sessionID: binding?.getSessionID?.(),
-              capture: binding?.payloads,
+              capture: resolveContentCapture(binding?.payloads),
+              protocolVersion: binding?.getProtocolVersion?.(),
+              network: binding?.network,
             }),
             ...(contextTraceID === undefined ? {} : { 'mokei.context.trace_id': contextTraceID }),
           }
@@ -69,12 +77,8 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
     function finish(errorType?: string, message?: string) {
       settled = true
       open.delete(exchange)
-      if (errorType !== undefined) span.setAttribute('error.type', errorType)
-      span.setStatus({
-        code: errorType === undefined ? SpanStatusCode.OK : SpanStatusCode.ERROR,
-        message,
-      })
-      span.end()
+      if (errorType === undefined) span.end()
+      else endSpanError(span, errorType, message)
     }
     const exchange: ExchangeSpan = {
       span,
@@ -85,18 +89,20 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       succeed(result) {
         if (settled) return
         if (span.isRecording()) {
-          const captured = capturePayload(result, binding?.payloads)
+          const capture = resolveContentCapture(binding?.payloads)
+          const captured = capturePayload(result, capture)
+          span.setAttributes(responseAttributes(method, result, capture))
           span.addEvent(
             'mcp.response',
             captured === undefined
               ? {}
               : {
-                  payload: captured.payload,
+                  'mokei.mcp.response': captured.payload,
                   ...(captured.truncated ? { 'mokei.payload.truncated': true } : {}),
                 },
           )
         }
-        const outcome = responseOutcome({ result })
+        const outcome = responseOutcome({ result }, 'client')
         finish(outcome.error ? outcome.errorType : undefined)
       },
       fail(errorType, message) {

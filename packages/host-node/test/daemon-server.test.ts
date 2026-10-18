@@ -590,7 +590,9 @@ test('daemon shutdown ends a proxied context root as stopped', async () => {
       expect(roots).toHaveLength(1)
       expect(roots[0]?.status.code).toBe(SpanStatusCode.OK)
       expect(roots[0]?.attributes['error.type']).toBeUndefined()
-      const requests = exporter.getFinishedSpans().filter((span) => span.name === 'mcp.tools/call')
+      const requests = exporter
+        .getFinishedSpans()
+        .filter((span) => span.name.startsWith('tools/call'))
       expect(requests).toHaveLength(1)
       expect(requests[0]?.status.code).toBe(SpanStatusCode.ERROR)
       expect(requests[0]?.attributes['error.type']).toBe('context.stopped')
@@ -628,7 +630,9 @@ test('proxy transport errors end the context and open requests as lost', async (
     await vi.waitFor(() => expect(observed).toHaveBeenCalled())
     input.error(failure)
     await expect(pending).rejects.toBe(failure)
-    const spans = exporter.getFinishedSpans().filter((span) => span.name.startsWith('mcp.'))
+    const spans = exporter
+      .getFinishedSpans()
+      .filter((span) => span.name === 'mcp.context' || span.name.startsWith('tools/call'))
     expect(spans).toHaveLength(2)
     for (const span of spans) {
       expect(span.status.code).toBe(SpanStatusCode.ERROR)

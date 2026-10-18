@@ -682,7 +682,8 @@ export class ContextClient<
         ) {
           exchange.fail('cancelled', error.message)
         } else if (cause instanceof RPCError) {
-          const outcome = responseOutcome({ error: cause })
+          const outcome = responseOutcome({ error: cause }, 'client')
+          exchange.span.setAttribute('rpc.response.status_code', String(cause.code))
           exchange.fail(outcome.error ? outcome.errorType : String(cause.code), cause.message)
         } else {
           exchange.fail(
