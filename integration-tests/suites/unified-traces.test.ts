@@ -18,7 +18,7 @@ function persistedSummary(fixture: FlowDaemonFixture, traceID: string) {
   }
 }
 
-test('a flow run that calls a tool yields one trace with invoke_workflow above mcp.tools/call, linked to the context trace', async () => {
+test('a flow run that calls a tool yields one trace with invoke_workflow above tools/call, linked to the context trace', async () => {
   const fixture = await startFlowDaemonFixture()
   try {
     const client = await fixture.connect()
@@ -32,7 +32,7 @@ test('a flow run that calls a tool yields one trace with invoke_workflow above m
       (span) =>
         span.name.startsWith('invoke_workflow') && span.attributes['mokei.run.resumed'] !== true,
     )
-    const call = trace.spans.find((span) => span.name === 'mcp.tools/call')
+    const call = trace.spans.find((span) => span.name.startsWith('tools/call'))
     expect(root).toBeDefined()
     expect(call).toBeDefined()
     expect(call?.attributes['mokei.mcp.request']).toBeTypeOf('string')
@@ -82,7 +82,7 @@ test('a spawned proxied context yields a context trace with paired request spans
         try {
           return database
             .prepare(
-              "SELECT seq FROM mokei_spans WHERE trace_id = ? AND json_extract(data, '$.name') = 'mcp.tools/call'",
+              "SELECT seq FROM mokei_spans WHERE trace_id = ? AND json_extract(data, '$.name') LIKE 'tools/call%'",
             )
             .get(summary.traceID)
         } finally {
@@ -102,7 +102,7 @@ test('a spawned proxied context yields a context trace with paired request spans
           properties: expect.objectContaining({ method: 'notifications/cancelled' }),
         }),
       )
-      const calls = trace.spans.filter((span) => span.name === 'mcp.tools/call')
+      const calls = trace.spans.filter((span) => span.name.startsWith('tools/call'))
       expect(calls).toHaveLength(1)
       expect(calls[0]).toMatchObject({
         endTime: expect.any(Number),
