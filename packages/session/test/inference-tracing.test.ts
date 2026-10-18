@@ -1,3 +1,5 @@
+import { setFlagsFromString } from 'node:v8'
+import { runInNewContext } from 'node:vm'
 import type { Tool } from '@mokei/context-protocol'
 import type {
   AggregatedMessage,
@@ -50,6 +52,10 @@ class RateLimitError extends Error {
     this.name = 'RateLimitError'
   }
 }
+
+// Exposing gc from inside the test avoids a vitest config change for one test.
+setFlagsFromString('--expose-gc')
+const gc = runInNewContext('gc') as () => void
 
 const OPENAI: ProviderTelemetry = {
   providerName: 'openai',
@@ -365,6 +371,93 @@ describe('inference spans', () => {
     const span = onlySpan()
     expect(span.status.code).toBe(SpanStatusCode.ERROR)
     expect(span.attributes['error.type']).toBe('cancelled')
+  })
+
+  test('aborting the request ends the span as cancelled without further reads', async () => {
+    const provider = createProvider([
+      { type: 'text-delta', text: 'a', raw: {} },
+      { type: 'text-delta', text: 'b', raw: {} },
+      DONE,
+    ])
+    const request = { model: 'gpt-x', messages: USER }
+    const traced = traceStreamChat({
+      telemetry: provider.telemetry,
+      request,
+      capture: 'off',
+      start: () => provider.streamChat(request),
+    })
+    const reader = (await traced).getReader()
+    await reader.read()
+    traced.abort()
+
+    const span = onlySpan()
+    expect(span.status.code).toBe(SpanStatusCode.ERROR)
+    expect(span.attributes['error.type']).toBe('cancelled')
+    const durations = (await collect()).get('gen_ai.client.inference.duration')
+    expect(durations).toHaveLength(1)
+    expect(durations?.[0]?.attributes['error.type']).toBe('cancelled')
+  })
+
+  test('an already aborted signal ends the span once', async () => {
+    const provider = createProvider([DONE])
+    const controller = new AbortController()
+    controller.abort()
+    const request = { model: 'gpt-x', messages: USER, signal: controller.signal }
+    const stream = await traceStreamChat({
+      telemetry: provider.telemetry,
+      request,
+      capture: 'off',
+      start: () => provider.streamChat(request),
+    })
+    for await (const _chunk of fromStream(stream)) {
+      // drain
+    }
+    const span = onlySpan()
+    expect(span.attributes['error.type']).toBe('cancelled')
+    expect((await collect()).get('gen_ai.client.inference.duration')).toHaveLength(1)
+  })
+
+  test('an abandoned stream ends its span when collected', async () => {
+    const provider = createProvider([
+      { type: 'text-delta', text: 'a', raw: {} },
+      { type: 'text-delta', text: 'b', raw: {} },
+      DONE,
+    ])
+    // Scoped so no reference to the stream survives this call.
+    async function startAndAbandon(): Promise<void> {
+      const request = { model: 'gpt-x', messages: USER }
+      const stream = await traceStreamChat({
+        telemetry: provider.telemetry,
+        request,
+        capture: 'off',
+        start: () => provider.streamChat(request),
+      })
+      await stream.getReader().read()
+    }
+    await startAndAbandon()
+    expect(exporter.getFinishedSpans()).toHaveLength(0)
+
+    for (let i = 0; i < 20 && exporter.getFinishedSpans().length === 0; i++) {
+      gc()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    const span = onlySpan()
+    expect(span.status.code).toBe(SpanStatusCode.ERROR)
+    expect(span.status.message).toBe('stream abandoned')
+    expect(span.attributes['error.type']).toBe('_OTHER')
+    expect((await collect()).get('gen_ai.client.inference.duration')).toBeUndefined()
+  })
+
+  test('a custom provider telemetry name is reported', async () => {
+    await runTurn(createProvider([DONE], { providerName: 'acme' }))
+    expect(onlySpan().attributes['gen_ai.provider.name']).toBe('acme')
+  })
+
+  test('spans omit the provider name without telemetry', async () => {
+    const provider = createProvider([DONE])
+    provider.telemetry = undefined
+    await runTurn(provider)
+    expect(onlySpan().attributes['gen_ai.provider.name']).toBeUndefined()
   })
 
   test('captures redacted content when payloads are on', async () => {

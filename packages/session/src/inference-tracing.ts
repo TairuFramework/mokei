@@ -39,6 +39,13 @@ export type TraceStreamChatParams<TPart, TCall> = {
   start: () => StreamChatRequest<TPart, TCall>
 }
 
+// Ends the span of a stream that was dropped without being read to the end or cancelled. The
+// held value is the `finish` callback, which must never reference the stream it watches.
+const abandonedStreams =
+  typeof FinalizationRegistry !== 'undefined'
+    ? new FinalizationRegistry<() => void>((onAbandoned) => onAbandoned())
+    : undefined
+
 type DonePart = Extract<MessagePart<unknown, unknown>, { type: 'done' }>
 
 function errorType(error: unknown, aborted: boolean): string {
@@ -63,7 +70,8 @@ function usageFromDone(done: DonePart, telemetry: ProviderTelemetry | undefined)
 
 /**
  * Wrap a provider chat request in a GenAI inference span. The span starts with `start()` and
- * ends once: when the stream completes, errors, is cancelled, or the request rejects.
+ * ends once: when the stream completes, errors, is cancelled, the request is aborted or rejects,
+ * or the stream is garbage-collected without being consumed.
  */
 export function traceStreamChat<TPart, TCall>(
   params: TraceStreamChatParams<TPart, TCall>,
@@ -122,15 +130,24 @@ export function traceStreamChat<TPart, TCall>(
   let lastChunkAt: number | undefined
   let ended = false
 
-  function finish(failure?: { type: string; message?: string }): void {
+  // Identifies this request's registry entry; deliberately not the stream, which `finish` must not hold.
+  const abandonToken = {}
+  const abortSignals: Array<AbortSignal> = []
+
+  function finish(
+    failure?: { type: string; message?: string },
+    options: { metrics?: boolean } = {},
+  ): void {
     if (ended) return
     ended = true
+    abandonedStreams?.unregister(abandonToken)
+    for (const signal of abortSignals) signal.removeEventListener('abort', onAbort)
     if (failure === undefined) {
       span.end()
     } else {
       endSpanError(span, failure.type, failure.message)
     }
-    if (!metricsEnabled) return
+    if (!metricsEnabled || options.metrics === false) return
     const attributes = { ...baseAttributes }
     if (done?.responseModel != null) attributes['gen_ai.response.model'] = done.responseModel
     genAIInstruments().duration.record(
@@ -141,6 +158,10 @@ export function traceStreamChat<TPart, TCall>(
       done === undefined ? undefined : usageFromDone(done, telemetry),
       attributes,
     )
+  }
+
+  function onAbort(): void {
+    finish({ type: 'cancelled' })
   }
 
   // Only output-bearing parts are timed; `done` and `error` carry no generated content.
@@ -214,13 +235,23 @@ export function traceStreamChat<TPart, TCall>(
     finish({ type: errorType(error, false), message: errorMessage(error) })
     throw error
   }
+  // Abort must end the span even if the consumer never reads again.
+  for (const signal of [inner.signal, request.signal]) {
+    if (signal == null || abortSignals.includes(signal)) continue
+    if (signal.aborted) {
+      finish({ type: 'cancelled' })
+      break
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    abortSignals.push(signal)
+  }
   const isAborted = () => inner.signal.aborted || request.signal?.aborted === true
 
   // Providers may return a bare thenable; normalise to a real Promise before decorating.
   const traced = Promise.resolve(inner).then(
     (stream) => {
       const reader = stream.getReader()
-      return new ReadableStream<MessagePart<TPart, TCall>>(
+      const decorated = new ReadableStream<MessagePart<TPart, TCall>>(
         {
           async pull(controller) {
             let result: ReadableStreamReadResult<MessagePart<TPart, TCall>>
@@ -247,6 +278,12 @@ export function traceStreamChat<TPart, TCall>(
         // No read-ahead: chunks flow only when the consumer reads.
         { highWaterMark: 0 },
       )
+      abandonedStreams?.register(
+        decorated,
+        () => finish({ type: '_OTHER', message: 'stream abandoned' }, { metrics: false }),
+        abandonToken,
+      )
+      return decorated
     },
     (error: unknown) => {
       finish({ type: errorType(error, isAborted()), message: errorMessage(error) })
