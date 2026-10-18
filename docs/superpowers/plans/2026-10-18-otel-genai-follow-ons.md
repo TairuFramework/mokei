@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** planning
+**Stage:** executing
 **Mode:** tasks
 
 **Goal:** Count each logical MCP/GenAI operation once and close the small telemetry gaps left by the GenAI semconv alignment.
