@@ -34,6 +34,8 @@ export type ExchangeSpan = {
   setID(id: RequestID): void
   succeed(result: unknown): void
   fail(errorType: string, message?: string): void
+  /** Settle from a JSON-RPC error response; classification depends on the exchange direction. */
+  failRPC(error: { code: number; message?: string }): void
 }
 
 export function createExchangeTracer(getBinding: () => ClientTracing | undefined) {
@@ -74,9 +76,10 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       parent,
     )
     let settled = false
-    function finish(errorType?: string, message?: string) {
+    function finish(errorType?: string, message?: string, statusCode?: string) {
       settled = true
       open.delete(exchange)
+      if (statusCode !== undefined) span.setAttribute('rpc.response.status_code', statusCode)
       if (errorType === undefined) span.end()
       else endSpanError(span, errorType, message)
     }
@@ -102,11 +105,17 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
                 },
           )
         }
-        const outcome = responseOutcome({ result }, 'client')
+        const outcome = responseOutcome({ result }, direction)
         finish(outcome.error ? outcome.errorType : undefined)
       },
       fail(errorType, message) {
         if (!settled) finish(errorType, message)
+      },
+      failRPC(error) {
+        if (settled) return
+        const outcome = responseOutcome({ error }, direction)
+        if (outcome.error) finish(outcome.errorType, outcome.message, outcome.statusCode)
+        else finish(undefined, undefined, outcome.statusCode)
       },
     }
     open.add(exchange)

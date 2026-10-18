@@ -193,6 +193,28 @@ describe('MCP span shape', () => {
     expect(
       requestAttributes({ ...base, method: 'resources/read', params: { uri: 'file:///a' } }),
     ).toMatchObject({ 'mcp.resource.uri': 'file:///a' })
+    for (const method of [
+      'resources/read',
+      'resources/subscribe',
+      'resources/unsubscribe',
+      'notifications/resources/updated',
+    ]) {
+      expect(requestAttributes({ ...base, method, params: { uri: 'file:///a' } })).toMatchObject({
+        'mcp.resource.uri': 'file:///a',
+      })
+    }
+  })
+
+  test('prompt variables are redacted by key and capped', () => {
+    const attributes = requestAttributes({
+      direction: 'client',
+      capture: 12,
+      method: 'prompts/get',
+      params: { name: 'p', arguments: { apiKey: 'sk-secret', note: 'abcdefghijklmnop' } },
+    })
+    expect(attributes['gen_ai.prompt.variable.apiKey']).toBe('[redacted]')
+    expect(attributes['gen_ai.prompt.variable.note']).toBe('abcdefghijkl')
+    expect(attributes['mokei.payload.truncated']).toBe(true)
   })
 
   test('requestAttributes sets network and protocol version', () => {

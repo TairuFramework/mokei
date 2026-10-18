@@ -97,7 +97,7 @@ import {
   MRTR_METHODS,
   runInputRequiredFlow,
 } from './mrtr.js'
-import { capturePayload, type MessageDirection, responseOutcome } from './observation.js'
+import { capturePayload, type MessageDirection } from './observation.js'
 import { SetupReader } from './setup-reader.js'
 import {
   ACKNOWLEDGED_METHOD,
@@ -682,9 +682,7 @@ export class ContextClient<
         ) {
           exchange.fail('cancelled', error.message)
         } else if (cause instanceof RPCError) {
-          const outcome = responseOutcome({ error: cause }, 'client')
-          exchange.span.setAttribute('rpc.response.status_code', String(cause.code))
-          exchange.fail(outcome.error ? outcome.errorType : String(cause.code), cause.message)
+          exchange.failRPC(cause)
         } else {
           exchange.fail(
             cause instanceof TransportClosedError ? 'context.lost' : '_OTHER',
@@ -1315,16 +1313,18 @@ export class ContextClient<
                 () => {},
               )
             } else {
-              traced.fail(
-                settle.reason === 'cancel'
-                  ? 'cancelled'
-                  : settle.reason === 'closed'
-                    ? 'context.lost'
-                    : settle.error instanceof RPCError
-                      ? String(settle.error.code)
+              if (settle.reason === 'error' && settle.error instanceof RPCError) {
+                traced.failRPC(settle.error)
+              } else {
+                traced.fail(
+                  settle.reason === 'cancel'
+                    ? 'cancelled'
+                    : settle.reason === 'closed'
+                      ? 'context.lost'
                       : '_OTHER',
-                settle.error?.message,
-              )
+                  settle.error?.message,
+                )
+              }
               handlers.onSettle(settle)
             }
           },
@@ -1453,16 +1453,17 @@ export class ContextClient<
         exchange.succeed(result)
         return result
       } catch (cause) {
-        exchange.fail(
-          signal.aborted
-            ? 'cancelled'
-            : cause instanceof RPCError
-              ? String(cause.code)
+        if (!signal.aborted && cause instanceof RPCError) exchange.failRPC(cause)
+        else {
+          exchange.fail(
+            signal.aborted
+              ? 'cancelled'
               : cause instanceof TransportClosedError
                 ? 'context.lost'
                 : '_OTHER',
-          cause instanceof Error ? cause.message : String(cause),
-        )
+            cause instanceof Error ? cause.message : String(cause),
+          )
+        }
         throw cause
       } finally {
         signal.removeEventListener('abort', abort)

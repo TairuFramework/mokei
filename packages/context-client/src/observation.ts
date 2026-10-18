@@ -50,12 +50,16 @@ export function capturePayload(
 
   const serialised = JSON.stringify(redactPayload(value))
   if (serialised === undefined) return { payload: 'null', truncated: false }
+  return capText(serialised, cap)
+}
+
+function capText(text: string, cap: number): { payload: string; truncated: boolean } {
   const encoder = new TextEncoder()
-  if (encoder.encode(serialised).length <= cap) return { payload: serialised, truncated: false }
+  if (encoder.encode(text).length <= cap) return { payload: text, truncated: false }
 
   let payload = ''
   let bytes = 0
-  for (const character of serialised) {
+  for (const character of text) {
     const characterBytes = encoder.encode(character).length
     if (bytes + characterBytes > cap) break
     payload += character
@@ -73,6 +77,13 @@ export type NetworkInfo = {
 
 /** JSON-RPC protocol-level codes a server returns for bad requests; not server faults. */
 export const SERVER_NON_ERROR_CODES = new Set([-32700, -32600, -32601, -32602, -32002])
+
+const RESOURCE_URI_METHODS = new Set([
+  'resources/read',
+  'resources/subscribe',
+  'resources/unsubscribe',
+  'notifications/resources/updated',
+])
 
 export function requestSpanName(method: string, params?: unknown): string {
   if (
@@ -112,15 +123,21 @@ export function requestAttributes(params: {
     }
   } else if (params.method === 'prompts/get') {
     if (typeof body?.name === 'string') attributes['gen_ai.prompt.name'] = body.name
-    if (isRecord(body?.arguments) && resolvePayloadCap(params.capture) !== null) {
+    if (isRecord(body?.arguments)) {
       for (const [key, value] of Object.entries(body.arguments)) {
-        const captured = capturePayload(value, params.capture)
-        if (captured === undefined) continue
-        attributes[`gen_ai.prompt.variable.${key}`] =
-          typeof value === 'string' ? value : captured.payload
+        const redacted =
+          !PUBLIC_KEYS.has(key) && SECRET_KEY.test(key) ? '[redacted]' : redactPayload(value)
+        const cap = resolvePayloadCap(params.capture)
+        if (cap === null) continue
+        const captured =
+          typeof redacted === 'string'
+            ? capText(redacted, cap)
+            : (capturePayload(redacted, params.capture) as { payload: string; truncated: boolean })
+        attributes[`gen_ai.prompt.variable.${key}`] = captured.payload
+        if (captured.truncated) attributes['mokei.payload.truncated'] = true
       }
     }
-  } else if (params.method === 'resources/read' && typeof body?.uri === 'string') {
+  } else if (RESOURCE_URI_METHODS.has(params.method) && typeof body?.uri === 'string') {
     attributes['mcp.resource.uri'] = body.uri
   }
   if (params.protocolVersion !== undefined)
