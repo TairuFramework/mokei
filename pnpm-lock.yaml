@@ -285,8 +285,8 @@ catalogs:
       specifier: ^0.4.0
       version: 0.4.0
     '@sozai/otel':
-      specifier: ^0.3.3
-      version: 0.3.3
+      specifier: ^0.3.4
+      version: 0.3.4
     '@sozai/runtime':
       specifier: ^0.1.0
       version: 0.1.0
@@ -1043,7 +1043,7 @@ importers:
         version: 0.4.0
       '@sozai/otel':
         specifier: 'catalog:'
-        version: 0.3.3(@logtape/logtape@2.4.1)
+        version: 0.3.4(@logtape/logtape@2.4.1)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
@@ -1104,7 +1104,7 @@ importers:
         version: 0.1.6(@logtape/logtape@2.4.1)
       '@sozai/otel':
         specifier: 'catalog:'
-        version: 0.3.3(@logtape/logtape@2.4.1)
+        version: 0.3.4(@logtape/logtape@2.4.1)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
@@ -1292,7 +1292,7 @@ importers:
         version: 0.4.0(@logtape/logtape@2.4.1)
       '@sozai/otel':
         specifier: 'catalog:'
-        version: 0.3.3(@logtape/logtape@2.4.1)
+        version: 0.3.4(@logtape/logtape@2.4.1)
     devDependencies:
       '@logtape/logtape':
         specifier: 'catalog:'
@@ -1426,7 +1426,7 @@ importers:
         version: 0.3.0
       '@sozai/otel':
         specifier: 'catalog:'
-        version: 0.3.3(@logtape/logtape@2.4.1)
+        version: 0.3.4(@logtape/logtape@2.4.1)
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
@@ -1546,7 +1546,7 @@ importers:
         version: 0.1.6(@logtape/logtape@2.4.1)
       '@sozai/otel':
         specifier: 'catalog:'
-        version: 0.3.3(@logtape/logtape@2.4.1)
+        version: 0.3.4(@logtape/logtape@2.4.1)
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.2
@@ -4656,6 +4656,9 @@ packages:
 
   '@sozai/otel@0.3.3':
     resolution: {integrity: sha512-3BupLJ7FgzowI6+6fy9Bd4/f14Ide/naaR4E/SRXDRLfOfWFMdXlqn2iBqrhvF8gYMlzIgNnY9hpStZUzwilFA==}
+
+  '@sozai/otel@0.3.4':
+    resolution: {integrity: sha512-qnX2hMqHYRIKMADURHNXxfAuSzyNoyMbtz9/zNDhULsPTr2neuEOgx8BH8svRem2pJHEUb0qIISd6EOmBTOUYw==}
 
   '@sozai/result@0.2.2':
     resolution: {integrity: sha512-lz6gZMWmKekgFqWQGFw4T901ufJAjbySoOvZ57UJeAb0drm+jUJlaVNqs1Fn5Yeeylkxym2nNcwS3CDHOTObPA==}
@@ -14882,6 +14885,14 @@ snapshots:
     transitivePeerDependencies:
       - '@logtape/logtape'
 
+  '@sozai/otel@0.3.4(@logtape/logtape@2.4.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/api-logs': 0.223.0
+      '@sozai/log': 0.4.0(@logtape/logtape@2.4.1)
+    transitivePeerDependencies:
+      - '@logtape/logtape'
+
   '@sozai/result@0.2.2':
     dependencies:
       '@sozai/async': 0.4.0
@@ -21991,7 +22002,7 @@ snapshots:
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
-      postcss: 8.5.29
+      postcss: 8.5.30
       rolldown: 1.2.12
       tinyglobby: 0.2.17
     optionalDependencies:
@@ -22008,7 +22019,7 @@ snapshots:
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
-      postcss: 8.5.29
+      postcss: 8.5.30
       rolldown: 1.2.12
       tinyglobby: 0.2.17
     optionalDependencies:

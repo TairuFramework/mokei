@@ -93,6 +93,5 @@ Server-side spans (direction `server`) do not mark `-32700`, `-32600`, `-32601`,
 `setupMokeiTelemetry` sets a Resource (`service.name`, default `mokei`; `service.version`),
 registers a `MeterProvider` with an OTLP HTTP metric exporter when OTLP is configured (endpoint
 `otlp.metricsEndpoint`, else `otlp.endpoint` with a trailing `/v1/traces` replaced by
-`/v1/metrics`, else metrics off). Tracers and meters carry the GenAI schema URL. `@sozai/otel`
-`createTracerFactory` has no schema URL option, so mokei uses `trace.getTracer` directly until it
-does (requested upstream).
+`/v1/metrics`, else metrics off). Tracers and meters carry the GenAI schema URL through the `@sozai/otel`
+`createTracerFactory` / `createMeterFactory` options.

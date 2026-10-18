@@ -41,7 +41,7 @@ catalog:
   '@sozai/generator': ^0.2.2
   '@sozai/http-server': ^0.1.1
   '@sozai/log': ^0.4.0
-  '@sozai/otel': ^0.3.3
+  '@sozai/otel': ^0.3.4
   '@sozai/flow-graph': ^0.2.3
   '@sozai/json': ^0.3.0
   '@sozai/runtime': ^0.1.0
