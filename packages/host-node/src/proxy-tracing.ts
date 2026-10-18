@@ -3,7 +3,11 @@ import {
   endSpanError,
   getMokeiTracer,
   type MessageDirection,
+  mcpMetricsEnabled,
+  metricAttributes,
   type PayloadCapture,
+  recordMCPOperation,
+  recordMCPSession,
   redactCommandArgs,
   requestAttributes,
   requestSpanName,
@@ -57,13 +61,34 @@ export function createProxyTracing(params: {
     ROOT_CONTEXT,
   )
   const parent = trace.setSpan(ROOT_CONTEXT, contextSpan)
-  const open = new Map<string, { span: Span; method: string }>()
+  const open = new Map<
+    string,
+    { span: Span; method: string; params: unknown; side: MessageDirection; startedAt: number }
+  >()
+  const startedAt = performance.now()
   let protocolVersion: string | undefined
   let ended = false
   function finish(key: string, errorType?: string, message?: string, statusCode?: string): void {
     const entry = open.get(key)
     if (entry === undefined) return
     open.delete(key)
+    if (mcpMetricsEnabled())
+      recordMCPOperation({
+        side: entry.side,
+        durationS: (performance.now() - entry.startedAt) / 1000,
+        attributes: metricAttributes({
+          ...requestAttributes({
+            method: entry.method,
+            params: entry.params,
+            direction: entry.side,
+            capture: 'off',
+            protocolVersion,
+            network: { transport: 'pipe' },
+          }),
+          ...(errorType === undefined ? {} : { 'error.type': errorType }),
+          ...(statusCode === undefined ? {} : { 'rpc.response.status_code': statusCode }),
+        }),
+      })
     if (statusCode !== undefined) entry.span.setAttribute('rpc.response.status_code', statusCode)
     if (errorType === undefined) entry.span.end()
     else endSpanError(entry.span, errorType, message)
@@ -84,6 +109,9 @@ export function createProxyTracing(params: {
             params.parentFrom === 'meta' && remote !== undefined && remoteContext !== undefined
           open.set(key, {
             method,
+            params: message.params,
+            side: from,
+            startedAt: performance.now(),
             span: tracer.startSpan(
               requestSpanName(method, message.params),
               {
@@ -181,6 +209,15 @@ export function createProxyTracing(params: {
       if (ended) return
       ended = true
       for (const key of open.keys()) finish(key, `context.${reason}`)
+      if (mcpMetricsEnabled())
+        recordMCPSession({
+          durationS: (performance.now() - startedAt) / 1000,
+          attributes: metricAttributes({
+            'network.transport': 'pipe',
+            'mcp.protocol.version': protocolVersion,
+            ...(reason === 'lost' ? { 'error.type': 'context.lost' } : {}),
+          }),
+        })
       if (reason === 'lost') endSpanError(contextSpan, 'context.lost')
       else contextSpan.end()
     },

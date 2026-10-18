@@ -7,9 +7,12 @@ import {
   endSpanError,
   getMokeiTracer,
   type ListParams,
+  mcpMetricsEnabled,
+  metricAttributes,
   type NetworkInfo,
   type PayloadCapture,
   type PromptParams,
+  recordMCPSession,
   type TerminationReason,
   type ToolParams,
   type TraceParentFrom,
@@ -686,10 +689,27 @@ export class ContextHost extends Disposer {
     if (client.initializationResult != null)
       span.setAttribute('mokei.server.name', client.initializationResult.serverInfo.name)
     let settled = false
+    const startedAt = performance.now()
     this.#contextSettlers.set(key, (reason) => {
       if (settled) return
       settled = true
       client.endTracing(reason)
+      if (mcpMetricsEnabled())
+        recordMCPSession({
+          durationS: (performance.now() - startedAt) / 1000,
+          attributes: metricAttributes({
+            ...(network === undefined
+              ? {}
+              : {
+                  'network.transport': network.transport,
+                  'network.protocol.name': network.protocolName,
+                  'server.address': network.serverAddress,
+                  'server.port': network.serverPort,
+                }),
+            'mcp.protocol.version': currentProtocolVersion(client),
+            ...(reason === 'lost' ? { 'error.type': 'context.lost' } : {}),
+          }),
+        })
       if (httpTransport?.sessionID != null)
         span.setAttribute('mcp.session.id', httpTransport.sessionID)
       if (reason === 'lost') endSpanError(span, 'context.lost')

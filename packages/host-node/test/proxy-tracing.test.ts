@@ -3,9 +3,11 @@ import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
 import { expect, test, vi } from 'vitest'
 
 import { createProxyTracing } from '../src/proxy-tracing.js'
+import { useTestMetrics } from './support/metrics.js'
 import { useTestTracing } from './support/otel.js'
 
 const { exporter } = useTestTracing()
+const { collect } = useTestMetrics()
 const result = { content: [{ type: 'text', text: 'ok' }] }
 function fixture() {
   return createProxyTracing({
@@ -284,3 +286,42 @@ test('payload capture follows the content gate', () => {
   expect(span?.attributes['gen_ai.tool.call.result']).toBeUndefined()
   expect(span?.events[0]?.attributes).toEqual({})
 })
+
+test('client request records client operation duration, server request records server', async () => {
+  const proxy = fixture()
+  proxy.observe('client', { id: 1, method: 'tools/call', params: { name: 'echo' } })
+  proxy.observe('server', { id: 1, error: { code: -32000, message: 'boom' } })
+  proxy.observe('server', { id: 'r', method: 'roots/list', params: {} })
+  proxy.observe('client', { id: 'r', result: { roots: [] } })
+  proxy.end('stopped')
+  const collected = await collect()
+  const client = collected.get('mcp.client.operation.duration') ?? []
+  expect(client).toHaveLength(1)
+  expect(client[0]?.attributes).toMatchObject({
+    'mcp.method.name': 'tools/call',
+    'gen_ai.tool.name': 'echo',
+    'error.type': '-32000',
+    'rpc.response.status_code': '-32000',
+    'network.transport': 'pipe',
+  })
+  const server = collected.get('mcp.server.operation.duration') ?? []
+  expect(server).toHaveLength(1)
+  expect(server[0]?.attributes).toMatchObject({ 'mcp.method.name': 'roots/list' })
+  expect(Object.keys(server[0]?.attributes ?? {}).some((k) => k.startsWith('mokei.'))).toBe(false)
+})
+
+for (const reason of ['stopped', 'lost'] as const) {
+  test(`end(${reason}) records session duration`, async () => {
+    const proxy = fixture()
+    proxy.observe('client', { id: 1, method: 'initialize', params: {} })
+    proxy.observe('server', { id: 1, result: { protocolVersion: '2025-11-25' } })
+    proxy.end(reason)
+    const points = (await collect()).get('mcp.client.session.duration') ?? []
+    expect(points).toHaveLength(1)
+    expect(points[0]?.attributes).toMatchObject({
+      'network.transport': 'pipe',
+      'mcp.protocol.version': '2025-11-25',
+    })
+    expect(points[0]?.attributes['error.type']).toBe(reason === 'lost' ? 'context.lost' : undefined)
+  })
+}

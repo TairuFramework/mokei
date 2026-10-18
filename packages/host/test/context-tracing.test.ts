@@ -11,6 +11,9 @@ import { Disposer } from '@sozai/async'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
 import { ContextHost } from '../src/host.js'
+import { useTestMetrics } from './support/metrics.js'
+
+const { collect } = useTestMetrics()
 
 const exporter = new InMemorySpanExporter()
 const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] })
@@ -327,3 +330,34 @@ test.each([false, true])(
     ).toBe('discovered-server')
   },
 )
+
+test('tools/call round trip records client operation duration without identifiers', async () => {
+  const f = await fixture()
+  await f.transports.server.write({ jsonrpc: '2.0', id: f.id, result: { content: [] } })
+  await f.pending
+  await f.host.remove('test')
+  const points = (await collect()).get('mcp.client.operation.duration') ?? []
+  const point = points.find((p) => p.attributes['mcp.method.name'] === 'tools/call')
+  expect(point?.attributes).toMatchObject({
+    'gen_ai.tool.name': 'echo',
+    'mcp.protocol.version': '2025-11-25',
+  })
+  for (const key of Object.keys(point?.attributes ?? {})) {
+    expect(key).not.toMatch(/^(jsonrpc\.|mcp\.session\.id|mokei\.)/)
+  }
+})
+
+for (const reason of ['stopped', 'lost'] as const) {
+  test(`removing a context records session duration (${reason})`, async () => {
+    const f = await fixture()
+    const rejected = f.pending.catch(() => {})
+    if (reason === 'stopped') await f.host.remove('test')
+    else await f.host.remove('test', reason)
+    await rejected
+    const points = (await collect()).get('mcp.client.session.duration') ?? []
+    expect(points).toHaveLength(1)
+    expect(points[0]?.value).toMatchObject({ count: 1 })
+    expect(points[0]?.attributes['error.type']).toBe(reason === 'lost' ? 'context.lost' : undefined)
+    expect(points[0]?.attributes['mcp.protocol.version']).toBe('2025-11-25')
+  })
+}

@@ -3,6 +3,7 @@ import type { Context, Link, Span } from '@opentelemetry/api'
 import { context, ROOT_CONTEXT, SpanKind, trace } from '@opentelemetry/api'
 import { extractW3CTraceContext } from '@sozai/otel'
 
+import { mcpMetricsEnabled, metricAttributes, recordMCPOperation } from './mcp-metrics.js'
 import {
   capturePayload,
   type NetworkInfo,
@@ -78,9 +79,27 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       parent,
     )
     let settled = false
+    const startedAt = performance.now()
     function finish(errorType?: string, message?: string, statusCode?: string) {
       settled = true
       open.delete(exchange)
+      if (mcpMetricsEnabled())
+        recordMCPOperation({
+          side: direction,
+          durationS: (performance.now() - startedAt) / 1000,
+          attributes: metricAttributes({
+            ...requestAttributes({
+              method,
+              params,
+              direction,
+              capture: 'off',
+              protocolVersion: binding?.getProtocolVersion?.(),
+              network: binding?.network,
+            }),
+            ...(errorType === undefined ? {} : { 'error.type': errorType }),
+            ...(statusCode === undefined ? {} : { 'rpc.response.status_code': statusCode }),
+          }),
+        })
       if (statusCode !== undefined) span.setAttribute('rpc.response.status_code', statusCode)
       if (errorType === undefined) span.end()
       else endSpanError(span, errorType, message)

@@ -51,6 +51,9 @@ catalog:
   '@opentelemetry/context-async-hooks': ^2.12.0
   '@opentelemetry/exporter-trace-otlp-http': ^0.223.0
   '@opentelemetry/sdk-trace-base': ^2.12.0
+  '@opentelemetry/sdk-metrics': ^2.12.0
+  '@opentelemetry/exporter-metrics-otlp-http': ^0.223.0
+  '@opentelemetry/resources': ^2.12.0
   '@sozai/stream': ^0.2.2
   '@teikyo/oauth': ^0.1.0
   '@standard-schema/spec': ^1.1.0

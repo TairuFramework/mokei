@@ -41,6 +41,12 @@ export {
   type ValidationIssue,
 } from './errors.js'
 export {
+  mcpMetricsEnabled,
+  metricAttributes,
+  recordMCPOperation,
+  recordMCPSession,
+} from './mcp-metrics.js'
+export {
   DEFAULT_MAX_ROUNDS,
   type InputRequiredResult,
   type InputRequiredRetryParams,
