@@ -46,11 +46,8 @@ status `development`), so standard GenAI backends and dashboards read mokei tele
 
 ## Known trade-offs
 
-- With the daemon proxy and an instrumented caller both exporting, one tool call yields two `tools/call`
-  spans and inflated MCP client metrics.
-- MRTR retry legs each emit an `execute_tool` span with the same tool call ID.
 - Release intents stay `patch` (0.14.x band) although span names, attributes and success status changed.
 
 ## Status
 
-All planned work shipped. Follow-ons were picked up on the same branch before merge.
+All planned work shipped. Follow-ons: [OTel GenAI semconv follow-ons](2026-10-18-otel-genai-follow-ons.complete.md).
