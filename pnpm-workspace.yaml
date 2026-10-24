@@ -24,22 +24,22 @@ publicHoistPattern:
 
 catalog:
   '@biomejs/biome': ^2.5.0
-  '@enkaku/client': ^0.22.1
-  '@enkaku/http-fetch': ^0.22.1
-  '@enkaku/http-serve': ^0.22.1
-  '@enkaku/node-streams': ^0.22.1
-  '@enkaku/protocol': ^0.22.1
-  '@enkaku/react': ^0.22.1
-  '@enkaku/server': ^0.22.1
-  '@enkaku/socket': ^0.22.1
-  '@enkaku/transport': ^0.22.1
-  '@kokuin/token': ^0.6.1
+  '@enkaku/client': ^0.22.2
+  '@enkaku/http-fetch': ^0.22.2
+  '@enkaku/http-serve': ^0.22.2
+  '@enkaku/node-streams': ^0.22.2
+  '@enkaku/protocol': ^0.22.2
+  '@enkaku/react': ^0.22.2
+  '@enkaku/server': ^0.22.2
+  '@enkaku/socket': ^0.22.2
+  '@enkaku/transport': ^0.22.2
+  '@kokuin/token': ^0.6.2
   '@logtape/logtape': ^2.4.2
   '@sozai/async': ^0.4.1
   '@sozai/codec': ^0.4.3
   '@sozai/event': ^0.1.6
   '@sozai/generator': ^0.2.2
-  '@sozai/http-server': ^0.2.0
+  '@sozai/http-server': ^0.2.1
   '@sozai/log': ^0.4.0
   '@sozai/otel': ^0.4.0
   '@sozai/flow-graph': ^0.3.0
@@ -55,22 +55,22 @@ catalog:
   '@opentelemetry/exporter-metrics-otlp-http': ^0.300.0
   '@opentelemetry/resources': ^3.0.0
   '@sozai/stream': ^0.2.2
-  '@teikyo/oauth': ^0.1.0
+  '@teikyo/oauth': ^0.2.0
   '@standard-schema/spec': ^1.1.0
   '@tejika/cli': ^0.6.0
-  '@tejika/db': ^0.3.0
+  '@tejika/db': ^0.4.0
   '@tejika/env': ^0.5.3
-  '@tejika/log': ^0.4.1
+  '@tejika/log': ^0.4.2
   '@tejika/process': ^0.6.0
   '@tejika/server': ^0.5.0
   '@tejika/test': ^0.5.0
   '@tejika/ui': ^0.5.0
-  '@hozon/adapter': ^0.1.0
-  '@hozon/db': ^0.3.0
-  '@hozon/logtape': ^0.1.1
-  '@hozon/otel': ^0.1.1
-  '@hozon/store-log': ^0.2.4
-  '@hozon/store-telemetry': ^0.2.3
+  '@hozon/adapter': ^0.2.1
+  '@hozon/db': ^0.5.0
+  '@hozon/logtape': ^0.4.0
+  '@hozon/otel': ^0.4.0
+  '@hozon/store-log': ^0.4.0
+  '@hozon/store-telemetry': ^0.4.0
   '@inkjs/ui': ^2.0.0
   '@mantine/code-highlight': ^9.7.3
   '@mantine/core': ^9.7.3
