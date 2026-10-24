@@ -55,7 +55,7 @@ catalog:
   '@opentelemetry/exporter-metrics-otlp-http': ^0.300.0
   '@opentelemetry/resources': ^3.0.0
   '@sozai/stream': ^0.2.2
-  '@teikyo/oauth': ^0.1.0
+  '@teikyo/oauth': ^0.2.0
   '@standard-schema/spec': ^1.1.0
   '@tejika/cli': ^0.6.0
   '@tejika/db': ^0.4.0
