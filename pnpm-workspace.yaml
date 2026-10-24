@@ -76,20 +76,20 @@ catalog:
   '@mantine/core': ^9.7.3
   '@mantine/hooks': ^9.7.3
   '@mantine/notifications': ^9.7.3
-  '@modelcontextprotocol/client': 2.3.1
-  '@modelcontextprotocol/core': 2.3.1
+  '@modelcontextprotocol/client': 2.4.0
+  '@modelcontextprotocol/core': 2.4.0
   '@modelcontextprotocol/ext-tasks': 0.2.2
-  '@modelcontextprotocol/node': 2.1.1
-  '@modelcontextprotocol/server': 2.3.1
+  '@modelcontextprotocol/node': 2.1.2
+  '@modelcontextprotocol/server': 2.4.0
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
   '@testing-library/react': ^16.3.3
   '@testing-library/user-event': ^14.6.8
   '@tabler/icons-react': ^3.49.0
-  '@tanstack/react-router': ^1.170.45
-  '@tanstack/react-virtual': ^3.14.21
+  '@tanstack/react-router': ^1.170.46
+  '@tanstack/react-virtual': ^3.14.22
   '@tanstack/router-devtools': ^1.167.2
-  '@tanstack/router-plugin': ^1.168.47
+  '@tanstack/router-plugin': ^1.168.48
   '@types/luxon': ^3.7.6
   '@types/node': ^26.6.5
   '@types/react': ^19.3.0
@@ -100,7 +100,7 @@ catalog:
   ansi-colors: ^4.1.3
   del-cli: ^7.0.0
   eventsource-parser: ^4.1.2
-  execa: ^10.2.0
+  execa: ^10.2.1
   get-port: ^7.2.0
   globals: ^17.13.0
   hono: ^4.13.13
@@ -140,6 +140,7 @@ minimumReleaseAgeExclude:
   - '@hozon/*'
   - '@kigu/*'
   - '@kokuin/*'
+  - '@modelcontextprotocol/*'
   - '@sozai/*'
   - '@teikyo/*'
   - '@tejika/*'
@@ -181,6 +182,12 @@ versioning:
       - '@mokei/session-node'
       - '@mokei/system-one-client'
       - 'mokei'
+  ignore:
+    - 'mokei-integration-tests'
+    - 'monitor'
+    - 'website'
+  changelog:
+    storage: repository
 
 supportedArchitectures:
   cpu: [ current ]

@@ -1,3 +1,13 @@
+"@mokei/anthropic-provider@0.15.0":
+  dir: packages/anthropic-provider
+  intents:
+    - otel-genai
+"@mokei/app-node@0.15.0":
+  dir: packages/app-node
+  intents:
+    - flows
+    - otel-genai
+    - stack-alignment
 "@mokei/context-client@0.11.0":
   dir: packages/context-client
   intents:
@@ -16,6 +26,16 @@
     - brave-owls-rename
     - quick-cats-prove
     - tidy-setup-timeout
+"@mokei/context-client@0.15.0":
+  dir: packages/context-client
+  intents:
+    - decision-flow
+    - flows
+    - mcp-tasks
+    - otel-genai
+    - params-objects
+    - session-split
+    - stack-alignment
 "@mokei/context-protocol@0.11.0":
   dir: packages/context-protocol
   intents:
@@ -36,6 +56,11 @@
   dir: packages/context-protocol
   intents:
     - quick-cats-prove
+"@mokei/context-protocol@0.15.0":
+  dir: packages/context-protocol
+  intents:
+    - mcp-tasks
+    - params-objects
 "@mokei/context-rpc@0.11.0":
   dir: packages/context-rpc
   intents:
@@ -52,6 +77,17 @@
   dir: packages/context-rpc
   intents:
     - brave-owls-rename
+"@mokei/context-rpc@0.15.0":
+  dir: packages/context-rpc
+  intents:
+    - flows
+    - otel-genai
+    - params-objects
+    - stack-alignment
+"@mokei/context-server-node@0.15.0":
+  dir: packages/context-server-node
+  intents:
+    - stack-alignment
 "@mokei/context-server@0.11.0":
   dir: packages/context-server
   intents:
@@ -69,11 +105,79 @@
   intents:
     - brave-owls-rename
     - quick-cats-prove
+"@mokei/context-server@0.15.0":
+  dir: packages/context-server
+  intents:
+    - decision-flow
+    - flows
+    - mcp-tasks
+    - params-objects
+    - stack-alignment
+"@mokei/decision-flow-server@0.15.0":
+  dir: packages/decision-flow-server
+  intents:
+    - decision-flow
+    - flows
+    - mcp-tasks
+    - stack-alignment
+"@mokei/decision-flow@0.15.0":
+  dir: packages/decision-flow
+  intents:
+    - decision-flow
+    - flows
+    - otel-genai
+    - stack-alignment
+"@mokei/flow-client@0.15.0":
+  dir: packages/flow-client
+  intents:
+    - flows
+    - params-objects
+    - stack-alignment
+"@mokei/flow-host-node@0.15.0":
+  dir: packages/flow-host-node
+  intents:
+    - flows
+    - otel-genai
+    - params-objects
+    - stack-alignment
+"@mokei/flow-host@0.15.0":
+  dir: packages/flow-host
+  intents:
+    - flows
+    - otel-genai
+    - params-objects
+    - stack-alignment
+"@mokei/host-desktop@0.15.0":
+  dir: packages/host-desktop
+  intents:
+    - flows
+    - params-objects
+    - stack-alignment
+"@mokei/host-monitor@0.15.0":
+  dir: packages/host-monitor
+  intents:
+    - flows
+    - stack-alignment
 "@mokei/host-node@0.14.0":
   dir: packages/host-node
   intents:
     - brave-owls-rename
     - calm-otters-split
+"@mokei/host-node@0.15.0":
+  dir: packages/host-node
+  intents:
+    - flows
+    - otel-genai
+    - params-objects
+    - session-split
+    - stack-alignment
+"@mokei/host-protocol@0.15.0":
+  dir: packages/host-protocol
+  intents:
+    - flows
+    - otel-genai
+    - params-objects
+    - stack-alignment
 "@mokei/host@0.11.0":
   dir: packages/host
   intents:
@@ -92,6 +196,14 @@
     - brave-owls-rename
     - calm-otters-split
     - quick-cats-prove
+"@mokei/host@0.15.0":
+  dir: packages/host
+  intents:
+    - flows
+    - otel-genai
+    - params-objects
+    - session-split
+    - stack-alignment
 "@mokei/http-client@0.11.0":
   dir: packages/http-client
   intents:
@@ -109,6 +221,13 @@
   intents:
     - brave-owls-rename
     - firm-oauth-edges
+"@mokei/http-client@0.15.0":
+  dir: packages/http-client
+  intents:
+    - http-oauth
+    - mcp-tasks
+    - params-objects
+    - stack-alignment
 "@mokei/http-server@0.11.0":
   dir: packages/http-server
   intents:
@@ -126,18 +245,55 @@
   intents:
     - brave-owls-rename
     - firm-oauth-edges
+"@mokei/http-server@0.15.0":
+  dir: packages/http-server
+  intents:
+    - http-oauth
+    - mcp-tasks
+    - params-objects
+    - stack-alignment
+"@mokei/llama-provider@0.15.0":
+  dir: packages/llama-provider
+  intents:
+    - otel-genai
+    - stack-alignment
+"@mokei/mcp-system-one@0.15.0":
+  dir: mcp-servers/system-one
+  intents:
+    - decision-flow
+    - system-one
 "@mokei/model-provider@0.14.0":
   dir: packages/model-provider
   intents:
     - brave-owls-rename
+"@mokei/model-provider@0.15.0":
+  dir: packages/model-provider
+  intents:
+    - otel-genai
+    - params-objects
+"@mokei/ollama-provider@0.15.0":
+  dir: packages/ollama-provider
+  intents:
+    - otel-genai
 "@mokei/openai-provider@0.11.0":
   dir: packages/openai-provider
   intents:
     - mcp-2026-07-28
+"@mokei/openai-provider@0.15.0":
+  dir: packages/openai-provider
+  intents:
+    - otel-genai
 "@mokei/session-node@0.14.0":
   dir: packages/session-node
   intents:
     - calm-otters-split
+"@mokei/session-node@0.15.0":
+  dir: packages/session-node
+  intents:
+    - otel-genai
+    - params-objects
+    - session-split
+    - stack-alignment
 "@mokei/session@0.11.0":
   dir: packages/session
   intents:
@@ -147,11 +303,26 @@
   intents:
     - brave-owls-rename
     - calm-otters-split
+"@mokei/session@0.15.0":
+  dir: packages/session
+  intents:
+    - decision-flow
+    - otel-genai
+    - params-objects
+    - session-split
+    - stack-alignment
 "@mokei/system-one-client@0.14.0":
   dir: packages/system-one-client
   intents:
     - brave-owls-rename
     - tidy-system-one-names
+"@mokei/system-one-client@0.15.0":
+  dir: packages/system-one-client
+  intents:
+    - otel-genai
+    - params-objects
+    - stack-alignment
+    - system-one
 mokei@0.11.0:
   dir: packages/cli
   intents:
@@ -160,3 +331,10 @@ mokei@0.13.1:
   dir: packages/cli
   intents:
     - public-geese-fail
+mokei@0.15.0:
+  dir: packages/cli
+  intents:
+    - flows
+    - otel-genai
+    - params-objects
+    - stack-alignment

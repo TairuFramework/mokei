@@ -1,6 +1,6 @@
 {
   "name": "@mokei/decision-flow",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Mokei decision flow node kind for flow graphs",
   "keywords": [
     "model",
