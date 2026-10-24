@@ -11,7 +11,7 @@ import {
 import type { TraceSummary } from '@mokei/host-protocol'
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
-import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
+import { TracerProvider } from '@opentelemetry/sdk-trace'
 import { openLocalDatabase } from '@tejika/db'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
@@ -37,7 +37,7 @@ afterEach(async () => {
   await db.close()
 })
 function start() {
-  return new BasicTracerProvider({ spanProcessors: [recorder] })
+  return new TracerProvider({ spanProcessors: [recorder] })
     .getTracer('reader-test')
     .startSpan('root')
 }

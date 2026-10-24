@@ -1,4 +1,4 @@
-import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
+import { TracerProvider } from '@opentelemetry/sdk-trace'
 import { expect, test } from 'vitest'
 
 import { toOpenSpan, toStoredSpan } from '../src/index.js'
@@ -6,7 +6,7 @@ import { toOpenSpan, toStoredSpan } from '../src/index.js'
 test('public span converters preserve identity and attributes', async () => {
   const opens: Array<ReturnType<typeof toOpenSpan>> = []
   const stored: Array<ReturnType<typeof toStoredSpan>> = []
-  const provider = new BasicTracerProvider({
+  const provider = new TracerProvider({
     spanProcessors: [
       {
         onStart: (span) => {

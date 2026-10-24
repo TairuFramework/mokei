@@ -9,11 +9,7 @@ import {
   type SystemOneResult,
 } from '@mokei/system-one-client'
 import { type Context, context, ROOT_CONTEXT, SpanKind, trace } from '@opentelemetry/api'
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
+import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { type LogRecord, reset as resetLogging, setup as setupLogging } from '@sozai/log'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -24,8 +20,8 @@ import { useTestMetrics } from './support/metrics.js'
 const testMetrics = useTestMetrics()
 const storage = new AsyncLocalStorage<Context>()
 const exporter = new InMemorySpanExporter()
-const provider = new BasicTracerProvider({
-  spanProcessors: [new SimpleSpanProcessor(exporter)],
+const provider = new TracerProvider({
+  spanProcessors: [new SimpleSpanProcessor({ exporter })],
 })
 
 beforeAll(() => {

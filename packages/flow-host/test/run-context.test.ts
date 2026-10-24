@@ -7,11 +7,7 @@ import { createMemoryTaskStore } from '@mokei/context-server'
 import * as wiringModule from '@mokei/decision-flow-server'
 import type { Context } from '@opentelemetry/api'
 import { context, ROOT_CONTEXT, trace } from '@opentelemetry/api'
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
+import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { parseTraceparent } from '@sozai/otel'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
@@ -22,7 +18,7 @@ import { createFixture, echoFlow } from './fixture.js'
 
 const storage = new AsyncLocalStorage<Context>()
 const exporter = new InMemorySpanExporter()
-const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] })
+const provider = new TracerProvider({ spanProcessors: [new SimpleSpanProcessor({ exporter })] })
 const fixtures: Array<Awaited<ReturnType<typeof createFixture>>> = []
 const logs: Array<{ record: LogRecord; traceID: string | undefined }> = []
 const logger = getLogger(['mokei', 'run-context-test'])

@@ -64,7 +64,7 @@
     "@mokei/context-server-node": "workspace:^",
     "@opentelemetry/context-async-hooks": "catalog:",
     "@opentelemetry/sdk-metrics": "catalog:",
-    "@opentelemetry/sdk-trace-base": "catalog:",
+    "@opentelemetry/sdk-trace": "catalog:",
     "@types/node": "catalog:"
   }
 }

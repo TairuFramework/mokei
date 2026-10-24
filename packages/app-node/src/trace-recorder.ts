@@ -7,7 +7,7 @@ import type { Sink } from '@logtape/logtape'
 import type { OpenSpan, TraceLog, TraceSummary, TracingInfo } from '@mokei/host-protocol'
 import type { Context } from '@opentelemetry/api'
 import { isSpanContextValid, SpanStatusCode, trace } from '@opentelemetry/api'
-import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-base'
+import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace'
 import { toJSONValue } from '@sozai/json'
 import { getReporter, renderLogMessage } from '@sozai/log'
 

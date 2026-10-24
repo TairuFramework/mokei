@@ -60,7 +60,7 @@
   "devDependencies": {
     "@logtape/logtape": "catalog:",
     "@opentelemetry/sdk-metrics": "catalog:",
-    "@opentelemetry/sdk-trace-base": "catalog:",
+    "@opentelemetry/sdk-trace": "catalog:",
     "@types/node": "catalog:"
   }
 }

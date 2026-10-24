@@ -12,11 +12,7 @@ import type {
   StreamChatRequest,
 } from '@mokei/model-provider'
 import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
-import {
-  AlwaysOffSampler,
-  BasicTracerProvider,
-  type ReadableSpan,
-} from '@opentelemetry/sdk-trace-base'
+import { AlwaysOffSampler, type ReadableSpan, TracerProvider } from '@opentelemetry/sdk-trace'
 import { fromStream } from '@sozai/generator'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -290,7 +286,7 @@ describe('inference spans', () => {
 
   test('skips content work when the span is not recording', async () => {
     trace.disable()
-    const offProvider = new BasicTracerProvider({ sampler: new AlwaysOffSampler() })
+    const offProvider = new TracerProvider({ sampler: new AlwaysOffSampler() })
     trace.setGlobalTracerProvider(offProvider)
     try {
       vi.mocked(content.toInputMessages).mockClear()

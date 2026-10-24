@@ -1,6 +1,6 @@
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
-import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { BatchSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 import * as logging from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 import { expect, test, vi } from 'vitest'
@@ -10,13 +10,13 @@ import { useTestStores } from './support/stores.js'
 
 const stores = useTestStores()
 
-vi.mock('@opentelemetry/sdk-trace-base', { spy: true })
+vi.mock('@opentelemetry/sdk-trace', { spy: true })
 vi.mock('@opentelemetry/context-async-hooks', { spy: true })
 vi.mock('@tejika/log', () => ({ createFileSink: vi.fn() }))
 
 test('rejects existing logging and telemetry without allocation', async () => {
   const constructors = [
-    BasicTracerProvider,
+    TracerProvider,
     BatchSpanProcessor,
     AsyncLocalStorageContextManager,
     createFileSink,
@@ -35,7 +35,7 @@ test('rejects existing logging and telemetry without allocation', async () => {
   for (const factory of constructors) expect(factory).not.toHaveBeenCalled()
   logging.reset()
 
-  const provider = new BasicTracerProvider()
+  const provider = new TracerProvider()
   expect(trace.setGlobalTracerProvider(provider)).toBe(true)
   const manager = new AsyncLocalStorageContextManager().enable()
   for (const factory of constructors) vi.mocked(factory).mockClear()
@@ -59,7 +59,7 @@ test('rejects existing logging and telemetry without allocation', async () => {
 test('the recorder replaces the local batch exporter and dispose flushes it before returning', async () => {
   const { db, logStore, telemetryStore } = await stores()
   const stderr = vi.spyOn(console, 'error').mockImplementation(() => {})
-  const shutdown = vi.spyOn(BasicTracerProvider.prototype, 'shutdown')
+  const shutdown = vi.spyOn(TracerProvider.prototype, 'shutdown')
   const onEvent = vi.fn()
   const handle = setupMokeiTelemetry({
     provider: db,

@@ -6,11 +6,7 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
-import {
-  BasicTracerProvider,
-  BatchSpanProcessor,
-  type SpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
+import { BatchSpanProcessor, type SpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 import { raceAttempt, settleSequential, TimeoutInterruption } from '@sozai/async'
 import { getConsoleSink, isSetup, reset, setup } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
@@ -78,14 +74,14 @@ export function setupMokeiTelemetry(params: {
     const processors: Array<SpanProcessor> = [recorder]
     rollback.push(() => recorder.shutdown())
     if (params.otlp) {
-      const processor = new BatchSpanProcessor(
-        new OTLPTraceExporter({
+      const processor = new BatchSpanProcessor({
+        exporter: new OTLPTraceExporter({
           url: params.otlp.endpoint,
           headers: params.otlp.headers,
           timeoutMillis: EXPORT_TIMEOUT_MS,
         }),
-        { exportTimeoutMillis: EXPORT_TIMEOUT_MS },
-      )
+        exportTimeoutMillis: EXPORT_TIMEOUT_MS,
+      })
       processors.push(processor)
       rollback.push(() => processor.shutdown())
     }
@@ -93,10 +89,9 @@ export function setupMokeiTelemetry(params: {
       'service.name': params.service?.name ?? 'mokei',
       ...(params.service?.version == null ? {} : { 'service.version': params.service.version }),
     })
-    const provider = new BasicTracerProvider({
+    const provider = new TracerProvider({
       resource,
       spanProcessors: processors,
-      forceFlushTimeoutMillis: EXPORT_TIMEOUT_MS,
     })
     rollback.length = 0
     rollback.push(() => recorder.shutdown())
@@ -187,7 +182,7 @@ export function setupMokeiTelemetry(params: {
       dispose() {
         disposal ??= settleSequential(
           [
-            () => provider.forceFlush(),
+            () => provider.forceFlush({ timeoutMillis: EXPORT_TIMEOUT_MS }),
             // Shutdown exports a final metrics batch.
             ...(meterProvider ? [() => shutdownProvider(meterProvider)] : []),
             // Exporter shutdown may wait on an HTTP response after the processor's timeout.

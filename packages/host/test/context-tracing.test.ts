@@ -2,11 +2,7 @@ import { DirectTransports } from '@enkaku/transport'
 import { ContextClient } from '@mokei/context-client'
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
 import { context, ROOT_CONTEXT, SpanStatusCode, trace } from '@opentelemetry/api'
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
+import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 import { Disposer } from '@sozai/async'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
@@ -16,7 +12,7 @@ import { useTestMetrics } from './support/metrics.js'
 const { collect } = useTestMetrics()
 
 const exporter = new InMemorySpanExporter()
-const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] })
+const provider = new TracerProvider({ spanProcessors: [new SimpleSpanProcessor({ exporter })] })
 const hosts: Array<ContextHost> = []
 beforeAll(() => {
   trace.setGlobalTracerProvider(provider)

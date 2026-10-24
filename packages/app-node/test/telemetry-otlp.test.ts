@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { metrics, trace } from '@opentelemetry/api'
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace'
 import { getLogger } from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 import { expect, test, vi } from 'vitest'
@@ -10,7 +10,7 @@ import { setupMokeiTelemetry } from '../src/index.js'
 import { useTestStores } from './support/stores.js'
 
 const stores = useTestStores()
-vi.mock('@opentelemetry/sdk-trace-base', { spy: true })
+vi.mock('@opentelemetry/sdk-trace', { spy: true })
 
 const file = vi.hoisted(() => ({ sink: vi.fn(), dispose: vi.fn() }))
 vi.mock('@tejika/log', () => ({

@@ -1,10 +1,6 @@
 import { type SystemOneBackend, SystemOneClient } from '@mokei/system-one-client'
 import { trace } from '@opentelemetry/api'
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
+import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 import {
   createFlowGraph,
   defineNodeKind,
@@ -402,8 +398,8 @@ describe('createDecisionFlowGraph', () => {
 
   test('records error messages only when recordErrorMessages is enabled', async () => {
     const exporter = new InMemorySpanExporter()
-    const provider = new BasicTracerProvider({
-      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    const provider = new TracerProvider({
+      spanProcessors: [new SimpleSpanProcessor({ exporter })],
     })
     trace.setGlobalTracerProvider(provider)
     try {

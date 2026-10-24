@@ -8,7 +8,7 @@ import {
   ToolOutputValidationError,
 } from '@mokei/context-server'
 import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
-import { AlwaysOffSampler, BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
+import { AlwaysOffSampler, TracerProvider } from '@opentelemetry/sdk-trace'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -941,7 +941,7 @@ describe('local tool execute_tool spans', () => {
     expect(reads).toBeGreaterThan(0)
     reads = 0
     trace.disable()
-    trace.setGlobalTracerProvider(new BasicTracerProvider({ sampler: new AlwaysOffSampler() }))
+    trace.setGlobalTracerProvider(new TracerProvider({ sampler: new AlwaysOffSampler() }))
     try {
       await run('on')
     } finally {

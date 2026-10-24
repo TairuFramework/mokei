@@ -4,7 +4,7 @@ import { getTelemetryStore } from '@hozon/store-telemetry'
 import type { LogRecord } from '@logtape/logtape'
 import { context, ROOT_CONTEXT, SpanStatusCode, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
-import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
+import { TracerProvider } from '@opentelemetry/sdk-trace'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { openMokeiDatabase } from '../src/database.js'
@@ -17,7 +17,7 @@ import {
 
 let db: HozonDB
 let recorder: LocalTraceRecorder
-let provider: BasicTracerProvider
+let provider: TracerProvider
 let events: Array<TraceRecorderEvent>
 beforeEach(async () => {
   vi.useFakeTimers()
@@ -36,7 +36,7 @@ function setup(params: Partial<TraceRecorderParams> = {}) {
     onEvent: (event) => events.push(event),
     ...params,
   })
-  provider = new BasicTracerProvider({ spanProcessors: [recorder] })
+  provider = new TracerProvider({ spanProcessors: [recorder] })
   return provider.getTracer('recorder-test')
 }
 async function settle() {

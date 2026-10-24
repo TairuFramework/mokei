@@ -1,6 +1,6 @@
 import { context, trace } from '@opentelemetry/api'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
-import type * as TraceSDK from '@opentelemetry/sdk-trace-base'
+import type * as TraceSDK from '@opentelemetry/sdk-trace'
 import * as logging from '@sozai/log'
 import { createFileSink } from '@tejika/log'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -22,11 +22,11 @@ const owned = vi.hoisted(() => ({
   shutdown: vi.fn(async () => {}),
   fileDispose: vi.fn(),
 }))
-vi.mock('@opentelemetry/sdk-trace-base', async (importOriginal) => {
+vi.mock('@opentelemetry/sdk-trace', async (importOriginal) => {
   const actual = await importOriginal<typeof TraceSDK>()
   return {
     ...actual,
-    BasicTracerProvider: vi.fn(function createProvider() {
+    TracerProvider: vi.fn(function createProvider() {
       return {
         forceFlush: owned.forceFlush,
         shutdown: owned.shutdown,

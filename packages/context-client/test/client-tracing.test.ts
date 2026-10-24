@@ -4,7 +4,7 @@ import { META_SUBSCRIPTION_ID } from '@mokei/context-protocol'
 import { RPCError, TransportClosedError } from '@mokei/context-rpc'
 import type { Attributes } from '@opentelemetry/api'
 import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api'
-import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { getMokeiLogger } from '../../logger/src/index.js'

@@ -1,7 +1,7 @@
 import type { StoredSpan } from '@hozon/store-telemetry'
 import type { OpenSpan } from '@mokei/host-protocol'
 import type { Attributes, HrTime } from '@opentelemetry/api'
-import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
+import type { ReadableSpan } from '@opentelemetry/sdk-trace'
 import { toJSONValue } from '@sozai/json'
 
 function milliseconds(time: HrTime): number {

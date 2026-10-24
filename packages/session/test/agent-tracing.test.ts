@@ -8,7 +8,7 @@ import type {
   StreamChatRequest,
 } from '@mokei/model-provider'
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api'
-import type { ReadableSpan } from '@opentelemetry/sdk-trace-base'
+import type { ReadableSpan } from '@opentelemetry/sdk-trace'
 import { describe, expect, test } from 'vitest'
 
 import { type AgentParams, AgentSession, Session } from '../src/index.js'

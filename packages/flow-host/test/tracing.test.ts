@@ -6,11 +6,7 @@ import { createMemoryTaskStore } from '@mokei/context-server'
 import type { Predictor } from '@mokei/decision-flow'
 import type { Context } from '@opentelemetry/api'
 import { context, ROOT_CONTEXT, trace } from '@opentelemetry/api'
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base'
+import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 import type { FlowDefinition } from '@sozai/flow-graph'
 import {
   extractW3CTraceContext,
@@ -29,7 +25,7 @@ import { useTestMetrics } from './support/metrics.js'
 const metricsHarness = useTestMetrics()
 const storage = new AsyncLocalStorage<Context>()
 const exporter = new InMemorySpanExporter()
-const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] })
+const provider = new TracerProvider({ spanProcessors: [new SimpleSpanProcessor({ exporter })] })
 const fixtures: Array<Awaited<ReturnType<typeof createFixture>>> = []
 beforeAll(() => {
   context.setGlobalContextManager({
