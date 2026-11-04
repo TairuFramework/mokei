@@ -11,6 +11,7 @@ import { EventEmitter } from '@sozai/event'
 import { describe, expect, test } from 'vitest'
 
 import { createHTTPHandler, type HTTPHandlerParams } from '../src/handler.js'
+import { mcpHeaders } from './mcp-headers.js'
 
 /**
  * A `2026-07-28`-capable server config with resources declared, so that `resources.subscribe`
@@ -69,6 +70,7 @@ function listenRequest(id: string | number, filter: Record<string, unknown> = {}
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': '2026-07-28',
+      ...mcpHeaders('subscriptions/listen'),
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -87,6 +89,7 @@ function discoverRequest(id: string | number = 1): Request {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': '2026-07-28',
+      ...mcpHeaders('server/discover'),
     },
     body: JSON.stringify({
       jsonrpc: '2.0',

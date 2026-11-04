@@ -114,8 +114,12 @@ caches per tool from `tools/list`, so a peer that changes a tool's schema afterw
 cache stale. The transport recovers on its own: a `tools/call` rejected with `-32020` naming an
 `Mcp-Param-*` header triggers its own `tools/list` to refresh the annotations, and the call is
 re-sent once if the header set changed. Callers see an ordinary successful call, at the cost of up
-to two extra round trips. The HTTP server does not read any of these headers. Conformance of the
-encoder, and the retry itself, are covered by SDK interop tests instead.
+to two extra round trips. The HTTP server checks `MCP-Protocol-Version`, `Mcp-Method` and
+`Mcp-Name` against the body of every `2026-07-28` POST (`validateStandardHeaders`). It requires
+them on requests, and rejects a missing or disagreeing header with `400` and `-32020`. Both sides
+read the method-to-field table from `MCP_NAME_HEADER_SOURCE` in `@mokei/context-protocol`. The
+server does not check `Mcp-Param-*` headers yet. Conformance of the encoder, and the retry
+itself, are covered by SDK interop tests.
 
 ### MCP Tasks
 
@@ -176,15 +180,17 @@ On the server, `@mokei/http-server` builds on `@sozai/http-server` and provides 
 `@teikyo/oauth`; verified identity is available to task handlers for owner binding.
 
 Scopes work at two levels. The server-wide `requiredScopes` are checked by the `@teikyo/oauth`
-bearer gate in front of the route. Per-tool `createTool({ scopes })` is checked inside
-`createHTTPHandler`, after the body is parsed and before dispatch, through
-`ContextServer.requiredScopes(request)`. On `2025-11-25` the session server is asked before the
-request is queued. On `2026-07-28` the per-POST server is asked through `runStatelessExchange`'s
-`authorize` hook. A token missing a tool's scopes gets `403` with
-`WWW-Authenticate: Bearer error="insufficient_scope", scope=<server-wide + tool scopes>` and a
-JSON-RPC error body. The `Mcp-Method` and `Mcp-Name` headers are not used for this, because the
-server does not check them against the body. `ContextServer` enforces tool scopes itself whenever
-a request carries auth. The client middleware steps up on that `403`: it re-authorises for the
+bearer gate in front of the route. Per-entry scopes (`createTool({ scopes })`,
+`createPrompt({ scopes })` and `ResourceDefinitions.scopes`, a list or a function of the URI) are
+checked inside `createHTTPHandler` on `tools/call`, `prompts/get` and `resources/read`, after the
+body is parsed and before dispatch, through `ContextServer.requiredScopes(request)`. On
+`2025-11-25` the session server is asked before the request is queued. On `2026-07-28` the
+per-POST server is asked through `runStatelessExchange`'s `authorize` hook, after the standard
+headers have been validated. A token missing the scopes gets `403` with
+`WWW-Authenticate: Bearer error="insufficient_scope", scope=<server-wide + entry scopes>` and a
+JSON-RPC error body. `ContextServer` enforces the same scopes itself whenever a request carries
+auth. `tools/list` and `prompts/list` advertise them under `_meta['dev.mokei/scopes']` and are
+never filtered by the caller's scopes, so step-up can unlock any entry. The client middleware steps up on that `403`: it re-authorises for the
 union of configured, held and challenged scopes, then retries once. It records
 `StoredTokens.requestedScopes` so refreshes keep the wider set.
 

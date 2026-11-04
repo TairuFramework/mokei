@@ -152,6 +152,12 @@ export type TypedPromptHandler<Arguments> = (
 export type GenericPromptDefinition = {
   description: string
   argumentsSchema?: Schema
+  /**
+   * OAuth scopes a caller's token must hold to get this prompt, on top of any server-wide
+   * scopes. Enforced on `prompts/get` like {@link GenericToolDefinition.scopes}, and listed in
+   * `prompts/list` under `_meta['dev.mokei/scopes']`.
+   */
+  scopes?: Array<string>
   handler: GenericPromptHandler
 }
 
@@ -182,6 +188,13 @@ export type ResourceDefinitions = {
   list?: ListResourcesHandler | Array<Resource>
   listTemplates?: ListResourceTemplatesHandler | Array<ResourceTemplate>
   read: ReadResourceHandler
+  /**
+   * OAuth scopes a caller's token must hold to read a resource, on top of any server-wide
+   * scopes: the same list for every URI, or a function of the URI. Enforced on `resources/read`
+   * like {@link GenericToolDefinition.scopes}. Must be synchronous: the HTTP server calls it
+   * before dispatch to decide on a `403`.
+   */
+  scopes?: Array<string> | ((uri: string) => Array<string>)
 }
 
 export type ResourceHandlers = {
@@ -222,8 +235,9 @@ export type GenericToolDefinition = {
   /**
    * OAuth scopes a caller's token must hold to call this tool, on top of any server-wide
    * scopes. Enforced only when the request carries auth: the HTTP server answers `403
-   * insufficient_scope` before dispatch, and `ContextServer` rejects the call itself. Never
-   * advertised in `tools/list`.
+   * insufficient_scope` before dispatch, and `ContextServer` rejects the call itself. Listed in
+   * `tools/list` under `_meta['dev.mokei/scopes']` (see `SCOPES_META_KEY`) so a client can ask
+   * for them up front.
    */
   scopes?: Array<string>
   handler: GenericToolHandler

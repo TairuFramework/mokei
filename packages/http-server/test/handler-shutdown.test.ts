@@ -10,6 +10,7 @@ import { EventEmitter } from '@sozai/event'
 import { describe, expect, test } from 'vitest'
 
 import { createHTTPHandler, type HTTPHandlerParams } from '../src/handler.js'
+import { statelessHeaders } from './mcp-headers.js'
 
 const SERVER_CONFIG: ServerConfig = {
   name: 'shutdown-test-server',
@@ -33,11 +34,13 @@ const LISTEN_MESSAGE = {
 } as const
 
 function postRequest(message: Record<string, unknown>): Request {
+  const stateless = message.method !== 'initialize'
   return new Request('http://localhost/mcp', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
+      ...(stateless ? statelessHeaders(String(message.method)) : {}),
     },
     body: JSON.stringify(message),
   })

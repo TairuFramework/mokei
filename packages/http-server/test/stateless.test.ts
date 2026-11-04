@@ -7,6 +7,7 @@ import {
   type HTTPHandler,
   type HTTPHandlerParams,
 } from '../src/handler.js'
+import { mcpHeaders, statelessHeaders } from './mcp-headers.js'
 
 const SERVER_CONFIG: ServerConfig = {
   name: 'stateless-test-server',
@@ -50,6 +51,7 @@ function statelessRequest(
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': version,
+      ...mcpHeaders(method, params),
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -75,6 +77,7 @@ function statelessNotification(method: string, params: Record<string, unknown> =
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': '2026-07-28',
+      ...mcpHeaders(method, params),
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -160,6 +163,7 @@ function blockingRequest(signal?: AbortSignal): Request {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': '2026-07-28',
+      ...mcpHeaders('tools/call', { name: 'block' }),
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -573,27 +577,36 @@ describe('stateless 2026-07-28 POST path', () => {
         }),
       )
       expect(response.status).toBe(400)
-      // Asserted on the mismatch wording, not on the header name: the neighbouring
+      // Asserted on the JSON-RPC code, not on the header name: the neighbouring
       // `Unsupported MCP-Protocol-Version` rejection is also a `400` naming the header, so a
       // looser assertion would pass even if the wrong one of the two answered.
-      expect(await response.text()).toContain('does not match')
+      const error = ((await response.json()) as { error: { code: number; data: unknown } }).error
+      expect(error.code).toBe(-32020)
+      expect(error.data).toEqual({
+        mismatch: { header: 'MCP-Protocol-Version', body: expect.stringContaining('2025-11-25') },
+      })
     } finally {
       handler.dispose()
     }
   })
 
-  test('accepts a request whose _meta version is present and header absent', async () => {
+  test('rejects a request whose MCP-Protocol-Version header is absent (SEP-2243)', async () => {
     const handler = createHandler()
     try {
       const body = await statelessRequest('tools/list').json()
       const response = await handler.handleRequest(
         new Request('http://localhost/mcp', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...mcpHeaders('tools/list') },
           body: JSON.stringify(body),
         }),
       )
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(400)
+      const error = ((await response.json()) as { error: { code: number; data: unknown } }).error
+      expect(error.code).toBe(-32020)
+      expect(error.data).toEqual({
+        mismatch: { header: 'MCP-Protocol-Version', body: expect.stringContaining('absent') },
+      })
     } finally {
       handler.dispose()
     }
@@ -631,7 +644,7 @@ describe('stateless 2026-07-28 POST path', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'MCP-Protocol-Version': '2026-07-28',
+            ...statelessHeaders('tools/list'),
           },
           body: JSON.stringify({
             jsonrpc: '2.0',

@@ -83,10 +83,10 @@ but their shape depends on the verifier. Forward `auth` and `resolveAuth` from `
 `ContextServer`. On `2025-11-25` sessions, `resolveAuth` gives each request the auth of the token
 that carried it, so scopes and expiry stay current after a refresh.
 
-### Per-tool scopes
+### Per-tool, prompt and resource scopes
 
-`auth.scopes` (or `serveHTTP`'s `auth.requiredScopes`) is required on every request. A tool can
-also require scopes of its own:
+`auth.scopes` (or `serveHTTP`'s `auth.requiredScopes`) is required on every request. Tools,
+prompts and resources can also require scopes of their own:
 
 ```typescript
 const tools = {
@@ -97,22 +97,42 @@ const tools = {
     handler: () => ({ content: [] }),
   }),
 }
+const prompts = {
+  audit: createPrompt({ description: 'Audit log', scopes: ['admin'], handler }),
+}
+const resources = {
+  read,
+  // One list for every URI, or a synchronous function of the URI.
+  scopes: (uri: string) => (uri.startsWith('admin://') ? ['admin'] : []),
+}
 ```
 
-When a `tools/call` carries a token without the tool's scopes, the handler answers before the
-call reaches the server, on both revisions. The response is `403` with a JSON-RPC error body and
-a challenge naming the server-wide scopes and the tool's scopes:
+When a `tools/call`, `prompts/get` or `resources/read` carries a token without the scopes it
+needs, the handler answers before the request reaches the server, on both revisions. The response
+is `403` with a JSON-RPC error body and a challenge naming the server-wide scopes and the
+entry's scopes:
 
 ```
 WWW-Authenticate: Bearer error="insufficient_scope", scope="tools:read admin",
-  resource_metadata="…", error_description="Tool purge requires scope admin"
+  resource_metadata="…", error_description="tools/call purge requires scope admin"
 ```
 
-The tool is read from the parsed body, never from the `Mcp-Method` or `Mcp-Name` headers, which
-this server does not check against the body. `ContextServer` enforces the scopes too, whenever a
-request carries auth. Without auth (stdio, or HTTP without OAuth), scopes are not enforced.
-Scopes are not listed in `tools/list`. `@mokei/http-client`'s OAuth middleware steps up on this
-challenge.
+The check reads the parsed body. `ContextServer` enforces the scopes too, whenever a request
+carries auth. Without auth (stdio, or HTTP without OAuth), scopes are not enforced.
+`tools/list` and `prompts/list` advertise each entry's scopes under
+`_meta['dev.mokei/scopes']` (`SCOPES_META_KEY`), and list every entry whatever the caller's
+scopes, so step-up can unlock it. `@mokei/http-client`'s OAuth middleware steps up on the `403`.
+
+### Standard request headers
+
+On `2026-07-28`, POSTs must carry the SEP-2243 standard headers, and they must agree with the
+body. A request needs `MCP-Protocol-Version` (equal to its `_meta` revision) and `Mcp-Method`.
+On `tools/call`, `prompts/get`, `resources/read` and `tasks/get|update|cancel` it also needs
+`Mcp-Name`, decoded from the `=?base64?…?=` sentinel when wrapped. Notifications are only checked
+for disagreement. Any failure answers `400` with JSON-RPC `-32020` and
+`data.mismatch: { header, body }`, before the scope check. `@mokei/http-client` always sends
+these headers. Callers that build requests by hand must add them. `validateStandardHeaders` and
+`decodeHeaderValue` are exported. `Mcp-Param-*` headers are not checked yet.
 
 A `2025-11-25` session is bound to the issuer and subject that sent `initialize`. A request from
 any other identity that names the session (POST, GET or DELETE) gets the same `404` as an

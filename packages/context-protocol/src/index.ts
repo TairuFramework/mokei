@@ -26,6 +26,7 @@ export {
   type ElicitFormResult,
   elicitFormFields,
 } from './elicitation-form.js'
+export { MCP_NAME_HEADER_SOURCE } from './http-headers.js'
 export type {
   ClientCapabilities,
   Implementation,

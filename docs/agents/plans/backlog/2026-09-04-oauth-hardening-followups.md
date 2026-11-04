@@ -10,11 +10,11 @@ bypass; each needs its own design.
 
 ## Items
 
-- **Per-tool scope follow-ons.** Per-tool scopes and `403` step-up shipped
-  (`completed/2026-11-04-per-tool-oauth-scopes.complete.md`). Still open: advertising tool scopes
-  in `tools/list` or filtering the list by the caller's scopes; scopes on prompts and resources;
-  and a gate in front of the handler keyed on the `Mcp-Method` / `Mcp-Name` headers, which first
-  needs the server to reject requests whose headers do not match the body.
+- **`Mcp-Param-*` validation on the server.** The HTTP server validates `MCP-Protocol-Version`,
+  `Mcp-Method` and `Mcp-Name` (`completed/2026-11-04-oauth-scope-follow-ons.complete.md`) but not
+  the `Mcp-Param-*` headers. Checking them needs each tool's `x-mcp-header` annotations on the
+  server, so `collectHeaderAnnotations` would move out of `@mokei/http-client`. Not a security
+  item: the scope check reads the body.
 
 - **Daemon-held tokens, keychain store, logout.** The daemon could own the token store,
   refreshes and sign-in prompts for every context. An OS keychain store would implement

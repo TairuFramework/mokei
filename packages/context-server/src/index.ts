@@ -18,6 +18,7 @@ export {
   missingScopes,
   type RequestAuth,
   type ResolveAuth,
+  SCOPES_META_KEY,
   type ServerAuth,
   toRequestAuth,
   toTaskOwner,

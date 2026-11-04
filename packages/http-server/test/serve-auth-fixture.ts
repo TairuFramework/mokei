@@ -3,6 +3,7 @@ import type { OAuthTokenVerifier } from '@teikyo/oauth'
 import { expect } from 'vitest'
 
 import { serveHTTP } from '../src/serve.js'
+import { mcpHeaders } from './mcp-headers.js'
 
 export const RESOURCE = 'http://127.0.0.1/mcp'
 export const RESOURCE_METADATA_URL = 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp'
@@ -47,6 +48,7 @@ export function requestToolsList(baseURL: string, token?: string): Promise<Respo
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': '2026-07-28',
+      ...mcpHeaders('tools/list'),
       ...(token == null ? {} : { Authorization: `Bearer ${token}` }),
     },
     body: JSON.stringify({

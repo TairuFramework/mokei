@@ -3,6 +3,7 @@ import { ContextServer, createTaskManager, type ServerConfig } from '@mokei/cont
 import { describe, expect, test } from 'vitest'
 
 import { createHTTPHandler, type HTTPHandlerParams } from '../src/handler.js'
+import { statelessHeaders } from './mcp-headers.js'
 
 const SERVER_CONFIG: ServerConfig = {
   name: 'test-server',
@@ -128,7 +129,11 @@ describe('createHTTPHandler', () => {
     const makeRequest = () =>
       new Request('http://localhost/mcp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': 'attacker' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': 'attacker',
+          ...statelessHeaders('server/discover'),
+        },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,

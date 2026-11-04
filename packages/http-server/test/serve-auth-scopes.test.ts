@@ -1,9 +1,10 @@
-import { ContextServer, createTool } from '@mokei/context-server'
+import { ContextServer, createPrompt, createTool } from '@mokei/context-server'
 import type { OAuthTokenVerifier } from '@teikyo/oauth'
 import { TokenVerificationError } from '@teikyo/oauth'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { serveHTTP } from '../src/serve.js'
+import { mcpHeaders, statelessHeaders } from './mcp-headers.js'
 
 const RESOURCE = 'http://127.0.0.1/mcp'
 const RESOURCE_METADATA_URL = 'http://127.0.0.1/.well-known/oauth-protected-resource/mcp'
@@ -66,6 +67,23 @@ async function start() {
             },
           }),
         },
+        prompts: {
+          audit: createPrompt({
+            description: 'Needs admin',
+            scopes: ['admin'],
+            handler: () => {
+              calls.push('audit')
+              return { messages: [] }
+            },
+          }),
+        },
+        resources: {
+          scopes: (uri) => (uri.startsWith('admin://') ? ['admin'] : []),
+          read: ({ params }) => {
+            calls.push(params.uri)
+            return { contents: [{ uri: params.uri, text: 'x' }] }
+          },
+        },
       }),
     port: 0,
     hostname: '127.0.0.1',
@@ -92,6 +110,7 @@ function statelessCall(
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': '2026-07-28',
+      ...mcpHeaders('tools/call', { name }),
       ...headers,
     },
     body: JSON.stringify({
@@ -100,6 +119,24 @@ function statelessCall(
       method: 'tools/call',
       params: { name, arguments: {}, _meta: META },
     }),
+  })
+}
+
+function statelessRequest(
+  url: string,
+  token: string,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<Response> {
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      ...statelessHeaders(method, params),
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 7, method, params: { ...params, _meta: META } }),
   })
 }
 
@@ -151,14 +188,44 @@ describe('per-tool scopes over HTTP (2026-07-28)', () => {
     expect(calls).toEqual(['echo'])
   })
 
-  test('decides from the body, not from Mcp-Method and Mcp-Name headers', async () => {
+  test('an Mcp-Name naming a different tool is rejected 400 before any scope check', async () => {
     const { url, calls } = await start()
     const response = await statelessCall(url, 'reader', 'purge', {
       'Mcp-Method': 'tools/call',
       'Mcp-Name': 'echo',
     })
-    await expectInsufficientScope(response)
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: { code: number; data: unknown } }
+    expect(body.error.code).toBe(-32020)
+    expect(body.error.data).toEqual({
+      mismatch: { header: 'Mcp-Name', body: expect.stringContaining('"echo"') },
+    })
     expect(calls).toEqual([])
+  })
+})
+
+describe('prompt and resource scopes over HTTP (2026-07-28)', () => {
+  test('prompts/get answers 403 without the prompt scope', async () => {
+    const { url, calls } = await start()
+    const response = await statelessRequest(url, 'reader', 'prompts/get', { name: 'audit' })
+    await expectInsufficientScope(response)
+    expect(response.headers.get('WWW-Authenticate')).toContain('prompts/get audit requires')
+    expect(calls).toEqual([])
+    const allowed = await statelessRequest(url, 'admin', 'prompts/get', { name: 'audit' })
+    expect(allowed.status).toBe(200)
+    await allowed.text()
+    expect(calls).toEqual(['audit'])
+  })
+
+  test('resources/read answers 403 only for the URIs that need a scope', async () => {
+    const { url, calls } = await start()
+    await expectInsufficientScope(
+      await statelessRequest(url, 'reader', 'resources/read', { uri: 'admin://keys' }),
+    )
+    const open = await statelessRequest(url, 'reader', 'resources/read', { uri: 'doc://readme' })
+    expect(open.status).toBe(200)
+    await open.text()
+    expect(calls).toEqual(['doc://readme'])
   })
 })
 

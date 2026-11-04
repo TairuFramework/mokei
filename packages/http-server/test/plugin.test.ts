@@ -11,6 +11,7 @@ import { createDIDVerifier, oauthResourcePlugin } from '@teikyo/oauth'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { type AuthInfo, type MCPPluginParams, MOKEI_MCP, mcpPlugin } from '../src/index.js'
+import { statelessHeaders } from './mcp-headers.js'
 import {
   expectBearerChallenge,
   expectToolsList,
@@ -160,6 +161,7 @@ describe('mokei:mcp plugin', () => {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json, text/event-stream',
+          ...statelessHeaders('tools/list'),
         },
         body: JSON.stringify({
           jsonrpc: '2.0',
@@ -305,6 +307,7 @@ describe('mokei:mcp plugin', () => {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json, text/event-stream',
+        ...statelessHeaders('subscriptions/listen'),
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
