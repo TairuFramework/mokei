@@ -20,6 +20,7 @@ import {
   INVALID_REQUEST,
   isInputRequiredResult,
   METHOD_NOT_FOUND,
+  MOKEI_VERSION,
   PROTOCOLS,
 } from '@mokei/context-protocol'
 import { createValidator } from '@sozai/schema'
@@ -265,7 +266,7 @@ describe('ContextClient', () => {
         capabilities: {},
         clientInfo: {
           name: 'Mokei',
-          version: '0.4.0',
+          version: MOKEI_VERSION,
         },
         protocolVersion: '2025-11-25',
       },

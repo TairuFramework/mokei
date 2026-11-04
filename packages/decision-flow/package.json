@@ -41,6 +41,7 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@mokei/context-protocol": "workspace:^",
     "@mokei/logger": "workspace:^",
     "@mokei/system-one-client": "workspace:^",
     "@opentelemetry/api": "catalog:",

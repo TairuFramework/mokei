@@ -1,4 +1,8 @@
-import { type CallToolResult, MISSING_REQUIRED_CLIENT_CAPABILITY } from '@mokei/context-protocol'
+import {
+  type CallToolResult,
+  MISSING_REQUIRED_CLIENT_CAPABILITY,
+  MOKEI_VERSION,
+} from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import type {
   JSONValue,
@@ -209,7 +213,7 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
   return {
     config: {
       name: 'decision-flow',
-      version: '0.14.0',
+      version: MOKEI_VERSION,
       protocolVersions: ['2026-07-28'],
       tasks: params.tasks,
       tools,

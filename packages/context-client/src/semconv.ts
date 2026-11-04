@@ -1,3 +1,4 @@
+import { MOKEI_VERSION } from '@mokei/context-protocol'
 import { type Meter, type Span, SpanStatusCode, type Tracer } from '@opentelemetry/api'
 import { createMeterFactory, createTracerFactory } from '@sozai/otel'
 
@@ -29,8 +30,10 @@ export const TOKEN_BUCKETS: ReadonlyArray<number> = [
   1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864,
 ]
 
-const tracerFactory = createTracerFactory('mokei', undefined, { schemaUrl: SEMCONV_SCHEMA_URL })
-const meterFactory = createMeterFactory('mokei', undefined, { schemaUrl: SEMCONV_SCHEMA_URL })
+const tracerFactory = createTracerFactory('mokei', MOKEI_VERSION, {
+  schemaUrl: SEMCONV_SCHEMA_URL,
+})
+const meterFactory = createMeterFactory('mokei', MOKEI_VERSION, { schemaUrl: SEMCONV_SCHEMA_URL })
 
 export function getMokeiTracer(scope: string): Tracer {
   return tracerFactory(scope)

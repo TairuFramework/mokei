@@ -4,7 +4,7 @@ import type {
   ServerConfig,
   ToolDefinitions,
 } from '@mokei/context-server'
-import { createTool } from '@mokei/context-server'
+import { createTool, MOKEI_VERSION } from '@mokei/context-server'
 import Turndown from 'turndown'
 // @ts-expect-error no types
 import { gfm } from 'turndown-plugin-gfm'
@@ -96,7 +96,7 @@ export function createFetchTools(options: FetchToolsOptions = {}) {
 export function createFetchConfig(options: FetchToolsOptions = {}) {
   return {
     name: 'fetch',
-    version: '0.1.0',
+    version: MOKEI_VERSION,
     // Both revisions: these ship with mokei and are what its host and CLI point at by
     // default, so they must answer a `2026-07-28` client -- while still reaching every
     // client that only speaks `2025-11-25`, including the current SDK release.

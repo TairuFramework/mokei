@@ -55,6 +55,7 @@ import {
   isSupportedProtocolVersion,
   META_SUBSCRIPTION_ID,
   METHOD_NOT_FOUND,
+  MOKEI_VERSION,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   serverMessage,
@@ -153,7 +154,7 @@ const validateAnyServerMessage = createValidator<Schema, ServerMessage>(serverMe
 
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'Mokei',
-  version: '0.4.0',
+  version: MOKEI_VERSION,
 }
 
 // '2025-11-25' rather than the latest protocol version: it is the only supported revision

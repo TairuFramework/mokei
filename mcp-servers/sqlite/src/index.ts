@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import {
   createTool,
   type ExtractServerTypes,
+  MOKEI_VERSION,
   type Schema,
   type ServerConfig,
   type ToolDefinitions,
@@ -91,7 +92,7 @@ export function createSQLiteConfig(db: DatabaseSync) {
   // every tool's arguments as `never`, so the typed client could not be called at all.
   return {
     name: 'sqlite',
-    version: '0.1.0',
+    version: MOKEI_VERSION,
     // Both revisions: these ship with mokei and are what its host and CLI point at by
     // default, so they must answer a `2026-07-28` client -- while still reaching every
     // client that only speaks `2025-11-25`, including the current SDK release.

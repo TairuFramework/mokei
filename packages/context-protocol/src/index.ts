@@ -142,6 +142,7 @@ export {
   type ToolAnnotations,
   type ToolListChangedNotification,
 } from './tool.js'
+export { MOKEI_VERSION } from './version.js'
 export {
   type ClientMessage,
   type ClientNotification,
