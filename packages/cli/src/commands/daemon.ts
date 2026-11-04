@@ -52,10 +52,9 @@ async function waitReady({ socketPath, signal }: DaemonCommandContext) {
       info = await bounded(connection.client.request('info'), signal, deadline)
     }
     if (info.flowService.state === 'failed') {
-      const { message, issues = [] } = info.flowService.error
-      throw new Error(
-        [`Flow service failed: ${message}`, ...issues.map((issue) => `  ${issue}`)].join('\n'),
-      )
+      const { message, path, issues = [] } = info.flowService.error
+      const summary = `Flow service failed: ${message}${path === undefined ? '' : ` (${path})`}`
+      throw new Error([summary, ...issues.map((issue) => `  ${issue}`)].join('\n'))
     }
     return { flowService: info.flowService }
   } finally {

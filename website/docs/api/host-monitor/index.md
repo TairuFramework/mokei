@@ -24,9 +24,13 @@ npm install @mokei/host-monitor
 
 > **port**: `number`
 
-##### server
+##### token
 
-> **server**: `ServerType`
+> **token**: `string`
+
+##### url
+
+> **url**: `string`
 
 ***
 
@@ -38,21 +42,21 @@ npm install @mokei/host-monitor
 
 ##### port?
 
-> `optional` **port**: `number`
+> `optional` **port?**: `number`
 
 ##### socketPath?
 
-> `optional` **socketPath**: `string`
+> `optional` **socketPath?**: `string`
 
 ## Functions
 
 ### startMonitor()
 
-> **startMonitor**(`params`): `Promise`\<[`Monitor`](#monitor)\>
+> **startMonitor**(`params?`): `Promise`\<[`Monitor`](#monitor)\>
 
 #### Parameters
 
-##### params
+##### params?
 
 [`MonitorParams`](#monitorparams) = `{}`
 

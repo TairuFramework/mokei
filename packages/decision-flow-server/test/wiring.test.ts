@@ -10,7 +10,12 @@ import {
 import type { FlowDefinition } from '@sozai/flow-graph'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { type AuthorizeResult, type FlowApprovalRequest, flowToolName } from '../src/index.js'
+import {
+  type AuthorizeResult,
+  type FlowApprovalRequest,
+  flowToolName,
+  RegisteredFlowError,
+} from '../src/index.js'
 import {
   hostToolCaller,
   markDecisionFlowContext,
@@ -904,8 +909,13 @@ test('elicitation guard covers callee input nodes', async () => {
 test('rejects a registered flow with a null node', async () => {
   const value = session()
   const broken = { ...flow, id: 'broken', nodes: { x: null } } as unknown as FlowDefinition
-  await expect(addDecisionFlow(value, { key: 'flow', flows: [broken] })).rejects.toThrow(
-    'Invalid registered flow broken',
+  const rejection = addDecisionFlow(value, { key: 'flow', flows: [broken] })
+  await expect(rejection).rejects.toThrow('Invalid registered flow broken')
+  const error = await rejection.catch((reason: unknown) => reason)
+  expect(error).toBeInstanceOf(RegisteredFlowError)
+  expect((error as RegisteredFlowError).flowID).toBe('broken')
+  expect((error as RegisteredFlowError).issues).toEqual(
+    expect.arrayContaining([expect.objectContaining({ path: ['nodes', 'x'] })]),
   )
 })
 

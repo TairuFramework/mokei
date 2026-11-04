@@ -1,3 +1,4 @@
+import { MOKEI_VERSION } from '@mokei/context-protocol'
 import {
   type PredictResult,
   type QuestionMap,
@@ -34,8 +35,8 @@ const GEN_AI_DURATION_BUCKETS = [
 ]
 const PROVIDER_NAME = 'mokei.system_one'
 
-const getTracer = createTracerFactory('mokei', undefined, { schemaUrl: SEMCONV_SCHEMA_URL })
-const getMeter = createMeterFactory('mokei', undefined, { schemaUrl: SEMCONV_SCHEMA_URL })
+const getTracer = createTracerFactory('mokei', MOKEI_VERSION, { schemaUrl: SEMCONV_SCHEMA_URL })
+const getMeter = createMeterFactory('mokei', MOKEI_VERSION, { schemaUrl: SEMCONV_SCHEMA_URL })
 
 let durationHistogram: Histogram | undefined
 let durationProvider: MeterProvider | undefined

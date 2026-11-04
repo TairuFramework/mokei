@@ -1,4 +1,8 @@
-import { type CallToolResult, MISSING_REQUIRED_CLIENT_CAPABILITY } from '@mokei/context-protocol'
+import {
+  type CallToolResult,
+  MISSING_REQUIRED_CLIENT_CAPABILITY,
+  MOKEI_VERSION,
+} from '@mokei/context-protocol'
 import { RPCError } from '@mokei/context-rpc'
 import type {
   JSONValue,
@@ -13,6 +17,7 @@ import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
 import { MAX_FLOW_DEPTH, readFlowDepth } from './call-meta.js'
 import { checkFlow } from './definition-checks.js'
 import { type ResumeDataV1, startRun } from './driver.js'
+import { RegisteredFlowError } from './flow-errors.js'
 import { flowInputSchema, flowSummaries, flowToolName } from './flow-tools.js'
 import type { PredictorFactory } from './predictor.js'
 import { createRecovery, recoveryToolMap } from './recovery.js'
@@ -185,7 +190,13 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
       predictor: params.predictor,
       elicitation: elicitation(),
     })
-    if (checked.issues) throw new Error(`Invalid registered flow ${flow.id}: ${checked.formatted}`)
+    if (checked.issues) {
+      throw new RegisteredFlowError({
+        flowID: flow.id,
+        issues: checked.issues,
+        message: `Invalid registered flow ${flow.id}: ${checked.formatted}`,
+      })
+    }
     tools[name] = {
       description: flow.name,
       inputSchema: inputSchema as ToolDefinitions[string]['inputSchema'],
@@ -202,7 +213,7 @@ export async function createDecisionFlowServer(params: DecisionFlowServerParams)
   return {
     config: {
       name: 'decision-flow',
-      version: '0.14.0',
+      version: MOKEI_VERSION,
       protocolVersions: ['2026-07-28'],
       tasks: params.tasks,
       tools,

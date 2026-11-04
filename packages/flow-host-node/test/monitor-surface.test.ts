@@ -248,3 +248,23 @@ test('notification closes on target disconnect and delegates status and attentio
   await delivery?.closed
   expect(surface.status()).toBe('unavailable')
 })
+test.each(['notify', 'prompt'] as const)(
+  '%s abort after delivery withdraws once and closes the delivery',
+  async (method) => {
+    const { surface, connect } = setup()
+    const target = connect(true, true)
+    const controller = new AbortController()
+    const operation = surface[method]?.(item, { signal: controller.signal })
+    pong(target)
+    await flush()
+    target.tab.receive({ type: 'ack', attemptID: 'attempt', shown: true })
+    const delivery = await operation
+    expect(delivery).not.toBeNull()
+    controller.abort()
+    await delivery?.closed
+    delivery?.close()
+    target.tab.disconnect()
+    expect(target.messages.map((m) => m.type)).toEqual(['ping', method, 'withdraw'])
+    expect(vi.getTimerCount()).toBe(0)
+  },
+)

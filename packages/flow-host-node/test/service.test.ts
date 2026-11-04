@@ -52,6 +52,7 @@ function setup(
   const order: Array<string> = []
   const events: Array<HostEvent> = []
   const errors: Array<unknown> = []
+  const reports: Array<string | undefined> = []
   const messages: Array<string> = []
   const adapter: FlowDesktopAdapter = {
     canPrompt: () => true,
@@ -90,8 +91,9 @@ function setup(
         order.push('retention')
       },
     }),
-    report: (error) => {
+    report: (error, message) => {
       errors.push(error)
+      reports.push(message)
     },
     ...overrides,
   }
@@ -108,7 +110,7 @@ function setup(
     dependencies,
   )
   cleanup.push(() => service.dispose().catch(() => {}))
-  return { service, dependencies, order, events, errors, messages }
+  return { service, dependencies, order, events, errors, reports, messages }
 }
 
 test('recovery gates readiness and announces the committed inbox snapshot once', async () => {
@@ -369,7 +371,12 @@ test('real malformed config and flow JSON fail before creating the session', asy
   })
   await invalidFlows.service.start()
   expect(invalidConfig.service.status()).toMatchObject({ state: 'failed' })
-  expect(invalidFlows.service.status()).toMatchObject({ state: 'failed' })
+  expect(invalidFlows.service.status()).toEqual({
+    state: 'failed',
+    error: { type: 'FlowFileError', message: 'Invalid flow JSON', path },
+  })
+  expect(invalidFlows.reports).toEqual(['Flow service failed to load flow files'])
+  expect(String(invalidFlows.errors[0])).toContain(path)
   expect(JSON.stringify([invalidConfig.events, invalidFlows.events])).not.toContain('secret-token')
   expect(createSession).not.toHaveBeenCalled()
 })
@@ -439,7 +446,10 @@ test('registered invalid flow fails with sanitized status and closes session and
     }),
   })
   await fixture.service.start()
-  expect(fixture.service.status()).toMatchObject({ state: 'failed' })
+  expect(fixture.service.status()).toMatchObject({
+    state: 'failed',
+    error: { type: 'FlowDefinitionError', path: '/tmp/invalid.json' },
+  })
   expect(JSON.stringify(fixture.events)).not.toContain('secret-token')
   expect(fixture.order).toEqual(['desktop', 'session'])
 })
@@ -606,3 +616,76 @@ test.each(['answered', 'declined', 'cancelled', 'withdrawn'] as const)(
       })
   },
 )
+
+test('a missing flow directory names the directory in the status', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'flow-service-'))
+  cleanup.push(() => rm(directory, { recursive: true, force: true }))
+  const missing = join(directory, 'missing')
+  const fixture = setup({ loadFlows: () => loadFlowDirs([missing]) })
+  await fixture.service.start()
+  expect(fixture.service.status()).toEqual({
+    state: 'failed',
+    error: { type: 'FlowFileError', message: 'Cannot read flow files', path: missing },
+  })
+  expect((fixture.errors[0] as Error).cause).toMatchObject({ code: 'ENOENT' })
+})
+
+test('an invalid flow definition reports its file and checker issues', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'flow-service-'))
+  cleanup.push(() => rm(directory, { recursive: true, force: true }))
+  const valid = join(directory, 'a-valid.json')
+  const broken = join(directory, 'b-broken.json')
+  const end = { kind: 'end', outcome: 'done' }
+  await writeFile(
+    valid,
+    JSON.stringify({ id: 'valid', name: 'Valid', version: 1, start: 'end', nodes: { end } }),
+  )
+  await writeFile(
+    broken,
+    JSON.stringify({
+      id: 'broken',
+      name: 'Broken',
+      version: 1,
+      start: 'end',
+      nodes: { end, x: null },
+    }),
+  )
+  const fixture = setup({ loadFlows: () => loadFlowDirs([directory]) })
+  await fixture.service.start()
+  expect(fixture.service.status()).toEqual({
+    state: 'failed',
+    error: {
+      type: 'FlowDefinitionError',
+      message: 'Invalid flow definition',
+      path: broken,
+      issues: expect.arrayContaining([expect.stringMatching(/^nodes\.\*: [a-z_]+$/)]),
+    },
+  })
+  expect(fixture.reports).toContain(`Flow service failed to register and recover flows (${broken})`)
+  expect(String(fixture.errors[0])).toContain('Invalid registered flow broken')
+})
+
+test('a duplicate flow id names the colliding file', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'flow-service-'))
+  cleanup.push(() => rm(directory, { recursive: true, force: true }))
+  const definition = JSON.stringify({
+    id: 'same',
+    name: 'Same',
+    version: 1,
+    start: 'end',
+    nodes: { end: { kind: 'end', outcome: 'done' } },
+  })
+  await writeFile(join(directory, 'a.json'), definition)
+  await writeFile(join(directory, 'b.json'), definition)
+  const fixture = setup({ loadFlows: () => loadFlowDirs([directory]) })
+  await fixture.service.start()
+  expect(fixture.service.status()).toEqual({
+    state: 'failed',
+    error: {
+      type: 'FlowDefinitionError',
+      message: 'Invalid flow definition',
+      path: join(directory, 'b.json'),
+      issues: ['id: flow_id_duplicate'],
+    },
+  })
+})

@@ -30,7 +30,9 @@ export function PendingTurn({
   const calling = turn.state === 'calling-tool' && turn.activeToolCall != null
   // Hook called unconditionally; the arg gates the interval (React hook rules).
   const now = useElapsed(waiting || thinking || calling)
-  const elapsedMs = turn.streamStartedAt != null ? now - turn.streamStartedAt : undefined
+  // `now` lags until the interval's first tick, so a phase that just started can precede it.
+  const since = (start: number) => Math.max(0, now - start)
+  const elapsedMs = turn.streamStartedAt != null ? since(turn.streamStartedAt) : undefined
 
   if (turn.state === 'idle') return null
 
@@ -52,7 +54,7 @@ export function PendingTurn({
         <ToolCallStatus
           name={turn.activeToolCall.call.name}
           phase="calling"
-          elapsedMs={now - turn.activeToolCall.startedAt}
+          elapsedMs={since(turn.activeToolCall.startedAt)}
         />
       ) : null}
     </Box>

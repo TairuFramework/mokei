@@ -1134,6 +1134,9 @@ importers:
 
   packages/decision-flow:
     dependencies:
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
       '@mokei/logger':
         specifier: workspace:^
         version: link:../logger

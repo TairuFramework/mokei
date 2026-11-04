@@ -14,6 +14,7 @@ export {
   type FlowCheckResult,
   toElicitationSchema,
 } from './definition-checks.js'
+export { RegisteredFlowError, type RegisteredFlowErrorParams } from './flow-errors.js'
 export { type FlowSummary, flowSummaries, flowToolName } from './flow-tools.js'
 export { createGrantStore, type GrantStore } from './grants.js'
 export { flowPlan } from './plan.js'

@@ -10,6 +10,7 @@
  * @module context-server
  */
 
+export { MOKEI_VERSION } from '@mokei/context-protocol'
 export type { Schema } from '@sozai/schema'
 
 export {

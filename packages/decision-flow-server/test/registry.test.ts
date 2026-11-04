@@ -1,6 +1,7 @@
 import { digestDefinition, type FlowDefinition } from '@sozai/flow-graph'
 import { expect, test } from 'vitest'
 
+import { RegisteredFlowError } from '../src/flow-errors.js'
 import { createFlowRegistry, definitionResolution, reachableFlows } from '../src/registry.js'
 
 function flow(id: string, nodes: Record<string, unknown> = {}, version = 1): FlowDefinition {
@@ -29,6 +30,17 @@ test('rejects duplicate ids', () => {
   expect(() => createFlowRegistry([flow('a'), flow('a')])).toThrow(
     'Duplicate registered flow id: a',
   )
+  let thrown: unknown
+  try {
+    createFlowRegistry([flow('a'), flow('a')])
+  } catch (error) {
+    thrown = error
+  }
+  expect(thrown).toBeInstanceOf(RegisteredFlowError)
+  expect((thrown as RegisteredFlowError).flowID).toBe('a')
+  expect((thrown as RegisteredFlowError).issues).toEqual([
+    expect.objectContaining({ code: 'flow_id_duplicate', path: ['id'] }),
+  ])
 })
 
 test('lookup accepts an omitted or matching version only', () => {

@@ -3,7 +3,7 @@
 **Status:** complete (2026-08-28) — both revisions ship at capability parity; every Phase 0/1
 item shipped, including B4 `subscriptions/listen` (PR #46), D1–D3 (PR #47), and the cleanup
 deferrals (PR #48). The later-phase server-minted handles convention is tracked in
-`backlog/2026-09-25-server-minted-handles-convention.md` (see Open questions).
+`completed/2026-11-04-backlog-trim.complete.md` (see Open questions).
 **Opened:** 2026-06-08
 **Branch / PR:** `feat/mcp-spec-update` → PR #23
 **Baseline:** `2025-11-25` (`LATEST_PROTOCOL_VERSION`)
@@ -407,7 +407,7 @@ both revisions, so nothing is marked with an `@deprecated` tag — that would in
 ## Open questions (later phases)
 
 - Server-minted handles (replacing sessions): convention for passing as tool args across
-  `ContextHost`; tracked in `backlog/2026-09-25-server-minted-handles-convention.md`.
+  `ContextHost`; tracked in `completed/2026-11-04-backlog-trim.complete.md`.
 
 Answered:
 

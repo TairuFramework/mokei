@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { ChatDriver, UI } from '../support/chat-driver.js'
-import { hasChatBackend, TOOL_CALL_PROMPT, TOOL_CALL_RETRY } from '../support/requirements.js'
+import {
+  chatBackend,
+  hasChatBackend,
+  TOOL_CALL_PROMPT,
+  TOOL_CALL_RETRY,
+} from '../support/requirements.js'
 
 describe.skipIf(!hasChatBackend)('CLI chat — core', () => {
   let driver: ChatDriver
@@ -32,6 +37,18 @@ describe.skipIf(!hasChatBackend)('CLI chat — core', () => {
     expect(await driver.waitForIdle(10_000)).toBe(true)
     expect(driver.screen()).toContain(UI.aborted)
   }, 90_000)
+
+  // Direct coverage of the reasoning path, where the backend streams it separately.
+  test.runIf(chatBackend.separatesReasoning)(
+    'renders streamed reasoning as thinking',
+    async () => {
+      await driver.submit(TOOL_CALL_PROMPT)
+      expect(await driver.waitFor(UI.thinking, 30_000)).toBe(true)
+      driver.esc()
+      expect(await driver.waitForIdle(10_000)).toBe(true)
+    },
+    90_000,
+  )
 
   test('interactive provider select starts chat after selection', async () => {
     const selectDriver = new ChatDriver({ provider: null, model: null })

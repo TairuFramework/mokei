@@ -211,6 +211,25 @@ test('start --json reports failed readiness through the error message', async ()
   expect(process.exitCode).toBe(1)
 })
 
+test('start names the failing flow file', async () => {
+  vi.mocked(getDaemonStatus).mockResolvedValue({ state: 'running', pid: 7, socketPath: SOCKET })
+  const flowService = {
+    state: 'failed',
+    error: {
+      type: 'FlowDefinitionError',
+      message: 'Invalid flow definition',
+      path: '/flows/broken.json',
+      issues: ['nodes.*.tool: unknown_tool'],
+    },
+  }
+  connection({ flowService })
+  await run('start', '-s', SOCKET, '--json')
+  expect(stderr.join('')).toContain(
+    'Flow service failed: Invalid flow definition (/flows/broken.json)\n  nodes.*.tool: unknown_tool',
+  )
+  expect(process.exitCode).toBe(1)
+})
+
 test('restart --json reports failed readiness through the error message', async () => {
   vi.mocked(stopDaemon).mockResolvedValue({ stopped: true, pid: 7, forced: false })
   const flowService = { state: 'failed', error: { type: 'FlowConfigError', message: 'Bad config' } }

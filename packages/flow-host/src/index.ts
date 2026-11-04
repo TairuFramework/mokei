@@ -1,3 +1,8 @@
+export {
+  RegisteredFlowError,
+  type RegisteredFlowErrorParams,
+} from '@mokei/decision-flow-server'
+
 export * from './errors.js'
 export { createFlowHost } from './host.js'
 export * from './local-control.js'

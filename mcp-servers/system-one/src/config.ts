@@ -1,6 +1,7 @@
 import {
   createTool,
   type ExtractServerTypes,
+  MOKEI_VERSION,
   type Schema,
   type ServerConfig,
   type ToolDefinitions,
@@ -120,7 +121,7 @@ export function createSystemOneTools(options: SystemOneToolsOptions = {}) {
 export function createSystemOneConfig(options: SystemOneToolsOptions = {}) {
   return {
     name: 'system-one',
-    version: '0.13.0',
+    version: MOKEI_VERSION,
     protocolVersions: ['2026-07-28', '2025-11-25'],
     tools: createSystemOneTools(options),
   } as const satisfies ServerConfig

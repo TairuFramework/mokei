@@ -66,4 +66,4 @@ headless agent notify or ask the user directly.
 
 ## Follow-ons
 
-Deferred minors are in [host desktop follow-ons](../backlog/2026-09-30-host-desktop-follow-ons.md).
+Deferred minors are in [host desktop follow-ons](2026-11-04-backlog-trim.complete.md).

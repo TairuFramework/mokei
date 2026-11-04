@@ -5,6 +5,8 @@ import {
   type FlowResolver,
 } from '@sozai/flow-graph'
 
+import { RegisteredFlowError } from './flow-errors.js'
+
 export type FlowLookup = (id: string, version?: number) => FlowDefinition | undefined
 
 export type FlowRegistry = {
@@ -23,7 +25,19 @@ export function createFlowRegistry(flows: ReadonlyArray<FlowDefinition>): FlowRe
   const digests = new Map<string, string>()
   for (const snapshot of snapshots) {
     if (byID.has(snapshot.id)) {
-      throw new Error(`Duplicate registered flow id: ${snapshot.id}`)
+      throw new RegisteredFlowError({
+        flowID: snapshot.id,
+        message: `Duplicate registered flow id: ${snapshot.id}`,
+        issues: [
+          {
+            severity: 'error',
+            code: 'flow_id_duplicate',
+            path: ['id'],
+            message: 'Flow id is registered more than once.',
+            hint: 'Give each registered flow a unique id.',
+          },
+        ],
+      })
     }
     byID.set(snapshot.id, snapshot)
     digests.set(snapshot.id, digestDefinition(snapshot as never))
