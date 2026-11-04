@@ -6,6 +6,7 @@ import {
 } from '@mokei/http-client'
 
 import { createFileTokenStore } from './file-store.js'
+import { createKeychainTokenStore, type KeychainTokenStoreOptions } from './keychain-store.js'
 import { createLoopbackAuthorizationHandler } from './loopback.js'
 
 export type NodeOAuthOptions = {
@@ -14,6 +15,11 @@ export type NodeOAuthOptions = {
   resource?: string
   /** File path for the persistent token store. Omit to keep tokens in-memory only. */
   tokensPath?: string
+  /**
+   * Keep tokens in the OS keychain ({@link createKeychainTokenStore}); an object configures it.
+   * Mutually exclusive with `tokensPath`.
+   */
+  keychain?: boolean | KeychainTokenStoreOptions
   /** Override the authorisation handler (default: loopback browser handler). */
   handler?: AuthorizationHandler
   /** Override the token store (default: file store at tokensPath, else the middleware's in-memory default). */
@@ -37,13 +43,22 @@ function defaultHandler(timeoutMs: number | undefined): AuthorizationHandler {
 
 /**
  * Composes {@link createOAuthMiddleware} with Node-specific defaults: a loopback browser
- * authorisation handler (RFC 8252), shared process-wide, and, when `tokensPath` is given, a
- * file-backed token store that coordinates refreshes with other processes using the same file.
+ * authorisation handler (RFC 8252), shared process-wide, and, when `tokensPath` or `keychain` is
+ * given, a persistent token store (a file, or the OS keychain) that coordinates refreshes with
+ * other processes using the same store.
  */
 export function createNodeOAuthMiddleware(options: NodeOAuthOptions): FetchMiddleware {
   const handler = options.handler ?? defaultHandler(options.timeoutMs)
+  if (options.keychain && options.tokensPath != null) {
+    throw new Error('Pass either `tokensPath` or `keychain`, not both')
+  }
   const store =
-    options.store ?? (options.tokensPath ? createFileTokenStore(options.tokensPath) : undefined)
+    options.store ??
+    (options.keychain
+      ? createKeychainTokenStore(options.keychain === true ? {} : options.keychain)
+      : options.tokensPath
+        ? createFileTokenStore(options.tokensPath)
+        : undefined)
 
   return createOAuthMiddleware({
     clientID: options.clientID,

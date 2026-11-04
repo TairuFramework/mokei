@@ -50,6 +50,7 @@
     "@mokei/host-protocol": "workspace:^",
     "@mokei/http-client": "workspace:^",
     "@mokei/logger": "workspace:^",
+    "@napi-rs/keyring": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@sozai/async": "catalog:",
     "@sozai/event": "catalog:",

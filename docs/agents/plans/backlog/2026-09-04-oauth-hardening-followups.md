@@ -10,7 +10,10 @@ bypass; each needs its own design.
 
 ## Items
 
-- **Daemon-held tokens, keychain store, logout.** The daemon could own the token store,
-  refreshes and sign-in prompts for every context. An OS keychain store would implement
-  `KeyValueStore<StoredTokens>`. Add `mokei auth list` / `mokei auth logout <resource>` with
-  RFC 7009 revocation, using `TokenStore.keys()` and `parseTokenStoreKey`.
+- **Daemon-held tokens.** The daemon could own the token store, refreshes and sign-in prompts
+  for every context, so processes would not each hold tokens. Deferred on 2026-11-04
+  (`completed/2026-11-04-oauth-keychain-and-logout.complete.md`). No daemon opens HTTP contexts
+  today: the host daemon and the flow daemon run stdio servers only, and the CLI's chat is in
+  process. Processes already coordinate through a shared store (file or keychain) with locked
+  refreshes. **Trigger:** revisit when a daemon starts connecting HTTP contexts, for example flows
+  using remote MCP servers.

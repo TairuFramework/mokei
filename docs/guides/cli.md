@@ -16,6 +16,7 @@ npm install -g mokei
 | `mokei inspect` | Inspect/test an MCP server |
 | `mokei monitor` | Start the monitor UI |
 | `mokei proxy` | Proxy an MCP server for monitoring |
+| `mokei auth` | List and remove stored OAuth sign-ins |
 
 Run `mokei --help` for the full list and `mokei <command> --help` for per-command flags.
 
@@ -255,6 +256,38 @@ mokei proxy <command> [args...] [--socket-path <path>]
 # Proxy an MCP server
 mokei proxy npx -y @mokei/mcp-sqlite
 ```
+
+## `mokei auth`
+
+Lists and removes the OAuth sign-ins `mokei chat` stores for remote MCP servers. Chat persists
+tokens only when `/context add-http` is given `--oauth-tokens <path>` (a JSON file, mode `0600`)
+or `--oauth-keychain` (the OS keychain: macOS Keychain, Windows Credential Manager or the Linux
+Secret Service). Without either, tokens live in memory for the session. Each `mokei auth`
+command names the same store with `--keychain` or `--tokens <path>`.
+
+```bash
+mokei auth list --keychain [--json]
+mokei auth logout <resource> --keychain [--client-id <id>] [--no-revoke] [--json]
+```
+
+`list` shows each sign-in's resource, client, scopes, issuer, expiry and whether it can refresh.
+It never prints tokens. `logout` revokes the tokens of every sign-in for the resource at its
+authorisation server (RFC 7009, refresh token first), then deletes them locally. The local delete
+happens even when revocation fails, and the command then exits `1`. A server without a
+`revocation_endpoint` is reported as `unsupported`. `--no-revoke` deletes without contacting the
+server.
+
+```bash
+# Sign in once, keeping the tokens in the keychain
+/context add-http docs https://mcp.example.com/mcp --oauth-client-id mokei-cli --oauth-keychain
+
+# Later, from a shell
+mokei auth list --keychain
+mokei auth logout https://mcp.example.com/mcp --keychain
+```
+
+On a machine without a keychain service (a headless Linux server), keychain commands fail with
+`The OS keychain is not available`. Use `--oauth-tokens <path>` there.
 
 ## Using with Claude Desktop
 

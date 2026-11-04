@@ -1,6 +1,7 @@
 import { buildProgram as tejikaBuildProgram } from '@tejika/cli'
 import type { Command } from 'commander'
 
+import { createAuthCommand } from './commands/auth.js'
 import { createChatCommand } from './commands/chat.js'
 import { createDaemonCommand } from './commands/daemon.js'
 import { createFlowsCommand } from './commands/flows.js'
@@ -27,6 +28,7 @@ export function buildProgram(): Command {
       createFlowsCommand(),
       createRunsCommand(),
       createInboxCommand(),
+      createAuthCommand(),
     ],
   })
   program.description(pkg.description)

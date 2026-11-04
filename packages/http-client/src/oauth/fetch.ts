@@ -80,6 +80,8 @@ async function readCappedJSON(res: Response, url: string, maxBytes: number): Pro
     }
   }
   const text = new TextDecoder().decode(concatUint8(chunks))
+  // An empty body (an RFC 7009 revocation answer) carries no fields; callers validate fields.
+  if (text.trim() === '') return {}
   try {
     return JSON.parse(text)
   } catch (cause) {

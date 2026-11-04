@@ -31,7 +31,7 @@ describe('buildProgram', () => {
   const program = buildProgram()
   const commandNames = program.commands.map((c) => c.name())
 
-  test('exposes exactly 8 commands', () => {
+  test('exposes exactly 9 commands', () => {
     expect(commandNames).toEqual([
       'chat',
       'inspect',
@@ -41,6 +41,7 @@ describe('buildProgram', () => {
       'flows',
       'runs',
       'inbox',
+      'auth',
     ])
   })
 
