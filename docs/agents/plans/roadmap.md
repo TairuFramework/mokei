@@ -53,12 +53,7 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **OAuth identity and token coordination** -- `2025-11-25` HTTP sessions bound to their subject,
-  per-request auth and verifier claims for handlers, and a client token store shared safely
-  across contexts and processes. See
-  [the plan](next/2026-11-04-oauth-identity-and-token-coordination.md).
-
-The backlog was trimmed on 2026-11-04
+Nothing scheduled. The backlog was trimmed on 2026-11-04
 ([backlog trim](completed/2026-11-04-backlog-trim.complete.md)): flow service startup errors keep
 their cause, versions report `MOKEI_VERSION`, the monitor bounds its trace list and splits its
 bundle, and the website walkthrough matches the CLI.
@@ -68,6 +63,10 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **OAuth identity and token coordination** (2026-11-04, PR #82) -- `2025-11-25` HTTP sessions are
+  bound to their subject, handlers get per-request auth and verifier claims, and OAuth clients share
+  a coordinated token store across contexts and processes. See
+  [OAuth identity](completed/2026-11-04-oauth-identity-and-token-coordination.complete.md).
 - **OTel GenAI semantic conventions** (2026-10-18, PR #79) -- spans and metrics follow the OpenTelemetry GenAI and
   MCP conventions, with each logical operation counted once. See
   [OTel GenAI semconv](completed/2026-10-18-otel-genai-semconv.complete.md) and its

@@ -2,7 +2,7 @@
 
 **Origin:** deferred from the OAuth 2.1 HTTP-transport work
 (`docs/agents/plans/completed/2026-09-04-http-auth-oauth.complete.md`) and from
-`docs/agents/plans/next/2026-11-04-oauth-identity-and-token-coordination.md`, which gave MCP
+`docs/agents/plans/completed/2026-11-04-oauth-identity-and-token-coordination.complete.md`, which gave MCP
 handlers verified identity and claims, bound `2025-11-25` sessions to their subject, and
 coordinated client token refresh. DCR, CIMD and the JWT-bearer grant were dropped on 2026-11-04
 (see `completed/2026-11-04-backlog-trim.complete.md`). None of these items is a security
