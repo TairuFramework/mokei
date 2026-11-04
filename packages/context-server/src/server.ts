@@ -409,6 +409,14 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
   }
 
+  /**
+   * The `inputSchema` of the tool `name` serves, or `undefined` for an unknown tool. The HTTP
+   * server reads its `x-mcp-header` annotations to check `Mcp-Param-*` headers before dispatch.
+   */
+  toolInputSchema(name: string): Tool['inputSchema'] | undefined {
+    return Object.hasOwn(this.#tools, name) ? this.#tools[name]?.inputSchema : undefined
+  }
+
   get clientInitialize(): ClientInitialize | undefined {
     return this.#clientInitialize
   }

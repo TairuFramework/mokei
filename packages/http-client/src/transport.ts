@@ -93,6 +93,49 @@ function sameParamHeaders(a: Record<string, string>, b: Record<string, string>):
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key])
 }
 
+/**
+ * The JSON-RPC response to the transport's internal `tools/list` refresh, from a JSON body or an
+ * SSE stream (a stateless mokei server always answers in SSE). On a stream, the first `data`
+ * frame carrying `refreshID` is the answer, and the stream is cancelled once it is read.
+ * `undefined` for any other body.
+ */
+async function readRefreshResponse(
+  response: Response,
+  refreshID: string,
+): Promise<{ result?: { tools?: unknown } } | undefined> {
+  const contentType = response.headers.get('Content-Type') ?? ''
+  if (contentType.includes('application/json')) {
+    return (await response.json()) as { result?: { tools?: unknown } }
+  }
+  if (!contentType.includes('text/event-stream')) {
+    await response.body?.cancel().catch(() => {})
+    return undefined
+  }
+  const reader = parseServerSentEvents(response).getReader()
+  try {
+    while (true) {
+      const { done, value: event } = await reader.read()
+      if (done) return undefined
+      if (event.data == null || event.data.trim() === '') continue
+      let message: unknown
+      try {
+        message = JSON.parse(event.data)
+      } catch {
+        continue
+      }
+      if (
+        message != null &&
+        typeof message === 'object' &&
+        (message as { id?: unknown }).id === refreshID
+      ) {
+        return message as { result?: { tools?: unknown } }
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {})
+  }
+}
+
 /** A `fetch`-shaped function: the unit a {@link FetchMiddleware} wraps and produces. */
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -279,6 +322,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const controller = new AbortController()
     const timeoutID = setTimeout(() => controller.abort(), this.#refreshTimeout)
     this.#untrackedControllers.add(controller)
+    const refreshID = `mokei-internal:tools/list:${++this.#internalRequestCount}`
     try {
       const response = await this.#fetch(this.#url, {
         method: 'POST',
@@ -287,18 +331,16 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           jsonrpc: '2.0',
           // An id in a space of this transport's own making. The response is read from the
           // fetch and never enqueued, so it cannot collide with the RPC layer's numeric ids.
-          id: `mokei-internal:tools/list:${++this.#internalRequestCount}`,
+          id: refreshID,
           method: 'tools/list',
           params,
         }),
         signal: controller.signal,
       })
-      // `Accept` must advertise SSE too, so declining a non-JSON body happens here instead.
-      const contentType = response.headers.get('Content-Type') ?? ''
-      if (!response.ok || !contentType.includes('application/json')) {
+      if (!response.ok) {
         return false
       }
-      const data = (await response.json()) as { result?: { tools?: unknown } }
+      const data = await readRefreshResponse(response, refreshID)
       const tools = data?.result?.tools
       if (!Array.isArray(tools)) {
         return false

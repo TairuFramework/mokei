@@ -20,7 +20,7 @@ export {
   type HTTPHandlerParams,
   insufficientScopeResponse,
 } from './handler.js'
-export { decodeHeaderValue, validateStandardHeaders } from './headers.js'
+export { decodeHeaderValue, validateParamHeaders, validateStandardHeaders } from './headers.js'
 export { type MCPPluginParams, MOKEI_MCP, type MokeiMCP, mcpPlugin } from './plugin.js'
 export { type ServeHTTPParams, type ServeHTTPResult, serveHTTP } from './serve.js'
 export { type Session, SessionManager, type SessionManagerParams } from './session.js'

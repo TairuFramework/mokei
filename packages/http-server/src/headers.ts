@@ -1,4 +1,9 @@
-import { HEADER_MISMATCH, MCP_NAME_HEADER_SOURCE } from '@mokei/context-protocol'
+import {
+  collectHeaderAnnotations,
+  HEADER_MISMATCH,
+  type HeaderAnnotation,
+  MCP_NAME_HEADER_SOURCE,
+} from '@mokei/context-protocol'
 
 const BASE64_SENTINEL_PREFIX = '=?base64?'
 const BASE64_SENTINEL_SUFFIX = '?='
@@ -138,6 +143,96 @@ export function validateStandardHeaders(params: {
       'Mcp-Name',
       `the body carries params.${field}=${JSON.stringify(bodyValue)} but the Mcp-Name header names ${JSON.stringify(decoded)}`,
     )
+  }
+  return null
+}
+
+/** Collected annotations per `inputSchema` object; tool definitions are usually long-lived. */
+const annotationCache = new WeakMap<object, Array<HeaderAnnotation> | null>()
+
+function annotationsFor(inputSchema: unknown): Array<HeaderAnnotation> | null {
+  if (inputSchema == null || typeof inputSchema !== 'object') return null
+  let cached = annotationCache.get(inputSchema)
+  if (cached === undefined) {
+    const collected = collectHeaderAnnotations(inputSchema)
+    // A tool with invalid annotations has nothing to check against: SEP-2243 clients exclude
+    // such tools from their lists, so they never send headers for it.
+    cached = collected.valid ? collected.annotations : null
+    annotationCache.set(inputSchema, cached)
+  }
+  return cached
+}
+
+function valueAtPath(root: unknown, path: Array<string>): unknown {
+  let node = root
+  for (const key of path) {
+    if (node == null || typeof node !== 'object') return undefined
+    node = (node as Record<string, unknown>)[key]
+  }
+  return node
+}
+
+const CANONICAL_DECIMAL = /^-?\d+(\.\d+)?$/
+
+/**
+ * SEP-2243 `Mcp-Param-*` headers for a `2026-07-28` `tools/call`, checked against the arguments
+ * of the tool's `x-mcp-header` annotations (`server.toolInputSchema`). Returns the `400`
+ * (`-32020`, `data.mismatch.header` naming the `Mcp-Param-*` header) for the first header that
+ * is missing, badly encoded or different from the body, or `null` when they all agree.
+ *
+ * An argument that is absent, `null` or not a primitive needs no header, and a header for it is
+ * ignored. Numbers compare numerically (`42.0` equals `42`). Unknown tools, and tools whose
+ * annotations are invalid, are not checked.
+ */
+export function validateParamHeaders(params: {
+  request: Request
+  body: Record<string, unknown>
+  server: { toolInputSchema(name: string): unknown }
+}): Response | null {
+  const { request, body, server } = params
+  if (body.method !== 'tools/call' || !('id' in body)) return null
+  const callParams = body.params as { name?: unknown; arguments?: unknown } | undefined
+  if (typeof callParams?.name !== 'string') return null
+  const annotations = annotationsFor(server.toolInputSchema(callParams.name))
+  if (annotations == null || annotations.length === 0) return null
+  const rawID = body.id
+  const id = typeof rawID === 'string' || typeof rawID === 'number' ? rawID : null
+  for (const { headerName, path } of annotations) {
+    const header = `Mcp-Param-${headerName}`
+    const value = valueAtPath(callParams.arguments, path)
+    let expected: string
+    if (typeof value === 'string') expected = value
+    else if (typeof value === 'boolean') expected = value ? 'true' : 'false'
+    else if (typeof value === 'number' && Number.isFinite(value)) expected = String(value)
+    else continue
+    const argument = `${path.join('.')}=${JSON.stringify(value)}`
+    const raw = request.headers.get(header)
+    if (raw == null) {
+      return headerMismatch(
+        id,
+        header,
+        `the body carries ${argument} but the ${header} header is absent`,
+      )
+    }
+    const decoded = decodeHeaderValue(raw)
+    if (decoded == null) {
+      return headerMismatch(
+        id,
+        header,
+        `the ${header} header carries an invalid Base64 sentinel value`,
+      )
+    }
+    const agrees =
+      typeof value === 'number' && CANONICAL_DECIMAL.test(decoded)
+        ? Number(decoded) === value
+        : decoded === expected
+    if (!agrees) {
+      return headerMismatch(
+        id,
+        header,
+        `the ${header} header decodes to ${JSON.stringify(decoded)} but the body carries ${argument}`,
+      )
+    }
   }
   return null
 }
