@@ -36,6 +36,17 @@ function requestKey(direction: MessageDirection, id: string | number): string {
   return JSON.stringify([direction, typeof id, id])
 }
 
+function proxiedServerName(method: string, result: unknown): string | undefined {
+  if (!isRecord(result)) return undefined
+  const serverInfo =
+    method === 'initialize'
+      ? result.serverInfo
+      : method === 'server/discover' && isRecord(result._meta)
+        ? result._meta['io.modelcontextprotocol/serverInfo']
+        : undefined
+  return isRecord(serverInfo) && typeof serverInfo.name === 'string' ? serverInfo.name : undefined
+}
+
 export function createProxyTracing(params: {
   contextID: string
   command: string
@@ -205,6 +216,10 @@ export function createProxyTracing(params: {
           protocolVersion = message.result.protocolVersion
           contextSpan.setAttribute('mcp.protocol.version', protocolVersion)
         }
+        // The server names itself in `initialize` (`2025-11-25`) or `server/discover`
+        // (`2026-07-28`); the trace summary picks the name up from the live span.
+        const serverName = proxiedServerName(method, message.result)
+        if (serverName !== undefined) contextSpan.setAttribute('mokei.server.name', serverName)
         if (span.isRecording()) {
           const result = 'result' in message ? message.result : undefined
           if (rpcError === undefined)

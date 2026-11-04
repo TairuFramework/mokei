@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   cancel: vi.fn(),
   retry: vi.fn(),
   refresh: vi.fn(),
+  loadOlderLogs: vi.fn(),
 }))
 vi.mock('../src/traces/useTraceList.js', () => ({ useTraceList: mocks.list }))
 vi.mock('../src/traces/useTrace.js', () => ({ useTrace: mocks.trace }))
@@ -114,9 +115,13 @@ beforeEach(() => {
       ]),
       logs: new Map(),
       logsTruncated: true,
+      calls: new Map(),
+      callsTruncated: false,
     },
     loading: false,
     retry: mocks.retry,
+    loadOlderLogs: mocks.loadOlderLogs,
+    loadingLogs: false,
   })
 })
 
@@ -150,6 +155,48 @@ test('span selection updates the URL and exposes request, response and truncatio
   expect(within(screen.getByRole('tabpanel', { name: 'Response' })).getByText(/world/)).toBeTruthy()
   expect(screen.getByText(/Payload truncated/)).toBeTruthy()
   expect(screen.getByText(/Logs truncated/)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Load older logs' }))
+  expect(mocks.loadOlderLogs).toHaveBeenCalledTimes(1)
+})
+
+test('a trace lists the calls made into it from other traces, linking each call', async () => {
+  const trace = mocks.trace()
+  const calls = new Map([
+    [
+      'call-1',
+      {
+        traceID: 'flow-trace',
+        spanID: 'call-1',
+        name: 'tools/call read',
+        startTime: 10,
+        endTime: 20,
+        outcome: 'ok',
+      },
+    ],
+    [
+      'call-2',
+      {
+        traceID: 'flow-trace',
+        spanID: 'call-2',
+        name: 'tools/call write',
+        startTime: 30,
+        outcome: null,
+      },
+    ],
+  ])
+  mocks.trace.mockReturnValue({ ...trace, state: { ...trace.state, calls, callsTruncated: false } })
+  renderPage('/traces/trace-1')
+  expect(await screen.findByRole('heading', { name: 'Called from' })).toBeTruthy()
+  const read = screen.getByRole('link', { name: 'tools/call read' })
+  expect(read.getAttribute('href')).toContain('/traces/flow-trace')
+  expect(read.getAttribute('href')).toContain('span=call-1')
+  expect(screen.getByText('running')).toBeTruthy()
+  // Newest first.
+  const names = screen
+    .getAllByRole('link')
+    .map((link) => link.textContent)
+    .filter((name) => name?.startsWith('tools/call'))
+  expect(names).toEqual(['tools/call write', 'tools/call read'])
 })
 
 test('flow header shows state, identifiers, pending inbox link and Cancel', async () => {
@@ -246,6 +293,8 @@ test.each([
   ['flow', {}, 'Flow trace'],
   ['context', { label: 'Server label', 'mokei.flow.id': 'ignored' }, 'Server label'],
   ['context', { 'mokei.flow.id': 'ignored' }, 'Flow trace'],
+  ['context', { 'mokei.server.name': 'files' }, 'files'],
+  ['context', { label: 'Server label', 'mokei.server.name': 'files' }, 'Server label'],
 ] as const)(
   'list and header share the display title for %s with %j',
   async (kind, attributes, title) => {

@@ -200,15 +200,18 @@ describe('host events', () => {
         data: { transport: 'stdio', command: 'node', args: [] },
       },
       { type: 'context:stop', meta: contextMeta },
-      {
-        type: 'context:message',
-        meta: contextMeta,
-        data: { from: 'server', message: { jsonrpc: '2.0', id: 1, result: {} } },
-      },
     ]) {
       expect(valid(hostProtocol.hostEventSchema, event)).toBe(true)
       expect(valid(hostProtocol.hostEventSchema, { ...event, meta })).toBe(false)
     }
+    // Removed from the wire: MCP traffic is carried by trace spans.
+    expect(
+      valid(hostProtocol.hostEventSchema, {
+        type: 'context:message',
+        meta: contextMeta,
+        data: { from: 'server', message: { jsonrpc: '2.0', id: 1, result: {} } },
+      }),
+    ).toBe(false)
   })
 
   test('inbox events distinguish approvals, inputs and settlement outcomes', () => {

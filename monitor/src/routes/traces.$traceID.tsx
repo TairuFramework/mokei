@@ -1,9 +1,10 @@
-import { Alert, Button, Loader, Stack, Tabs, Text } from '@mantine/core'
+import { Alert, Button, Group, Loader, Stack, Tabs, Text } from '@mantine/core'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { LogList } from '../components/LogList.js'
 import { SpanDetail } from '../components/SpanDetail.js'
+import { TraceCalls } from '../components/TraceCalls.js'
 import { TraceHeader } from '../components/TraceHeader.js'
 import { TraceWaterfall } from '../components/TraceWaterfall.js'
 import { useTrace } from '../traces/useTrace.js'
@@ -12,7 +13,7 @@ function TracePage() {
   const { traceID } = Route.useParams()
   const { span: spanID } = Route.useSearch()
   const navigate = Route.useNavigate()
-  const { state, loading, notFound, error, retry } = useTrace(traceID)
+  const { state, loading, notFound, error, retry, loadOlderLogs, loadingLogs } = useTrace(traceID)
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -39,8 +40,18 @@ function TracePage() {
         />
       )}
       {state?.logsTruncated ? (
-        <Alert color="orange">Logs truncated. Only the newest logs are available.</Alert>
+        <Alert color="orange">
+          <Group>
+            <Text size="sm">Logs truncated. Only the newest logs are loaded.</Text>
+            <Button size="xs" variant="light" loading={loadingLogs} onClick={loadOlderLogs}>
+              Load older logs
+            </Button>
+          </Group>
+        </Alert>
       ) : null}
+      {state == null ? null : (
+        <TraceCalls calls={[...state.calls.values()]} truncated={state.callsTruncated} />
+      )}
       {state == null ? null : (
         <Tabs defaultValue="waterfall" key={traceID} keepMounted={false}>
           <Tabs.List>

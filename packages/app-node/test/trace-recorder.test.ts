@@ -958,8 +958,11 @@ test('unknown traces read the index once until a root starts', async () => {
   root.end()
 })
 
-test('unrooted hydration overflow and failed reads never count as lost summaries', async () => {
-  const tracer = setup({ dirtySummaryLimit: 1, reportError: vi.fn(), retryDelaysMs: [] })
+test('child-only deltas count as lost when their trace cannot be verified', async () => {
+  // Reads fail for good, so neither trace can be told apart from an unrooted one: the pending
+  // delta and the one dropped at the limit both count. The read failure itself is reported.
+  const reportError = vi.fn()
+  const tracer = setup({ dirtySummaryLimit: 1, reportError, retryDelaysMs: [] })
   const store = await getTraceIndexStore(db)
   const gate = deferred()
   vi.spyOn(store, 'get').mockImplementation(async () => {
@@ -970,13 +973,46 @@ test('unrooted hydration overflow and failed reads never count as lost summaries
   vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
     name === 'trace-index' ? store : getStore(name),
   )
-  tracer.startSpan('unrooted').end()
+  tracer.startSpan('pending').end()
   tracer.startSpan('overflow').end()
   await settle()
   expect(recorder.info().lostSummaryCount).toBe(0)
   gate.resolve()
   await settle()
-  expect(recorder.info().lostSummaryCount).toBe(0)
+  expect(recorder.info().lostSummaryCount).toBe(2)
+  expect(reportError).toHaveBeenCalledWith('Failed to load trace summary', expect.any(Error))
+})
+
+test('a child-only delta dropped at the limit counts only when its trace is indexed', async () => {
+  const tracer = setup({ dirtySummaryLimit: 1, reportError: vi.fn() })
+  // An indexed trace, with its root ended and flushed.
+  const root = tracer.startSpan('root', { attributes: { 'mokei.root': true } })
+  root.end()
+  await recorder.forceFlush()
+  await settle()
+  // Hold the only pending slot with a trace whose lookup never resolves.
+  const store = await getTraceIndexStore(db)
+  const get = store.get.bind(store)
+  const gate = deferred()
+  vi.spyOn(store, 'get').mockImplementation(async (traceID) => {
+    if (traceID === blocker.spanContext().traceId) await gate.promise
+    return await get(traceID)
+  })
+  const getStore = db.getStore.bind(db)
+  vi.spyOn(db, 'getStore').mockImplementation(async (name) =>
+    name === 'trace-index' ? store : getStore(name),
+  )
+  const blocker = tracer.startSpan('blocker')
+  blocker.end()
+  await settle()
+  // Past the limit: an unrooted trace is not a loss, a late child of the indexed trace is.
+  tracer.startSpan('unrooted').end()
+  tracer.startSpan('late child', {}, trace.setSpan(ROOT_CONTEXT, root)).end()
+  await settle()
+  expect(recorder.info().lostSummaryCount).toBe(1)
+  gate.resolve()
+  await settle()
+  expect(recorder.info().lostSummaryCount).toBe(1)
 })
 
 test('live emission does not clone when no subscriber is listening', async () => {
@@ -1066,3 +1102,32 @@ test.each([false, true])(
     })
   },
 )
+
+test('attributes set on an open root after start reach its summary and snapshot', async () => {
+  const tracer = setup()
+  const root = tracer.startSpan('mcp.context', {
+    attributes: { 'mokei.root': true, 'mokei.kind': 'context', 'mokei.context.id': 'ctx' },
+  })
+  await settle()
+  const traceID = root.spanContext().traceId
+  // Set once the server has answered `initialize` or `server/discover`.
+  root.setAttribute('mokei.server.name', 'files')
+  await recorder.forceFlush()
+  await settle()
+  const summaries = events.flatMap((event) =>
+    event.type === 'trace:summary' && event.data.traceID === traceID ? [event.data] : [],
+  )
+  expect(summaries.at(-1)?.attributes).toEqual({
+    'mokei.context.id': 'ctx',
+    'mokei.server.name': 'files',
+  })
+  expect(recorder.snapshot(traceID).open[0]?.attributes['mokei.server.name']).toBe('files')
+  const emitted = summaries.length
+  // Nothing changed: no further summary.
+  await recorder.forceFlush()
+  await settle()
+  expect(
+    events.filter((event) => event.type === 'trace:summary' && event.data.traceID === traceID),
+  ).toHaveLength(emitted)
+  root.end()
+})

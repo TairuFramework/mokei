@@ -79,6 +79,7 @@ graceful shutdown. An abrupt process exit can lose unflushed telemetry.
 Trace capture is batched: reads can lag active work and do not force a flush.
 The shared `events` stream includes `service:status`, `run:state`, `inbox:added` and
 `inbox:settled` alongside existing context events, each with an event ID and timestamp.
+`flow-client` subscribes with `{ types: ['run:state', 'inbox:added', 'inbox:settled'] }`.
 Events are live changes with no durable replay. Subscribe before querying `info`, `runs.list`
 and `inbox.list`. Buffer events during the reads, then re-read affected run and item IDs.
 A settled item is absent from the pending inbox. Reconcile by reading current state rather

@@ -322,7 +322,7 @@ export async function startFlowDaemonFixture(
     },
     async subscribe(client: HostClient) {
       const events: Array<HostEvent> = []
-      const stream = client.createStream('events')
+      const stream = client.createStream('events', { param: {} })
       void stream.catch(() => {})
       const reading = (async () => {
         for await (const event of stream.readable) events.push(event)

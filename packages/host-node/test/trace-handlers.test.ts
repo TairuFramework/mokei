@@ -34,6 +34,7 @@ test('traces.list and traces.get delegate to the reader; unknown trace is NotFou
         return { traces: [trace.summary], cursor: 'last-page' }
       },
       get: async (traceID) => (traceID === 'trace-one' ? trace : undefined),
+      logs: async () => ({ logs: [] }),
     },
   })
   const signal = new AbortController().signal
@@ -58,4 +59,29 @@ test('traces.list and traces.get delegate to the reader; unknown trace is NotFou
     })
   await expect(get('trace-one')).resolves.toEqual(trace)
   await expect(get('missing')).rejects.toMatchObject({ code: 'TRACE_NOT_FOUND' })
+})
+
+test('traces.logs delegates to the reader', async () => {
+  const params = { traceID: 'trace-one', spanID: 'span-1', limit: 5, cursor: 'older' }
+  let received: unknown
+  const handlers = createTraceHandlers({
+    reader: {
+      list: async () => ({ traces: [] }),
+      get: async () => undefined,
+      logs: async (param) => {
+        received = param
+        return { logs: [], cursor: 'oldest' }
+      },
+    },
+  })
+  const result = await handlers['traces.logs']({
+    param: params,
+    signal: new AbortController().signal,
+    message: {
+      header: { typ: 'JWT', alg: 'none' },
+      payload: { typ: 'request', prc: 'traces.logs', rid: 'logs-request', prm: params },
+    },
+  })
+  expect(result).toEqual({ logs: [], cursor: 'oldest' })
+  expect(received).toEqual(params)
 })

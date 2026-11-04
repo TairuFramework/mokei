@@ -96,7 +96,7 @@ export function HostConnectionProvider({ children }: { children: ReactNode }) {
       off.push(() => client.signal.removeEventListener('abort', fail))
 
       // Open before info: its reply is the barrier confirming the subscription is registered.
-      const stream = client.createStream('events', { signal: abort.signal })
+      const stream = client.createStream('events', { param: {}, signal: abort.signal })
       closeStream = () => stream.close()
       void stream.catch(fail)
       let latestStatus: HostInfoResult['flowService'] | undefined

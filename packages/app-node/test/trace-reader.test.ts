@@ -372,3 +372,89 @@ test('name filtering matches label and flow ID in stored and live summaries', as
   }
   expect((await reader.list({ limit: 10, name: 'missing' })).traces).toEqual([])
 })
+
+test('get lists calls from other traces, open and ended, newest first', async () => {
+  const tracer = new TracerProvider({ spanProcessors: [recorder] }).getTracer('calls-test')
+  const contextRoot = tracer.startSpan('mcp.context', {
+    attributes: { 'mokei.root': true, 'mokei.kind': 'context' },
+  })
+  const contextTraceID = contextRoot.spanContext().traceId
+  const flow = tracer.startSpan('invoke_workflow demo', {
+    attributes: { 'mokei.root': true, 'mokei.kind': 'flow' },
+  })
+  const inFlow = trace.setSpan(context.active(), flow)
+  const call = (name: string, startTime: number) =>
+    tracer.startSpan(
+      name,
+      {
+        startTime,
+        attributes: { 'mokei.context.trace_id': contextTraceID },
+        links: [{ context: contextRoot.spanContext() }],
+      },
+      inFlow,
+    )
+  const first = call('tools/call read', 1000)
+  first.end(1500)
+  const second = call('tools/call write', 2000)
+  const flowTraceID = flow.spanContext().traceId
+  // Same-trace spans carrying the attribute are not calls *into* another trace.
+  tracer
+    .startSpan(
+      'local',
+      { attributes: { 'mokei.context.trace_id': contextTraceID } },
+      trace.setSpan(context.active(), contextRoot),
+    )
+    .end()
+
+  const live = await reader.get(contextTraceID)
+  expect(live?.calls).toEqual([
+    expect.objectContaining({ traceID: flowTraceID, name: 'tools/call write', outcome: null }),
+    expect.objectContaining({
+      traceID: flowTraceID,
+      name: 'tools/call read',
+      outcome: 'ok',
+      endTime: 1500,
+    }),
+  ])
+  expect(live?.callsTruncated).toBe(false)
+
+  second.end(2500)
+  await recorder.forceFlush()
+  const stored = await reader.get(contextTraceID)
+  expect(stored?.calls?.map((entry) => [entry.name, entry.outcome])).toEqual([
+    ['tools/call write', 'ok'],
+    ['tools/call read', 'ok'],
+  ])
+  const capped = createTraceReader({ provider: db, recorder, callLimit: 1 })
+  expect(await capped.get(contextTraceID)).toMatchObject({
+    calls: [expect.objectContaining({ name: 'tools/call write' })],
+    callsTruncated: true,
+  })
+  contextRoot.end()
+  flow.end()
+})
+
+test('logs pages newest first, by span and before a time, including unflushed logs', async () => {
+  const store = await getLogStore(db)
+  const log = (spanID: string, timestamp: number) => ({
+    traceID: 'trace',
+    spanID,
+    timestamp,
+    level: 'info' as const,
+    category: ['test'],
+    message: `${spanID}@${timestamp}`,
+    properties: { 'dev.mokei/logID': `${spanID}-${timestamp}` },
+  })
+  await store.addLogs([log('a', 1), log('b', 2), log('a', 3), log('a', 4)])
+  const first = await reader.logs({ traceID: 'trace', limit: 2 })
+  expect(first.logs.map((entry) => entry.message)).toEqual(['a@4', 'a@3'])
+  expect(first.cursor).toBeDefined()
+  const second = await reader.logs({ traceID: 'trace', limit: 2, cursor: first.cursor })
+  expect(second.logs.map((entry) => entry.message)).toEqual(['b@2', 'a@1'])
+  const spanOnly = await reader.logs({ traceID: 'trace', spanID: 'a', limit: 10 })
+  expect(spanOnly.logs.map((entry) => entry.message)).toEqual(['a@4', 'a@3', 'a@1'])
+  const before = await reader.logs({ traceID: 'trace', before: 2, limit: 10 })
+  expect(before.logs.map((entry) => entry.message)).toEqual(['b@2', 'a@1'])
+  expect(await reader.logs({ traceID: 'trace', limit: 0 })).toEqual({ logs: [] })
+  await expect(reader.logs({ traceID: 'trace', limit: -1 })).rejects.toThrow(RangeError)
+})

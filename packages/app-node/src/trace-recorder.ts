@@ -4,7 +4,7 @@ import { getLogStore } from '@hozon/store-log'
 import type { StoredSpan } from '@hozon/store-telemetry'
 import { getTelemetryStore } from '@hozon/store-telemetry'
 import type { Sink } from '@logtape/logtape'
-import type { OpenSpan, TraceLog, TraceSummary, TracingInfo } from '@mokei/host-protocol'
+import type { OpenSpan, TraceCall, TraceLog, TraceSummary, TracingInfo } from '@mokei/host-protocol'
 import type { Context } from '@opentelemetry/api'
 import { isSpanContextValid, SpanStatusCode, trace } from '@opentelemetry/api'
 import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace'
@@ -12,7 +12,7 @@ import { toJSONValue } from '@sozai/json'
 import { getReporter, renderLogMessage } from '@sozai/log'
 
 import { toOpenSpan, toStoredSpan } from './stored-span.js'
-import { getTraceIndexStore } from './trace-index.js'
+import { getTraceIndexStore, type IndexedTraceCall, pickSummaryAttributes } from './trace-index.js'
 
 export type TraceRecorderEvent =
   | { type: 'span:start'; data: OpenSpan }
@@ -47,15 +47,40 @@ function isRoot(span: ReadableSpan): boolean {
   return span.attributes['mokei.root'] === true
 }
 
+/** The trace a span calls into, when it is a call from another trace (a linked request span). */
+function calledTraceID(span: OpenSpan): string | undefined {
+  const target = span.attributes['mokei.context.trace_id']
+  return typeof target === 'string' && target !== span.traceID ? target : undefined
+}
+
+/** `span` as a call into another trace, or `undefined` when it is not one. */
+export function toTraceCall(span: OpenSpan | StoredSpan): IndexedTraceCall | undefined {
+  const contextTraceID = calledTraceID(span)
+  if (contextTraceID == null) return undefined
+  const ended = 'endTime' in span && typeof span.endTime === 'number'
+  return {
+    contextTraceID,
+    traceID: span.traceID,
+    spanID: span.spanID,
+    name: span.name,
+    startTime: span.startTime,
+    ...(ended ? { endTime: (span as StoredSpan).endTime } : {}),
+    outcome: ended
+      ? (span as StoredSpan).status.code === SpanStatusCode.ERROR
+        ? 'error'
+        : 'ok'
+      : null,
+  }
+}
+
+function sameAttributes(a: TraceSummary['attributes'], b: TraceSummary['attributes']): boolean {
+  const keys = Object.keys(b) as Array<keyof TraceSummary['attributes']>
+  return keys.every((key) => a[key] === b[key])
+}
+
 function createSummary(span: OpenSpan): TraceSummary {
   const kind = span.attributes['mokei.kind']
-  const attributes: TraceSummary['attributes'] = {}
-  for (const key of ['mokei.run.id', 'mokei.flow.id', 'mokei.context.id'] as const) {
-    const value = span.attributes[key]
-    if (typeof value === 'string') attributes[key] = value
-  }
-  const label = span.attributes['mokei.run.label']
-  if (typeof label === 'string') attributes.label = label
+  const attributes = pickSummaryAttributes(span.attributes)
   return {
     traceID: span.traceID,
     rootSpanID: span.spanID,
@@ -92,7 +117,11 @@ export class LocalTraceRecorder implements SpanProcessor {
   #retryDelaysMs: Array<number>
   #dirtySummaryLimit: number
   #timer: ReturnType<typeof setInterval>
-  #open = new Map<string, OpenSpan>()
+  // Live spans, not start-time copies: attributes set after start (a context's
+  // `mokei.server.name`) must reach snapshots and summaries before the span ends.
+  #open = new Map<string, Span>()
+  // Traces whose lost child-only delta is being checked against the index.
+  #verifying = new Set<string>()
   #queue: Array<TraceQueueEntry> = []
   #summaries = new Map<string, TraceSummary>()
   #dirty = new Set<string>()
@@ -153,7 +182,7 @@ export class LocalTraceRecorder implements SpanProcessor {
   onStart(span: Span, _parentContext: Context): void {
     if (this.#stopped) return
     const open = toOpenSpan(span)
-    this.#open.set(open.spanID, open)
+    this.#open.set(open.spanID, span)
     this.#emit({ type: 'span:start', data: open })
     if (isRoot(span)) {
       this.#unrooted.delete(open.traceID)
@@ -183,6 +212,7 @@ export class LocalTraceRecorder implements SpanProcessor {
       errorCount: summary.errorCount + (span.status.code === SpanStatusCode.ERROR ? 1 : 0),
       ...(isRoot(span)
         ? {
+            attributes: { ...summary.attributes, ...pickSummaryAttributes(stored.attributes) },
             active: false,
             activeSegmentSpanID: undefined,
             outcome:
@@ -233,7 +263,11 @@ export class LocalTraceRecorder implements SpanProcessor {
     let pending = this.#pending.get(traceID)
     if (pending == null) {
       if (this.#stopped || this.#pending.size >= this.#dirtySummaryLimit) {
-        if (span?.attributes['mokei.root'] !== true) return
+        if (span?.attributes['mokei.root'] !== true) {
+          // A child-only delta is lost only if its trace is one this recorder indexes.
+          if (!this.#stopped) this.#verifyLoss(traceID)
+          return
+        }
         this.#lostSummaryCount++
         this.#reportError(
           'Trace hydration limit exceeded',
@@ -261,11 +295,7 @@ export class LocalTraceRecorder implements SpanProcessor {
       const local = pending.summary
       if (persisted == null && (!pending.hasRootStart || local == null)) {
         this.#pending.delete(traceID)
-        this.#unrooted.add(traceID)
-        if (this.#unrooted.size > 1000) {
-          const oldest = this.#unrooted.values().next().value
-          if (oldest !== undefined) this.#unrooted.delete(oldest)
-        }
+        this.#markUnrooted(traceID)
         return
       }
       const summary =
@@ -298,7 +328,9 @@ export class LocalTraceRecorder implements SpanProcessor {
       this.#reportError('Failed to load trace summary', error)
       const delay = this.#retryDelaysMs[attempt]
       if (delay == null) {
-        this.#losePending(traceID, pending)
+        // Hydration failed for good: whether the trace is indexed is unknown, so any delta it
+        // held counts as lost. The load error was reported above.
+        this.#losePending(traceID, pending, { childDeltas: true })
       } else {
         pending.retryTimer = setTimeout(() => {
           pending.retryTimer = undefined
@@ -308,10 +340,62 @@ export class LocalTraceRecorder implements SpanProcessor {
     }
   }
 
-  #losePending(traceID: string, pending: PendingSummary): void {
+  #markUnrooted(traceID: string): void {
+    this.#unrooted.add(traceID)
+    if (this.#unrooted.size > 1000) {
+      const oldest = this.#unrooted.values().next().value
+      if (oldest !== undefined) this.#unrooted.delete(oldest)
+    }
+  }
+
+  /**
+   * Counts a child-only delta dropped at the hydration limit as lost when its trace is indexed.
+   * A trace the index does not hold is unrooted (no mokei root span), so nothing was lost.
+   */
+  #verifyLoss(traceID: string): void {
+    if (this.#unrooted.has(traceID) || this.#verifying.has(traceID)) return
+    const lost = () => {
+      this.#lostSummaryCount++
+      this.#reportError(
+        'Trace hydration limit exceeded',
+        new Error(`Lost summary delta for ${traceID}`),
+      )
+    }
+    // Lookups are bounded like pending summaries. Past the bound, assume the delta mattered.
+    if (this.#verifying.size >= this.#dirtySummaryLimit) {
+      lost()
+      return
+    }
+    this.#verifying.add(traceID)
+    void getTraceIndexStore(this.#provider)
+      .then((store) => store.get(traceID))
+      .then(
+        (persisted) => {
+          if (persisted == null) this.#markUnrooted(traceID)
+          else lost()
+        },
+        (error) => {
+          this.#reportError('Failed to load trace summary', error)
+          lost()
+        },
+      )
+      .finally(() => {
+        this.#verifying.delete(traceID)
+      })
+  }
+
+  #losePending(
+    traceID: string,
+    pending: PendingSummary,
+    options: { childDeltas?: boolean } = {},
+  ): void {
     clearTimeout(pending.retryTimer)
     this.#pending.delete(traceID)
-    if (!pending.hasRootStart) return
+    const heldChildDeltas =
+      (pending.summary?.spanCount ?? 0) > 0 ||
+      (pending.summary?.droppedCount ?? 0) > 0 ||
+      pending.droppedLogCount > 0
+    if (!pending.hasRootStart && !(options.childDeltas && heldChildDeltas)) return
     this.#lostSummaryCount++
     this.#reportError(
       'Lost unresolved trace summary',
@@ -363,7 +447,7 @@ export class LocalTraceRecorder implements SpanProcessor {
   snapshot(traceID?: string): RecorderSnapshot {
     const matches = (entry: { traceID?: string }) => traceID == null || entry.traceID === traceID
     return structuredClone({
-      open: [...this.#open.values()].filter(matches),
+      open: [...this.#open.values()].map((span) => toOpenSpan(span)).filter(matches),
       spans: this.#queue.flatMap((entry) =>
         entry.type === 'span' && matches(entry.data) ? [entry.data] : [],
       ),
@@ -372,6 +456,37 @@ export class LocalTraceRecorder implements SpanProcessor {
       ),
       summaries: [...this.#summaries.values()].filter(matches),
     })
+  }
+
+  /** Calls into `contextTraceID` not yet in the index: open, or ended and still queued. */
+  callsInto(contextTraceID: string): Array<TraceCall> {
+    const calls: Array<TraceCall> = []
+    const spans = [
+      ...[...this.#open.values()].map((span) => toOpenSpan(span)),
+      ...this.#queue.flatMap((entry) => (entry.type === 'span' ? [entry.data] : [])),
+    ]
+    for (const span of spans) {
+      const call = toTraceCall(span)
+      if (call?.contextTraceID !== contextTraceID) continue
+      const { contextTraceID: _, ...rest } = call
+      calls.push(rest)
+    }
+    return structuredClone(calls)
+  }
+
+  /** Re-reads summary attributes set on open root spans after they started. */
+  #refreshRoots(): void {
+    for (const span of this.#open.values()) {
+      if (!isRoot(span)) continue
+      const picked = pickSummaryAttributes(span.attributes)
+      const traceID = span.spanContext().traceId
+      const current = this.#summaries.get(traceID) ?? this.#pending.get(traceID)?.summary
+      if (current == null || sameAttributes(current.attributes, picked)) continue
+      this.#update(toOpenSpan(span), (summary) => ({
+        ...summary,
+        attributes: { ...summary.attributes, ...picked },
+      }))
+    }
   }
 
   info(): TracingInfo {
@@ -400,6 +515,7 @@ export class LocalTraceRecorder implements SpanProcessor {
   }
 
   forceFlush(): Promise<void> {
+    if (!this.#stopped) this.#refreshRoots()
     if (this.#flush) return this.#flush
     const flush = this.#drain()
       .catch((error) => {
@@ -436,7 +552,15 @@ export class LocalTraceRecorder implements SpanProcessor {
                   ),
                 })),
               )
-            if (summaries.length) await (await getTraceIndexStore(tx)).upsert(summaries)
+            const calls = spans.flatMap((span) => {
+              const call = toTraceCall(span)
+              return call == null ? [] : [call]
+            })
+            if (summaries.length || calls.length) {
+              const index = await getTraceIndexStore(tx)
+              if (calls.length) await index.addCalls(calls)
+              if (summaries.length) await index.upsert(summaries)
+            }
           })
           committed = true
           break

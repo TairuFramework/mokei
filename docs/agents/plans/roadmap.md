@@ -63,6 +63,10 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **Unified traces follow-ons** (2026-11-04) -- context trace rows named by their server, a
+  "Called from" index of cross-trace calls, newest-first log paging (`traces.logs`), verified
+  counting of lost summary deltas, an `events` type filter, and `context:message` removed from
+  the wire. See [traces follow-ons](completed/2026-11-04-unified-traces-follow-ons.complete.md).
 - **OAuth identity and token coordination** (2026-11-04, PR #82) -- `2025-11-25` HTTP sessions are
   bound to their subject, handlers get per-request auth and verifier claims, and OAuth clients share
   a coordinated token store across contexts and processes. See
@@ -214,10 +218,8 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
   resource across contexts sharing a token store; needs a `TokenStore` contract design pass.
 - **Session elicitation follow-ons** (`backlog/2026-09-29-session-elicitation-follow-ons.md`) --
   host-level sampling and roots, and server-side URL-mode completion on `2025-11-25`.
-- **Unified traces follow-ons** (`backlog/2026-10-08-unified-traces-follow-ons.md`) -- reverse
-  links, an `events` type filter, context server names in trace rows, and smaller gaps.
 - **Upstream dependency gaps** (`backlog/2026-11-04-upstream-dependency-gaps.md`) -- workarounds
-  to drop once enkaku, inkjs, sozai and hozon releases land.
+  to drop once enkaku, inkjs and sozai releases land.
 
 ## Planned — P2
 

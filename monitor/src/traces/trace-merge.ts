@@ -1,6 +1,7 @@
 import type {
   OpenSpan,
   StoredSpan,
+  TraceCall,
   TraceLog,
   TraceSummary,
   TracesGetResult,
@@ -23,6 +24,42 @@ export type TraceState = {
   spans: Map<string, StoredSpan | OpenSpan>
   logs: Map<string, TraceLog>
   logsTruncated: boolean
+  /** Calls into this trace from other traces, by span ID. */
+  calls: Map<string, TraceCall>
+  callsTruncated: boolean
+}
+
+export function emptyTraceState(): TraceState {
+  return {
+    spans: new Map(),
+    logs: new Map(),
+    logsTruncated: false,
+    calls: new Map(),
+    callsTruncated: false,
+  }
+}
+
+/** `span` as a call into `traceID` from another trace, or `undefined` when it is not one. */
+export function toCall(span: StoredSpan | OpenSpan, traceID: string): TraceCall | undefined {
+  if (span.traceID === traceID || span.attributes['mokei.context.trace_id'] !== traceID) return
+  const ended = 'endTime' in span
+  return {
+    traceID: span.traceID,
+    spanID: span.spanID,
+    name: span.name,
+    startTime: span.startTime,
+    ...(ended ? { endTime: span.endTime } : {}),
+    // Status code 2 is OpenTelemetry's ERROR.
+    outcome: ended ? (span.status.code === 2 ? 'error' : 'ok') : null,
+  }
+}
+
+export function applyCall(state: TraceState, call: TraceCall): TraceState {
+  const previous = state.calls.get(call.spanID)
+  if (previous?.endTime != null && call.endTime == null) return state
+  const calls = new Map(state.calls)
+  calls.set(call.spanID, call)
+  return { ...state, calls }
 }
 
 export function applySpan(state: TraceState, span: StoredSpan | OpenSpan): TraceState {
@@ -48,8 +85,10 @@ export function applySnapshot(state: TraceState, result: TracesGetResult): Trace
         ? state.summary
         : result.summary,
     logsTruncated: state.logsTruncated || result.logsTruncated,
+    callsTruncated: state.callsTruncated || (result.callsTruncated ?? false),
   }
   for (const span of result.spans) next = applySpan(next, span)
   for (const log of result.logs) next = applyLog(next, log)
+  for (const call of result.calls ?? []) next = applyCall(next, call)
   return next
 }

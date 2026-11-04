@@ -4,11 +4,14 @@ import type {
   TracesGetResult,
   TracesListParams,
   TracesListResult,
+  TracesLogsParams,
+  TracesLogsResult,
 } from '@mokei/host-protocol'
 
 export type TraceReader = {
   list(params: TracesListParams): Promise<TracesListResult>
   get(traceID: string): Promise<TracesGetResult | undefined>
+  logs(params: TracesLogsParams): Promise<TracesLogsResult>
 }
 
 export function createTraceHandlers(params: {
@@ -16,6 +19,7 @@ export function createTraceHandlers(params: {
 }): ProcedureHandlers<TraceProtocol> {
   return {
     'traces.list': (ctx) => params.reader.list(ctx.param),
+    'traces.logs': (ctx) => params.reader.logs(ctx.param),
     'traces.get': async (ctx) => {
       const result = await params.reader.get(ctx.param.traceID)
       if (result === undefined) {

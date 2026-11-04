@@ -13,8 +13,6 @@ dependency updates.
   `HTTPServer` exposes plugin exports (not in 0.2.1).
 - **Monitor bridge `dispose()`** -- `startMonitor` wraps SSE bodies to close them on daemon
   reconnect. Adopt a bridge `dispose()` that ends its sessions when available.
-- **`@hozon/store-log` query** -- newest-first, span-filtered log paging for traces (see the
-  unified traces follow-ons).
 - **Validator cache package** -- a sozai `createValidatorCache({ factory, maxCompiles, maxEntries })`
   over `createValidatorFactory` and `@sozai/json` canonical keys, so the recycle rule in
   `@mokei/decision-flow-server`'s `src/validators.ts` and `@mokei/host-desktop`'s `src/form.ts`

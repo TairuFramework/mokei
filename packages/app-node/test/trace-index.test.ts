@@ -220,3 +220,52 @@ test.each([
 ])('rejects malformed cursor %s', async (cursor) => {
   await expect(store.list({ limit: 10, cursor })).rejects.toThrow()
 })
+
+test('records calls into a trace and prunes them with either end', async () => {
+  const store = await getTraceIndexStore(db)
+  const call = (spanID: string, traceID: string, contextTraceID: string, startTime: number) => ({
+    spanID,
+    traceID,
+    contextTraceID,
+    name: `tools/call ${spanID}`,
+    startTime,
+    endTime: startTime + 1,
+    outcome: 'ok' as const,
+  })
+  await store.addCalls([
+    call('s1', 'flow-a', 'ctx', 10),
+    call('s2', 'flow-b', 'ctx', 20),
+    call('s3', 'flow-a', 'other', 30),
+  ])
+  // A re-recorded call replaces its row.
+  await store.addCalls([{ ...call('s2', 'flow-b', 'ctx', 20), outcome: 'error' }])
+  expect(await store.listCalls('ctx', 10)).toEqual([
+    {
+      traceID: 'flow-b',
+      spanID: 's2',
+      name: 'tools/call s2',
+      startTime: 20,
+      endTime: 21,
+      outcome: 'error',
+    },
+    {
+      traceID: 'flow-a',
+      spanID: 's1',
+      name: 'tools/call s1',
+      startTime: 10,
+      endTime: 11,
+      outcome: 'ok',
+    },
+  ])
+  expect(await store.listCalls('ctx', 1)).toHaveLength(1)
+  expect(await store.listCalls('ctx', 0)).toEqual([])
+  // Deleting the calling trace removes its calls into any trace.
+  await store.deleteByTrace(['flow-a'])
+  expect((await store.listCalls('ctx', 10)).map((entry) => entry.spanID)).toEqual(['s2'])
+  expect(await store.listCalls('other', 10)).toEqual([])
+  // Retention keeps calls whose context trace is kept, and ages out the rest.
+  await store.addCalls([call('s4', 'flow-c', 'kept', 5)])
+  await store.deleteBefore(100, { keepTraceIDs: ['kept'] })
+  expect(await store.listCalls('ctx', 10)).toEqual([])
+  expect((await store.listCalls('kept', 10)).map((entry) => entry.spanID)).toEqual(['s4'])
+})
