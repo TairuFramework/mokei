@@ -4,7 +4,7 @@
 **Date:** 2026-09-30
 **Branch:** `fix/decision-flow-quick-follow-ons`
 **Origin:** small items from [decision-flow server follow-ons](2026-11-04-backlog-trim.complete.md)
-and [session elicitation follow-ons](../backlog/2026-09-29-session-elicitation-follow-ons.md). No spec or plan:
+and session elicitation follow-ons (dropped on 2026-11-04, see [backlog trim](2026-11-04-backlog-trim.complete.md#second-pass-deprecated-and-2025-11-25-only-work)). No spec or plan:
 each item was small enough to implement directly from its backlog entry.
 
 ## Goal

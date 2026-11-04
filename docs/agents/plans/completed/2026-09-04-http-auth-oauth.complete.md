@@ -86,6 +86,6 @@ afterward (the `/context add-http` command above).
 
 ## Follow-ups extracted
 
-- `docs/agents/plans/next/2026-09-04-oauth-multi-context-token-coordination.md`
+- `docs/agents/plans/next/2026-09-04-oauth-multi-context-token-coordination.md` (shipped in PR #82; see `completed/2026-11-04-backlog-trim.complete.md`)
 - `docs/agents/plans/completed/2026-09-04-oauth-server-gate-integration-tests.complete.md`
 - `docs/agents/plans/backlog/2026-09-04-oauth-hardening-followups.md`

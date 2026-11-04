@@ -3,7 +3,7 @@
 **Status:** complete
 **Date:** 2026-09-29
 **Branch:** `feat/session-elicitation`
-**Follow-ons:** [session elicitation follow-ons](../backlog/2026-09-29-session-elicitation-follow-ons.md)
+**Follow-ons:** dropped on 2026-11-04, see [backlog trim](2026-11-04-backlog-trim.complete.md#second-pass-deprecated-and-2025-11-25-only-work)
 
 ## Goal
 
