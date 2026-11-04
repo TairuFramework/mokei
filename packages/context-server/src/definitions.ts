@@ -45,6 +45,8 @@ export type CreatePromptParams<
 > = {
   description: string
   argumentsSchema?: ArgumentsSchema
+  /** OAuth scopes required to get this prompt. See {@link GenericPromptDefinition.scopes}. */
+  scopes?: Array<string>
   handler: TypedPromptHandler<Arguments>
 }
 
@@ -53,6 +55,8 @@ export function createPrompt<
   Arguments = FromSchema<ArgumentsSchema>,
 >(params: CreatePromptParams<ArgumentsSchema, Arguments>): PromptDefinition<Arguments> {
   const { description, argumentsSchema, handler } = params
+  const scoped =
+    params.scopes != null && params.scopes.length > 0 ? { scopes: [...params.scopes] } : {}
 
   if (argumentsSchema == null) {
     const passthrough = (request: HandlerRequest<{ input: unknown }>): PromptHandlerReturn => {
@@ -67,7 +71,7 @@ export function createPrompt<
         mintRequestState: request.mintRequestState,
       })
     }
-    return { description, handler: passthrough } as PromptDefinition<Arguments>
+    return { description, ...scoped, handler: passthrough } as PromptDefinition<Arguments>
   }
 
   const validate = createValidator<ArgumentsSchema, Arguments>(argumentsSchema, {
@@ -98,7 +102,12 @@ export function createPrompt<
     })
   }
 
-  return { description, argumentsSchema, handler: wrappedHandler } as PromptDefinition<Arguments>
+  return {
+    description,
+    argumentsSchema,
+    ...scoped,
+    handler: wrappedHandler,
+  } as PromptDefinition<Arguments>
 }
 
 export type CreateToolParams<

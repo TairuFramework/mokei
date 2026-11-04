@@ -11,6 +11,7 @@ import {
   HEADER_MISMATCH,
   isHandshakeRequired,
   isSupportedProtocolVersion,
+  MCP_NAME_HEADER_SOURCE,
   META_PROTOCOL_VERSION,
   PROTOCOLS,
 } from '@mokei/context-protocol'
@@ -91,20 +92,6 @@ function sameParamHeaders(a: Record<string, string>, b: Record<string, string>):
   const keys = Object.keys(a)
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key])
 }
-
-/**
- * Body fields used for `Mcp-Name` (specification/2026-07-28/basic/transports).
- * `resources/read` uses `uri`; unknown methods must not inherit a `name` header.
- * A `Map` avoids inherited `constructor`/`__proto__` lookups if methods become dynamic.
- */
-const MCP_NAME_HEADER_SOURCE: ReadonlyMap<string, string> = new Map([
-  ['tools/call', 'name'],
-  ['prompts/get', 'name'],
-  ['resources/read', 'uri'],
-  ['tasks/get', 'taskId'],
-  ['tasks/update', 'taskId'],
-  ['tasks/cancel', 'taskId'],
-])
 
 /** A `fetch`-shaped function: the unit a {@link FetchMiddleware} wraps and produces. */
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>

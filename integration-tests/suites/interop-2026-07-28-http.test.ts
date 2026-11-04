@@ -115,6 +115,10 @@ describe('mokei over Streamable HTTP on 2026-07-28', () => {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json, text/event-stream',
+          // SEP-2243 standard headers, which the server requires on a 2026-07-28 request.
+          'MCP-Protocol-Version': '2026-07-28',
+          'Mcp-Method': 'tools/call',
+          'Mcp-Name': blocking.toolName,
         },
         body: JSON.stringify({
           jsonrpc: '2.0',

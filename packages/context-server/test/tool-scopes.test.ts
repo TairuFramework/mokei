@@ -9,9 +9,12 @@ import { afterEach, describe, expect, test } from 'vitest'
 
 import {
   ContextServer,
+  createPrompt,
   createTool,
+  type GenericToolDefinition,
   INSUFFICIENT_SCOPE,
   missingScopes,
+  SCOPES_META_KEY,
   type ServerAuth,
 } from '../src/index.js'
 
@@ -53,6 +56,35 @@ function setup(auth?: ServerAuth) {
           return { content: [] }
         },
       }),
+      tagged: {
+        description: 'Has its own _meta',
+        inputSchema: { type: 'object' },
+        scopes: ['admin'],
+        _meta: { 'example.com/owner': 'ops' },
+        handler: () => ({ content: [] }),
+      } as GenericToolDefinition,
+    },
+    prompts: {
+      greet: createPrompt({
+        description: 'Open prompt',
+        handler: () => ({ messages: [] }),
+      }),
+      secret: createPrompt({
+        description: 'Needs prompts:secret',
+        scopes: ['prompts:secret'],
+        handler: () => {
+          calls.push('secret')
+          return { messages: [] }
+        },
+      }),
+    },
+    resources: {
+      list: [],
+      scopes: (uri) => (uri.startsWith('private://') ? ['resources:private'] : []),
+      read: ({ params }) => {
+        calls.push(params.uri)
+        return { contents: [{ uri: params.uri, text: 'x' }] }
+      },
     },
   })
   servers.push(server)
@@ -72,12 +104,27 @@ function setup(auth?: ServerAuth) {
 }
 
 describe('per-tool scopes', () => {
-  test('createTool keeps scopes on the definition, never in tools/list', async () => {
+  test('tools/list advertises scopes under _meta, never as a top-level field', async () => {
     const { request } = setup()
     const listed = await request(1, 'tools/list')
     const tools = listed.result?.tools as Array<Record<string, unknown>>
-    expect(tools.map((tool) => tool.name)).toEqual(['admin', 'read'])
+    expect(tools.map((tool) => tool.name)).toEqual(['admin', 'read', 'tagged'])
     for (const tool of tools) expect(tool).not.toHaveProperty('scopes')
+    const [admin, read, tagged] = tools
+    expect(SCOPES_META_KEY).toBe('dev.mokei/scopes')
+    expect(admin?._meta).toEqual({ [SCOPES_META_KEY]: ['admin', 'write'] })
+    expect(read).not.toHaveProperty('_meta')
+    expect(tagged?._meta).toEqual({ 'example.com/owner': 'ops', [SCOPES_META_KEY]: ['admin'] })
+  })
+
+  test('prompts/list advertises prompt scopes the same way', async () => {
+    const { request } = setup()
+    const listed = await request(1, 'prompts/list')
+    const prompts = listed.result?.prompts as Array<Record<string, unknown>>
+    expect(prompts.map((prompt) => prompt.name)).toEqual(['greet', 'secret'])
+    expect(prompts[0]).not.toHaveProperty('_meta')
+    expect(prompts[1]?._meta).toEqual({ [SCOPES_META_KEY]: ['prompts:secret'] })
+    for (const prompt of prompts) expect(prompt).not.toHaveProperty('scopes')
   })
 
   test('requiredScopes names the called tool scopes and nothing else', () => {
@@ -93,6 +140,44 @@ describe('per-tool scopes', () => {
     )
     expect(server.requiredScopes({ method: 'tools/call' })).toEqual([])
     expect(server.requiredScopes({ method: 'tools/list', params: { name: 'admin' } })).toEqual([])
+    expect(server.requiredScopes({ method: 'prompts/get', params: { name: 'secret' } })).toEqual([
+      'prompts:secret',
+    ])
+    expect(server.requiredScopes({ method: 'prompts/get', params: { name: 'greet' } })).toEqual([])
+    expect(server.requiredScopes({ method: 'prompts/get', params: { name: 'nope' } })).toEqual([])
+    expect(
+      server.requiredScopes({ method: 'resources/read', params: { uri: 'private://a' } }),
+    ).toEqual(['resources:private'])
+    expect(
+      server.requiredScopes({ method: 'resources/read', params: { uri: 'public://a' } }),
+    ).toEqual([])
+  })
+
+  test('prompts/get and resources/read enforce their scopes when auth is present', async () => {
+    const { calls, request } = setup({ subject: 'alice', scopes: ['read'] })
+    const prompt = await request(1, 'prompts/get', { name: 'secret' })
+    expect(prompt.error?.code).toBe(INVALID_REQUEST)
+    expect(prompt.error?.data).toEqual({ error: INSUFFICIENT_SCOPE, scopes: ['prompts:secret'] })
+    const resource = await request(2, 'resources/read', { uri: 'private://a' })
+    expect(resource.error?.code).toBe(INVALID_REQUEST)
+    expect(resource.error?.message).toContain('resources/read private://a')
+    expect(resource.error?.data).toEqual({
+      error: INSUFFICIENT_SCOPE,
+      scopes: ['resources:private'],
+    })
+    expect((await request(3, 'resources/read', { uri: 'public://a' })).error).toBeUndefined()
+    expect((await request(4, 'prompts/get', { name: 'greet' })).error).toBeUndefined()
+    expect(calls).toEqual(['public://a'])
+  })
+
+  test('prompts/get and resources/read run with the scopes held', async () => {
+    const { calls, request } = setup({
+      subject: 'alice',
+      scopes: ['prompts:secret', 'resources:private'],
+    })
+    expect((await request(1, 'prompts/get', { name: 'secret' })).error).toBeUndefined()
+    expect((await request(2, 'resources/read', { uri: 'private://a' })).error).toBeUndefined()
+    expect(calls).toEqual(['secret', 'private://a'])
   })
 
   test('rejects a call whose auth lacks the tool scopes before the handler runs', async () => {

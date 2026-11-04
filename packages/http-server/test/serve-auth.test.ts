@@ -9,6 +9,7 @@ import { TokenVerificationError } from '@teikyo/oauth'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { serveHTTP } from '../src/serve.js'
+import { statelessHeaders } from './mcp-headers.js'
 
 const SERVER_CONFIG: ServerConfig = {
   name: 'test',
@@ -53,6 +54,7 @@ describe('serveHTTP auth', () => {
         Authorization: 'Bearer good',
         'Content-Type': 'application/json',
         'X-User-Id': 'attacker',
+        ...statelessHeaders('server/discover'),
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -118,6 +120,7 @@ describe('serveHTTP auth', () => {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
             'X-User-Id': 'alice',
+            ...statelessHeaders(method, params),
           },
           body: JSON.stringify({
             jsonrpc: '2.0',

@@ -22,6 +22,7 @@ import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createRuntime, type Runtime } from '@sozai/runtime'
 import type { AuthInfo } from '@teikyo/oauth'
 
+import { validateStandardHeaders } from './headers.js'
 import {
   appendReplay,
   eventsAfter,
@@ -268,8 +269,8 @@ export function insufficientScopeResponse(params: {
   const missing = missingScopes(toolScopes, auth.scopes)
   if (missing.length === 0) return null
   const needed = [...new Set([...(params.requiredScopes ?? []), ...toolScopes])]
-  const name = (body.params as { name?: unknown } | undefined)?.name
-  const description = `Tool ${String(name)} requires scope ${missing.join(' ')}`
+  const { name, uri } = (body.params ?? {}) as { name?: unknown; uri?: unknown }
+  const description = `${String(body.method)} ${String(name ?? uri)} requires scope ${missing.join(' ')}`
   const challenge: Array<[string, string]> = [
     ['error', INSUFFICIENT_SCOPE],
     ['scope', needed.join(' ')],
@@ -534,17 +535,10 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       requestVersion != null &&
       PROTOCOLS[requestVersion as ProtocolVersion]?.requiresRequestMeta
     ) {
-      const headerVersion = request.headers.get('MCP-Protocol-Version')
-      // An absent header is accepted: the body's `_meta` is what `ContextServer` resolves
-      // the revision from, so the header is redundant confirmation for intermediaries. A
-      // header that *contradicts* the body is rejected -- one of the two is wrong, and
-      // guessing which would let a stale proxy silently reroute a request.
-      if (headerVersion != null && headerVersion !== requestVersion) {
-        return new Response(
-          `MCP-Protocol-Version header "${headerVersion}" does not match request _meta "${requestVersion}"`,
-          { status: 400 },
-        )
-      }
+      // SEP-2243: the standard headers must agree with the body (and be present on a request).
+      // Checked before the scope gate, so a malformed request is a `400` and never a `403`.
+      const mismatch = validateStandardHeaders({ request, body, protocolVersion: requestVersion })
+      if (mismatch != null) return mismatch
       return await handleStateless(request, body, auth)
     }
 

@@ -73,6 +73,7 @@ import {
   type ServerAuth,
   toRequestAuth,
   toTaskOwner,
+  withScopesMeta,
 } from './auth.js'
 import { applyCacheHints } from './cache.js'
 import { toResourceHandlers } from './definitions.js'
@@ -260,6 +261,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #serverInfo: Implementation
   #promptHandlers: Record<string, GenericPromptHandler> = {}
   #promptsList: Array<Prompt> = []
+  #promptScopes: Record<string, Array<string> | undefined> = {}
+  #resourceScopes?: ResourceDefinitions['scopes']
   #resources?: ResourceHandlers
   #tools: ToolDefinitions = {}
   #toolsList: Array<Tool> = []
@@ -322,9 +325,12 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
 
     for (const [name, prompt] of Object.entries(params.prompts ?? {})) {
-      const { handler, ...info } = prompt
+      // `scopes` is server-side policy, not part of the MCP `Prompt` shape: it is advertised
+      // under `_meta` instead.
+      const { handler, scopes, ...info } = prompt
       this.#promptHandlers[name] = handler
-      this.#promptsList.push({ name, ...info })
+      this.#promptScopes[name] = scopes
+      this.#promptsList.push(withScopesMeta({ name, ...info } as Prompt, scopes))
     }
     this.#promptsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#promptsList.length !== 0) {
@@ -334,6 +340,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (params.resources != null) {
       this.#capabilities.resources = { listChanged: true }
       this.#resources = toResourceHandlers(params.resources)
+      this.#resourceScopes = params.resources.scopes
     }
 
     // Owner (`subscriptions: true`) creates and owns a hub bound to its own `events`; a borrower
@@ -360,10 +367,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
 
     for (const [name, tool] of Object.entries(params.tools ?? {})) {
-      // `scopes` is server-side policy, not part of the MCP `Tool` shape.
+      // `scopes` is server-side policy, not part of the MCP `Tool` shape: it is advertised
+      // under `_meta` instead.
       const { handler, scopes, ...info } = tool
       this.#tools[name] = tool
-      this.#toolsList.push({ name, ...info })
+      this.#toolsList.push(withScopesMeta({ name, ...info } as Tool, scopes))
     }
     this.#toolsList.sort((a, b) => a.name.localeCompare(b.name))
     if (this.#toolsList.length !== 0) {
@@ -375,17 +383,30 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
   /**
    * The OAuth scopes a request needs beyond the server-wide ones: the called tool's
-   * {@link GenericToolDefinition.scopes} for a `tools/call`, and `[]` for any other method or
-   * an unknown tool. Reads only `method` and `params.name`, so a transport can check it before
-   * dispatch (the HTTP server answers `403 insufficient_scope` from it).
+   * {@link GenericToolDefinition.scopes} for `tools/call`, the prompt's for `prompts/get`, and
+   * {@link ResourceDefinitions.scopes} for `resources/read`. `[]` for any other method, or an
+   * unknown tool or prompt. Reads only `method` and `params.name` / `params.uri`, so a transport
+   * can check it before dispatch (the HTTP server answers `403 insufficient_scope` from it).
    */
   requiredScopes(request: { method?: unknown; params?: unknown }): Array<string> {
-    if (request.method !== 'tools/call') return []
     const params = request.params
     if (params == null || typeof params !== 'object') return []
-    const name = (params as { name?: unknown }).name
-    if (typeof name !== 'string' || !Object.hasOwn(this.#tools, name)) return []
-    return [...(this.#tools[name]?.scopes ?? [])]
+    const { name, uri } = params as { name?: unknown; uri?: unknown }
+    switch (request.method) {
+      case 'tools/call':
+        if (typeof name !== 'string' || !Object.hasOwn(this.#tools, name)) return []
+        return [...(this.#tools[name]?.scopes ?? [])]
+      case 'prompts/get':
+        if (typeof name !== 'string' || !Object.hasOwn(this.#promptScopes, name)) return []
+        return [...(this.#promptScopes[name] ?? [])]
+      case 'resources/read': {
+        const scopes = this.#resourceScopes
+        if (typeof uri !== 'string' || scopes == null) return []
+        return [...(typeof scopes === 'function' ? scopes(uri) : scopes)]
+      }
+      default:
+        return []
+    }
   }
 
   get clientInitialize(): ClientInitialize | undefined {
@@ -703,6 +724,19 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     meta: Record<string, JSONValue>,
     auth: RequestAuth | undefined,
   ): Promise<ServerResult | InputRequiredResult | CreateTaskResult | HeldResponse<ServerResult>> {
+    // Scopes bind only callers with auth: a transport without any (stdio) has no token to check.
+    if (auth != null) {
+      const required = this.requiredScopes(request)
+      const missing = missingScopes(required, auth.scopes)
+      if (missing.length > 0) {
+        const { name, uri } = request.params as { name?: unknown; uri?: unknown }
+        throw new RPCError({
+          code: INVALID_REQUEST,
+          message: `Insufficient scope for ${request.method} ${String(name ?? uri)}: requires ${missing.join(' ')}`,
+          data: { error: INSUFFICIENT_SCOPE, scopes: required },
+        })
+      }
+    }
     switch (request.method) {
       case 'completion/complete':
         if (this.#completeHandler == null) {
@@ -836,17 +870,6 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (tool == null) {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
       throw new RPCError({ code: INVALID_PARAMS, message: `Tool ${name} not found` })
-    }
-    // Scopes bind only callers with auth: a transport without any (stdio) has no token to check.
-    if (auth != null && tool.scopes != null) {
-      const missing = missingScopes(tool.scopes, auth.scopes)
-      if (missing.length > 0) {
-        throw new RPCError({
-          code: INVALID_REQUEST,
-          message: `Insufficient scope for tool ${name}: requires ${missing.join(' ')}`,
-          data: { error: INSUFFICIENT_SCOPE, scopes: [...tool.scopes] },
-        })
-      }
     }
     const clientCapabilities = protocol.readRequestMeta(request).clientCapabilities
     const tasks = this.#tasks

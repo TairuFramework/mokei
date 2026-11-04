@@ -69,3 +69,26 @@ export function missingScopes(
 
 /** `data.error` of the JSON-RPC error a call lacking a tool's scopes fails with. */
 export const INSUFFICIENT_SCOPE = 'insufficient_scope'
+
+/**
+ * The `_meta` key under which `tools/list` and `prompts/list` advertise an entry's
+ * {@link GenericToolDefinition.scopes}. MCP has no field for them, so the key is
+ * mokei-namespaced; clients that do not know it ignore it.
+ */
+export const SCOPES_META_KEY = 'dev.mokei/scopes'
+
+/** `info` with `scopes` advertised under {@link SCOPES_META_KEY}, keeping its own `_meta`. */
+export function withScopesMeta<T extends object>(
+  info: T,
+  scopes: ReadonlyArray<string> | undefined,
+): T {
+  if (scopes == null || scopes.length === 0) return info
+  const meta = (info as { _meta?: unknown })._meta
+  return {
+    ...info,
+    _meta: {
+      ...(meta != null && typeof meta === 'object' ? meta : {}),
+      [SCOPES_META_KEY]: [...scopes],
+    },
+  }
+}
