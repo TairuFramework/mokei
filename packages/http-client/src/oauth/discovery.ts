@@ -7,6 +7,8 @@ export type AuthServerMetadata = {
   authorization_endpoint: string
   token_endpoint: string
   code_challenge_methods_supported?: Array<string>
+  /** RFC 7009 token revocation endpoint, when the authorisation server has one. */
+  revocation_endpoint?: string
 }
 
 export function parseResourceMetadataURL(header: string | null): string | null {
@@ -15,7 +17,7 @@ export function parseResourceMetadataURL(header: string | null): string | null {
   return match?.[1] ?? null
 }
 
-function isLoopbackHost(hostname: string): boolean {
+export function isLoopbackHost(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
@@ -69,16 +71,38 @@ export async function discover(params: {
   if (issuer == null) {
     throw new Error('no authorization server selected')
   }
+  const as = await fetchAuthServerMetadata({
+    issuer,
+    fetch: params.fetch,
+    allowLoopback,
+    signal: params.signal,
+  })
+  return { prm, as }
+}
+
+/**
+ * Fetches and checks RFC 8414 metadata for `issuer`: the document must name the same issuer, its
+ * endpoints must be https (http only on loopback when `allowLoopback`), and it must support PKCE
+ * S256 when it lists challenge methods. A `revocation_endpoint` is checked the same way.
+ */
+export async function fetchAuthServerMetadata(params: {
+  issuer: string
+  fetch: FetchLike
+  allowLoopback?: boolean
+  signal?: AbortSignal
+}): Promise<AuthServerMetadata> {
+  const { issuer } = params
+  const allowLoopback = params.allowLoopback ?? false
   requireHTTPS(issuer, allowLoopback)
-  const asURL = wellKnownAS(issuer)
-  const as = (await fetchOAuthJSON(params.fetch, asURL, {
+  const as = (await fetchOAuthJSON(params.fetch, wellKnownAS(issuer), {
     signal: params.signal,
     errorLabel: 'authorization-server metadata',
   })) as AuthServerMetadata
   if (as.issuer !== issuer) throw new Error(`AS issuer ${as.issuer} != ${issuer}`)
   requireHTTPS(as.authorization_endpoint, allowLoopback)
   requireHTTPS(as.token_endpoint, allowLoopback)
+  if (as.revocation_endpoint != null) requireHTTPS(as.revocation_endpoint, allowLoopback)
   const methods = as.code_challenge_methods_supported
   if (methods && !methods.includes('S256')) throw new Error('AS does not support PKCE S256')
-  return { prm, as }
+  return as
 }

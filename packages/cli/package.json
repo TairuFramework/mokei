@@ -55,6 +55,7 @@
     "@mokei/host-monitor": "workspace:^",
     "@mokei/host-node": "workspace:^",
     "@mokei/host-protocol": "workspace:^",
+    "@mokei/http-client": "workspace:^",
     "@mokei/llama-provider": "workspace:^",
     "@mokei/model-provider": "workspace:^",
     "@mokei/ollama-provider": "workspace:^",

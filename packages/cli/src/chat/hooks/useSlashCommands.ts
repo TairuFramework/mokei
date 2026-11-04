@@ -159,7 +159,7 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
               pushEntry({
                 kind: 'notice',
                 variant: 'error',
-                text: 'usage: /context add-http [--protocol <version>] <key> <url> [--oauth-client-id <id>] [--oauth-resource <res>] [--oauth-scope <scope>] [--oauth-tokens <path>]',
+                text: 'usage: /context add-http [--protocol <version>] <key> <url> [--oauth-client-id <id>] [--oauth-resource <res>] [--oauth-scope <scope>] [--oauth-tokens <path> | --oauth-keychain]',
               })
               break
             }
@@ -167,11 +167,17 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
             let clientID: string | undefined
             let resource: string | undefined
             let tokensPath: string | undefined
+            let keychain = false
             const scopes: Array<string> = []
             let error: string | null = null
-            for (let i = 0; i < oauthArgs.length; i += 2) {
+            for (let i = 0; i < oauthArgs.length && error == null; i += 1) {
               const flag = oauthArgs[i]
+              if (flag === '--oauth-keychain') {
+                keychain = true
+                continue
+              }
               const value = oauthArgs[i + 1]
+              i += 1
               if (value == null) {
                 error = `missing value for ${flag}`
                 break
@@ -192,9 +198,9 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
                 default:
                   error = `unknown option: ${flag}`
               }
-              if (error != null) {
-                break
-              }
+            }
+            if (error == null && keychain && tokensPath != null) {
+              error = 'pass either --oauth-tokens or --oauth-keychain, not both'
             }
             if (error == null && oauthArgs.length > 0 && clientID == null) {
               error = '--oauth-client-id is required when using OAuth options'
@@ -211,6 +217,7 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
                     resource,
                     scopes: scopes.length ? scopes : undefined,
                     tokensPath,
+                    keychain,
                   })
                 : undefined
             try {

@@ -83,7 +83,8 @@ Tokens live in a `TokenStore`, which is a `KeyValueStore<StoredTokens>`. The gen
 `KeyValueStore<V>` interface (`get`, `set`, `delete`, `keys` and an atomic `update`) and its
 in-memory implementation `createMemoryStore<V>()` are exported for any other use.
 `@mokei/host-node` adds `createJSONFileStore<V>(path)` and `createFileTokenStore(path)`, a JSON
-file whose writes are locked across processes. The default store is in memory.
+file whose writes are locked across processes, and `createKeychainTokenStore()`, the OS keychain.
+The default store is in memory.
 
 - Tokens are keyed by `tokenStoreKey({ resource, clientID, scopes })`, so clients with
   different IDs or scope sets on one resource keep separate tokens.
@@ -91,6 +92,11 @@ file whose writes are locked across processes. The default store is in memory.
 - A refresh runs inside `store.update`. With the file store, processes that share a tokens file
   redeem a rotating refresh token once.
 - Sign-ins through one `AuthorizationHandler` run one at a time.
+
+`revokeTokens({ tokens, clientID, resource })` revokes stored tokens at their authorisation server
+(RFC 7009). It finds `revocation_endpoint` in the issuer's metadata and revokes the refresh token,
+then the access token. It reports `unsupported` when the server has no endpoint, and skips a token
+kind the server answers `unsupported_token_type` for.
 
 ### Step-up on `403 insufficient_scope`
 

@@ -200,6 +200,38 @@ describe('useSlashCommands — /context add-http', () => {
     })
   })
 
+  test('passes --oauth-keychain to the Node OAuth middleware', async () => {
+    const { createNodeOAuthMiddleware } = await import('@mokei/host-node')
+    vi.mocked(createNodeOAuthMiddleware).mockClear()
+    const { dispatch, addHTTPContext } = harness()
+    await dispatch(
+      '/context add-http db https://mcp.example.com/mcp --oauth-client-id cid --oauth-keychain --oauth-scope a',
+    )
+    expect(createNodeOAuthMiddleware).toHaveBeenCalledWith({
+      clientID: 'cid',
+      resource: undefined,
+      scopes: ['a'],
+      tokensPath: undefined,
+      keychain: true,
+    })
+    expect(addHTTPContext).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'db', fetchMiddleware: expect.any(Function) }),
+    )
+  })
+
+  test('rejects --oauth-keychain together with --oauth-tokens', async () => {
+    const { dispatch, addHTTPContext, entries } = harness()
+    await dispatch(
+      '/context add-http db https://mcp.example.com/mcp --oauth-client-id cid --oauth-keychain --oauth-tokens ./t.json',
+    )
+    expect(addHTTPContext).not.toHaveBeenCalled()
+    expect(entries.at(-1)).toMatchObject({
+      kind: 'notice',
+      variant: 'error',
+      text: 'pass either --oauth-tokens or --oauth-keychain, not both',
+    })
+  })
+
   test('reports a usage error and skips the attach when the url is missing', async () => {
     const { dispatch, addHTTPContext, entries } = harness()
     await dispatch('/context add-http db')

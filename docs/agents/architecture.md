@@ -174,10 +174,18 @@ When a waited request is withdrawn, the signal passed to the input handler abort
 
 `@mokei/http-client` provides OAuth 2.1 client middleware through `createOAuthMiddleware` and
 `TokenStore` (`createMemoryTokenStore`), including protected-resource metadata discovery, PKCE and
-token refresh. `@mokei/host-node` adds `createNodeOAuthMiddleware`, `createFileTokenStore` and
-`createLoopbackAuthorizationHandler` for Node consumers. `Session.addHTTPContext` accepts HTTP
-contexts. The CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
-`--oauth-scope` and `--oauth-tokens`.
+token refresh, plus `revokeTokens` (RFC 7009). `@mokei/host-node` adds
+`createNodeOAuthMiddleware`, `createLoopbackAuthorizationHandler` and two persistent stores:
+`createFileTokenStore` (a JSON file) and `createKeychainTokenStore` (the OS keychain through
+`@napi-rs/keyring`, loaded only when used). The keychain store has no locking of its own, so
+writes hold a lock file in mokei's state directory. That is the same `@sozai/lock` lock the file store
+uses, and it never takes a lock from a holder whose process is provably alive.
+That keeps refreshes exclusive across processes. `Session.addHTTPContext` accepts HTTP contexts.
+The CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
+`--oauth-scope`, and either `--oauth-tokens <path>` or `--oauth-keychain`. Persistence stays
+opt-in. `mokei auth list` and `mokei auth logout <resource>` read the same stores, and logout
+revokes before deleting. Tokens are held by each process, not by a daemon: no daemon opens HTTP
+contexts.
 
 On the server, `@mokei/http-server` builds on `@sozai/http-server` and provides `serveHTTP` and
 `mcpPlugin`. OAuth resource protection, metadata and token verification come from

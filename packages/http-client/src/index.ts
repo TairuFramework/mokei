@@ -24,6 +24,12 @@ export {
   createOAuthMiddleware,
   type OAuthClientConfig,
 } from './oauth/middleware.js'
+export { canonicalResource } from './oauth/resource.js'
+export {
+  type RevokeTokensParams,
+  type RevokeTokensResult,
+  revokeTokens,
+} from './oauth/revoke.js'
 export {
   createMemoryTokenStore,
   parseTokenStoreKey,

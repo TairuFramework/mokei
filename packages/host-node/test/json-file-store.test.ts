@@ -1,8 +1,10 @@
 import { mkdtemp, readdir, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { TimeoutInterruption } from '@sozai/lock'
 import { expect, test } from 'vitest'
 
+import { withFileLock } from '../src/file-lock.js'
 import { createJSONFileStore } from '../src/json-file-store.js'
 
 async function tempFile(): Promise<string> {
@@ -72,6 +74,30 @@ test('waits for a live lock and times out instead of taking it', async () => {
   const file = await tempFile()
   await writeFile(`${file}.lock`, 'live:owner')
   const store = createJSONFileStore<string>(file, { staleLockMs: 60_000, lockTimeoutMs: 100 })
-  await expect(store.set('k', 'v')).rejects.toThrow(/Timed out after 100ms waiting for lock/)
+  await expect(store.set('k', 'v')).rejects.toThrow(TimeoutInterruption)
   expect(await store.get('k')).toBeUndefined()
+})
+
+test('a provably live holder keeps the lock past staleLockMs', async () => {
+  const file = await tempFile()
+  const options = { staleLockMs: 20, lockTimeoutMs: 5_000 }
+  const store = createJSONFileStore<string>(file, options)
+  const order: Array<string> = []
+  let release!: () => void
+  const held = withFileLock(`${file}.lock`, options, async () => {
+    order.push('held')
+    await new Promise<void>((resolve) => {
+      release = resolve
+    })
+    order.push('released')
+  })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  const write = store.set('k', 'v').then(() => order.push('written'))
+  // Well past staleLockMs: a live holder (this process) must still not be taken over.
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  expect(order).toEqual(['held'])
+  release()
+  await Promise.all([held, write])
+  expect(order).toEqual(['held', 'released', 'written'])
+  expect(await store.get('k')).toBe('v')
 })
