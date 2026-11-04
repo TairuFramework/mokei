@@ -53,7 +53,12 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-Nothing scheduled. The backlog was trimmed on 2026-11-04
+- **OAuth identity and token coordination** -- `2025-11-25` HTTP sessions bound to their subject,
+  per-request auth and verifier claims for handlers, and a client token store shared safely
+  across contexts and processes. See
+  [the plan](next/2026-11-04-oauth-identity-and-token-coordination.md).
+
+The backlog was trimmed on 2026-11-04
 ([backlog trim](completed/2026-11-04-backlog-trim.complete.md)): flow service startup errors keep
 their cause, versions report `MOKEI_VERSION`, the monitor bounds its trace list and splits its
 bundle, and the website walkthrough matches the CLI.
