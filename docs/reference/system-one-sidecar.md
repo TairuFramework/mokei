@@ -229,6 +229,7 @@ node mcp-servers/system-one/lib/serve.js
 
 ## Future: In-Process Backend
 
-A future version may bind a Laya runtime directly (N-API or WebAssembly) behind the same
-`SystemOneBackend` interface, removing the separate process. See
-`docs/agents/plans/backlog/2026-09-22-laya-in-process-ggml-backend.md`.
+A Laya runtime could be bound directly (N-API or WebAssembly) behind the same
+`SystemOneBackend` interface, removing the separate process. It is not planned: `laya.cpp` ships
+no library or C API, and `laya-serve` covers local inference. See
+`docs/agents/plans/completed/2026-11-04-backlog-trim.complete.md`.

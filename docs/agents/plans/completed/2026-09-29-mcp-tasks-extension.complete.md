@@ -3,7 +3,7 @@
 **Status:** complete
 **Date:** 2026-09-29
 **Branch:** `feat/mcp-tasks-extension`
-**Origin:** the MCP tools item in [decision flow follow-ons](../backlog/2026-09-28-decision-flow-follow-ons.md). Corrects the
+**Origin:** the MCP tools item in [decision flow follow-ons](2026-11-04-backlog-trim.complete.md). Corrects the
 [`2026-07-28` migration milestone](2026-08-28-mcp-2026-07-28-migration-milestone.complete.md), which recorded that
 mokei never implemented tasks: tasks left the core spec (SEP-2663) and came back as an extension.
 

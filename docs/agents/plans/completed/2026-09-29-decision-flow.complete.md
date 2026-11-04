@@ -208,7 +208,7 @@ standalone binary exists.
 
 ## Follow-ons
 
-Open items are in the [decision-flow follow-ons](../backlog/2026-09-28-decision-flow-follow-ons.md) and the
-[decision-flow server follow-ons](../backlog/2026-09-29-decision-flow-server-follow-ons.md). The small ones closed in
+Open items are in the [decision-flow follow-ons](2026-11-04-backlog-trim.complete.md) and the
+[decision-flow server follow-ons](2026-11-04-backlog-trim.complete.md). The small ones closed in
 the [quick follow-ons](2026-09-30-quick-follow-ons.complete.md). The local rig that drives these flows is the
 [flow rig milestone](2026-10-01-flow-rig-milestone.complete.md).

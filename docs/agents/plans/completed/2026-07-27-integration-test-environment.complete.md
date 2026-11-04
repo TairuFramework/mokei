@@ -3,7 +3,7 @@
 **Status:** complete
 **Date:** 2026-07-27
 **Branch / PR:** `fix/stack-migration-follow-ups` → [PR #39](https://github.com/TairuFramework/mokei/pull/39)
-**Relates to:** `completed/2026-06-22-mokei-stack-migration.complete.md` (the migration these were deferred from, PR #35) · `backlog/2026-07-27-cli-reasoning-coverage.md` (follow-on)
+**Relates to:** `completed/2026-06-22-mokei-stack-migration.complete.md` (the migration these were deferred from, PR #35) · `completed/2026-11-04-backlog-trim.complete.md` (follow-on)
 
 ## Goal
 

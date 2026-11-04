@@ -120,5 +120,5 @@ workspace suite green.
 ## Follow-on
 
 In-process ggml / `laya.cpp` backends (native and WASM, per platform) behind the same
-`SystemOneBackend` seam — see `docs/agents/plans/backlog/2026-09-22-laya-in-process-ggml-backend.md`.
+`SystemOneBackend` seam — see `docs/agents/plans/completed/2026-11-04-backlog-trim.complete.md`.
 GGUF compilation tooling, a lifecycle-managed sidecar process, and ONNX export remain out of scope.

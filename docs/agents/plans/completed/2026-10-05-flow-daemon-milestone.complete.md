@@ -131,7 +131,7 @@ input survives host and session replacement.
   package declares flow-graph directly. Package tests stay valid across fixed-group version changes.
 
 The declaration dependency gaps in older packages moved to sub-project 4. Historical tracing and file-sink
-compatibility stay deferred in the [flow host Node follow-ons](../backlog/2026-10-02-flow-host-node-follow-ons.md).
+compatibility stay deferred in the [flow host Node follow-ons](2026-11-04-backlog-trim.complete.md).
 
 ## Sub-project 3 -- daemon (PR #71)
 
@@ -314,7 +314,7 @@ its own code for both.
 
 ## Follow-ons
 
-- [Flow client follow-ons](../backlog/2026-10-03-flow-client-follow-ons.md), from sub-project 4.
-- [Flow monitor follow-ons](../next/2026-10-04-flow-monitor-follow-ons.md) and the
-  [flow monitor backlog](../backlog/2026-10-04-flow-monitor-backlog.md), from sub-project 5.
-- [Flow host Node follow-ons](../backlog/2026-10-02-flow-host-node-follow-ons.md), for historical tracing.
+- [Flow client follow-ons](2026-11-04-backlog-trim.complete.md), from sub-project 4.
+- [Flow monitor follow-ons](../completed/2026-11-04-backlog-trim.complete.md) and the
+  [flow monitor backlog](2026-11-04-backlog-trim.complete.md), from sub-project 5.
+- [Flow host Node follow-ons](2026-11-04-backlog-trim.complete.md), for historical tracing.

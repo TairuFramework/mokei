@@ -9,7 +9,7 @@ runtime, provider abstraction across cloud + local models, and monitoring UI.
 
 ## Current state
 
-21 packages under `packages/`, plus three MCP servers under `mcp-servers/` (`fetch`, `sqlite`,
+28 packages under `packages/`, plus three MCP servers under `mcp-servers/` (`fetch`, `sqlite`,
 `system-one`).
 `@mokei/host` and `@mokei/context-server` are React Native / Metro-bundle-safe (no Node
 built-ins); their Node stdio/daemon entries live in `@mokei/host-node` and
@@ -53,10 +53,10 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **Flow monitor follow-ons** (`next/2026-10-04-flow-monitor-follow-ons.md`) -- the Inbox and Flows pages design
-  and usability pass, waiting on the specific issues from the user. Flow service startup errors now keep their cause
-  (2026-11-04): the daemon log names the stage, flow file and full error, and the status carries the file and
-  sanitized issue codes.
+Nothing scheduled. The backlog was trimmed on 2026-11-04
+([backlog trim](completed/2026-11-04-backlog-trim.complete.md)): flow service startup errors keep
+their cause, versions report `MOKEI_VERSION`, the monitor bounds its trace list and splits its
+bundle, and the website walkthrough matches the CLI.
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
@@ -203,26 +203,17 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Near-term (backlog/)
 
-- **OAuth follow-ups** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- pass the gate's
-  verified `AuthInfo` to handlers, and DCR/CIMD if a target server needs it.
+- **OAuth identity for handlers** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- pass the
+  gate's verified `AuthInfo` to tool and resource handlers.
 - **Multi-context OAuth token coordination**
   (`backlog/2026-09-04-oauth-multi-context-token-coordination.md`) -- one refresh flight per
   resource across contexts sharing a token store; needs a `TokenStore` contract design pass.
-- **Server-minted handles convention** (`backlog/2026-09-25-server-minted-handles-convention.md`)
-  -- decide whether sessionless handles passed as tool args need a library convention.
-- **Website chat walkthrough** (`backlog/2026-08-04-website-chat-walkthrough.md`) -- the
-  website quick-start documents an inquirer-style menu and `mokei chat ollama`; rewrite from a
-  real PTY capture (`integration-tests/support/chat-driver.ts`).
-- **CLI reasoning coverage** (`backlog/2026-07-27-cli-reasoning-coverage.md`) -- two coverage
-  gaps, no defect: assert reasoning separation where the backend provides it, and verify the
-  OpenAI-compatible `reasoning_content` / `reasoning` mapping against a server that actually
-  splits reasoning (still needs such a server).
-- **Llama provider follow-ups** (`backlog/2026-06-20-llama-provider-follow-ups.md`) -- optional
-  local-inference tuning (`gpu` / `contextSize` flags) and a positive tool-call assertion in
-  the gated GGUF suite. Nothing depends on either.
-- **In-process ggml System One backend** (`backlog/2026-09-22-laya-in-process-ggml-backend.md`)
-  -- only if a process-free binding is needed; blocked upstream (laya.cpp `std::regex_error`,
-  no library/C API).
+- **Session elicitation follow-ons** (`backlog/2026-09-29-session-elicitation-follow-ons.md`) --
+  host-level sampling and roots, and server-side URL-mode completion on `2025-11-25`.
+- **Unified traces follow-ons** (`backlog/2026-10-08-unified-traces-follow-ons.md`) -- reverse
+  links, an `events` type filter, context server names in trace rows, and smaller gaps.
+- **Upstream dependency gaps** (`backlog/2026-11-04-upstream-dependency-gaps.md`) -- workarounds
+  to drop once enkaku, inkjs, sozai and hozon releases land.
 
 ## Planned — P2
 
@@ -243,7 +234,8 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
   design (`InMemoryResponseCacheStore` + pluggable store).
 - Context persistence (save/load host config).
 - Google (Gemini) provider.
-- Metrics / telemetry hooks.
+- Decision-flow server: runtime tool IDs with per-call approval, a standalone
+  `mcp-servers/decision-flow` binary, and an `llm` node kind backed by the session's provider.
 
 ## Design decisions (unchanged)
 
@@ -259,5 +251,7 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
   `2026-07-28` are both served and spoken, selected per context. Dropping the older revision
   later is a branch deletion, not a rewrite (ADR in
   `completed/2026-08-28-mcp-2026-07-28-migration-milestone.complete.md`).
+- Server-minted handles stay application-layer -- handles passed from a tool result into a later
+  tool argument get no `ContextHost` policy until a consumer needs one (2026-11-04).
 - Provider pattern: `client.ts` + `provider.ts` + `config.ts` + `types.ts`.
 - Streaming via `TransformStream` → `MessagePart<>`.

@@ -36,4 +36,4 @@ end subscriptions gracefully on shutdown.
   sozai `HTTPServer` (bound address via `server.url`), `auth.resourceMetadataURL` dropped (derived from
   `auth.resource`), plus sozai's health routes, request IDs, secure headers and JSON error bodies.
 
-Follow-ons: [backlog](../backlog/2026-10-07-teikyo-http-follow-ons.md).
+Follow-ons: [backlog](2026-11-04-backlog-trim.complete.md).

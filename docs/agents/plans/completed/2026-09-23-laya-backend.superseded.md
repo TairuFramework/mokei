@@ -73,5 +73,5 @@ added maintenance for no capability. The package was deleted along with its lock
 
 ## Follow-on
 
-- `docs/agents/plans/backlog/2026-09-22-laya-in-process-ggml-backend.md` covers an in-process
+- `docs/agents/plans/completed/2026-11-04-backlog-trim.complete.md` covers an in-process
   runtime behind the same `SystemOneBackend` interface.
