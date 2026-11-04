@@ -5,6 +5,7 @@ import { AssistantMessage } from '../../src/chat/components/AssistantMessage.js'
 import { Footer } from '../../src/chat/components/Footer.js'
 import { HelpCard } from '../../src/chat/components/HelpCard.js'
 import { ModelSelectCard } from '../../src/chat/components/ModelSelectCard.js'
+import { PendingTurn } from '../../src/chat/components/PendingTurn.js'
 import { ReasoningView } from '../../src/chat/components/ReasoningView.js'
 import { StatusLine } from '../../src/chat/components/StatusLine.js'
 import { ToolApprovalCard } from '../../src/chat/components/ToolApprovalCard.js'
@@ -13,6 +14,7 @@ import { ToolResultCard } from '../../src/chat/components/ToolResultCard.js'
 import { ToolSelectCard } from '../../src/chat/components/ToolSelectCard.js'
 import { UserMessage } from '../../src/chat/components/UserMessage.js'
 import { WaitingStatus } from '../../src/chat/components/WaitingStatus.js'
+import { initialTurnState } from '../../src/chat/turn-reducer.js'
 
 describe('components', () => {
   test('UserMessage shows the prompt text with a marker', () => {
@@ -221,5 +223,22 @@ describe('footer + selects + help', () => {
     expect(lastFrame()).toContain('/model')
     expect(lastFrame()).toContain('/tools')
     expect(lastFrame()).toContain('/quit')
+  })
+})
+
+describe('PendingTurn elapsed time', () => {
+  test('a tool call started after the last tick never shows a negative time', () => {
+    const turn = {
+      ...initialTurnState(),
+      state: 'calling-tool' as const,
+      activeToolCall: {
+        call: { name: 'sqlite:sqlite_run' } as never,
+        startedAt: Date.now() + 5000,
+      },
+    }
+    const { lastFrame } = render(
+      <PendingTurn turn={turn} pending={null} onApprove={() => {}} onDeny={() => {}} />,
+    )
+    expect(lastFrame()).toContain('calling sqlite:sqlite_run (running 0s)')
   })
 })
