@@ -6,7 +6,7 @@ import { fetchOAuthJSON, OAuthResponseError } from './fetch.js'
 import { createPKCE } from './pkce.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
-import { createMemoryTokenStore } from './store.js'
+import { createMemoryTokenStore, tokenStoreKey } from './store.js'
 
 /** Completes the authorisation-code exchange for a resource: the core owns all authorisation-URL
  * params and the PKCE/state bookkeeping; the handler only supplies (and returns) `redirectURI`. */
@@ -192,85 +192,125 @@ async function exchangeAuthorizationCode(
   }
 }
 
+/** In-flight refreshes and authorisations, shared by every middleware using the same store, so
+ * contexts that share a store never redeem one refresh token twice or prompt twice for one key. */
+const flightsByStore = new WeakMap<TokenStore, Map<string, Promise<StoredTokens>>>()
+
+/** The tail of each handler's queue of interactive authorisations. */
+const authorizeQueues = new WeakMap<AuthorizationHandler, Promise<void>>()
+
+function storeFlights(store: TokenStore): Map<string, Promise<StoredTokens>> {
+  let flights = flightsByStore.get(store)
+  if (flights == null) {
+    flights = new Map()
+    flightsByStore.set(store, flights)
+  }
+  return flights
+}
+
+/** Runs `run` after every earlier authorisation through `handler` has settled, so contexts that
+ * share a handler open one browser window at a time. */
+function serialiseAuthorize<T>(handler: AuthorizationHandler, run: () => Promise<T>): Promise<T> {
+  const previous = authorizeQueues.get(handler) ?? Promise.resolve()
+  const result = previous.then(run)
+  authorizeQueues.set(
+    handler,
+    result.then(
+      () => {},
+      () => {},
+    ),
+  )
+  return result
+}
+
 /**
  * Attach stored bearer tokens and refresh near expiry when the token endpoint is known.
  * On 401, discover the authorisation server, refresh or run PKCE, then retry once.
- * Callers of this instance share one in-flight recovery per canonical resource.
+ *
+ * Tokens are stored under {@link tokenStoreKey}. Every middleware sharing a store shares one
+ * in-flight recovery per key, and a refresh runs inside `store.update`, so a store whose
+ * `update` is atomic across processes (the file store) redeems a rotating refresh token once
+ * even when several processes find the same token expired.
  */
 export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddleware {
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
   // A per-request default store would never retain a token.
   const store = config.store ?? createMemoryTokenStore()
-
-  // Flights are per instance: sharing across configs would use another client's store.
-  // Separate instances sharing a file can redeem a rotating refresh token twice.
-  // `createFileTokenStore` serialises writes, but preventing redundant re-auth needs
-  // atomic compare-and-set on `TokenStore`.
-  const authFlights = new Map<string, Promise<StoredTokens>>()
+  const flights = storeFlights(store)
 
   /** Recheck token identity before recovery: expiry alone could reuse a token that
    * just failed with 401 or has no `expiresAt`. A joiner retries after a rejected
-   * pre-emptive flight so a fixable 401 is not lost; `authFlights` deduplicates it. */
+   * pre-emptive flight so a fixable 401 is not lost; `flights` deduplicates it. */
   function withSingleFlight(
-    resource: string,
-    store: TokenStore,
+    key: string,
     staleAccessToken: string | undefined,
     run: () => Promise<StoredTokens>,
   ): Promise<StoredTokens> {
     function start(): Promise<StoredTokens> {
       const flight = (async () => {
-        const current = await store.get(resource)
+        const current = await store.get(key)
         if (current != null && current.accessToken !== staleAccessToken) return current
         return run()
       })()
-      authFlights.set(resource, flight)
+      flights.set(key, flight)
       // Handle rejection on this cleanup chain; an unhandled rejection could crash Node.
       flight
         .finally(() => {
-          if (authFlights.get(resource) === flight) authFlights.delete(resource)
+          if (flights.get(key) === flight) flights.delete(key)
         })
         .catch(() => {})
       return flight
     }
 
-    const inFlight = authFlights.get(resource)
+    const inFlight = flights.get(key)
     if (inFlight == null) return start()
-    return inFlight.catch(() => authFlights.get(resource) ?? start())
+    return inFlight.catch(() => flights.get(key) ?? start())
   }
 
-  /** Refresh `tokens` and persist the result. On a definitive `invalid_grant` the refresh token
-   * is dead, so clear the record -- unless another flight already replaced it -- rather than
-   * retrying it on every request until the next authorisation overwrites it. */
+  /**
+   * Refresh the token whose access token is `staleAccessToken`, inside `store.update` so the
+   * read, the redemption and the write are one atomic step. If another flight or process already
+   * replaced the token, that token is used and no request is sent. On a definitive
+   * `invalid_grant` the refresh token is dead, so the record is deleted in the same step rather
+   * than retried on every request until the next authorisation overwrites it.
+   */
   function refreshAndStore(
     next: FetchLike,
+    key: string,
     resource: string,
-    tokens: StoredTokens & { refreshToken: string; tokenEndpoint: string },
+    staleAccessToken: string,
     signal?: AbortSignal,
   ): Promise<StoredTokens> {
-    const { tokenEndpoint, refreshToken, issuer } = tokens
-    return withSingleFlight(resource, store, tokens.accessToken, async () => {
-      try {
-        const refreshed = await exchangeRefresh({
-          fetchUnwrapped: next,
-          tokenEndpoint,
-          clientID: config.clientID,
-          resource,
-          refreshToken,
-          scopes: config.scopes,
-          now,
-          signal,
-        })
-        const merged = { ...refreshed, tokenEndpoint, issuer }
-        await store.set(resource, merged)
-        return merged
-      } catch (error) {
-        if (isInvalidGrant(error)) {
-          const current = await store.get(resource)
-          if (current?.refreshToken === refreshToken) await store.clear(resource)
+    return withSingleFlight(key, staleAccessToken, async () => {
+      let failure: { error: unknown } | undefined
+      const result = await store.update(key, async (current) => {
+        if (current != null && current.accessToken !== staleAccessToken) return current
+        if (!isRefreshable(current)) {
+          failure = { error: new Error('OAuth refresh: no refresh token stored') }
+          return current
         }
-        throw error
-      }
+        const { tokenEndpoint, refreshToken, issuer } = current
+        try {
+          const refreshed = await exchangeRefresh({
+            fetchUnwrapped: next,
+            tokenEndpoint,
+            clientID: config.clientID,
+            resource,
+            refreshToken,
+            scopes: config.scopes,
+            now,
+            signal,
+          })
+          return { ...refreshed, tokenEndpoint, issuer }
+        } catch (error) {
+          failure = { error }
+          return isInvalidGrant(error) ? undefined : current
+        }
+      })
+      if (failure != null) throw failure.error
+      if (result == null) throw new Error('OAuth refresh: token record was removed')
+      return result
     })
   }
 
@@ -278,11 +318,16 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
    * returned code for tokens, and persists them under `resource`. */
   async function authorize(
     next: FetchLike,
+    key: string,
     resource: string,
-    store: TokenStore,
+    staleAccessToken: string | undefined,
     wwwAuthenticate: string | null,
     signal?: AbortSignal,
   ): Promise<StoredTokens> {
+    // Another context (or process) may have signed in while this one waited for the handler.
+    const current = await store.get(key)
+    if (current != null && current.accessToken !== staleAccessToken) return current
+
     const resourceMetadataURL = parseResourceMetadataURL(wwwAuthenticate) ?? undefined
     const { as } = await discover({
       resource,
@@ -331,7 +376,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       tokenEndpoint: as.token_endpoint,
       issuer: as.issuer,
     }
-    await store.set(resource, tokens)
+    await store.set(key, tokens)
     return tokens
   }
 
@@ -349,14 +394,15 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       }
 
       const resource = canonicalResource(config.resource ?? url)
-      let tokens = await store.get(resource)
+      const key = tokenStoreKey({ resource, clientID: config.clientID, scopes: config.scopes })
+      let tokens = await store.get(key)
 
       if (isRefreshable(tokens) && nearExpiry(tokens, now, skew)) {
         // Best-effort: a failed refresh (network error, non-2xx, non-bearer token_type) must
         // not fail the outbound request outright -- it proceeds on the current, possibly-stale
         // token, and the 401 path below recovers.
         try {
-          tokens = await refreshAndStore(next, resource, tokens, signal)
+          tokens = await refreshAndStore(next, key, resource, tokens.accessToken, signal)
         } catch (error) {
           // A dead refresh token was cleared: send no stale token, so the 401 goes straight to
           // authorisation instead of redeeming it again.
@@ -383,15 +429,19 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       // when there is no refresh token/endpoint, or the refresh itself fails.
       if (isRefreshable(tokens)) {
         try {
-          tokens = await refreshAndStore(next, resource, tokens, signal)
+          tokens = await refreshAndStore(next, key, resource, tokens.accessToken, signal)
           return next(url, attach(init))
         } catch {
           // Fall through to full authorisation below.
         }
       }
 
-      const authorized = await withSingleFlight(resource, store, tokens?.accessToken, () => {
-        return authorize(next, resource, store, response.headers.get('WWW-Authenticate'), signal)
+      const stale = tokens?.accessToken
+      const wwwAuthenticate = response.headers.get('WWW-Authenticate')
+      const authorized = await withSingleFlight(key, stale, () => {
+        return serialiseAuthorize(config.handler, () => {
+          return authorize(next, key, resource, stale, wwwAuthenticate, signal)
+        })
       })
       tokens = authorized
       return next(url, attach(init))

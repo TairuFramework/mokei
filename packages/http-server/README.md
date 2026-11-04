@@ -67,7 +67,8 @@ const app = await createServer({
   plugins: [
     oauthResourcePlugin({ resource, authorizationServers, verifier }),
     mcpPlugin({
-      createServer: ({ transport }) => new ContextServer({ transport, name, version, tools }),
+      createServer: ({ transport, auth, resolveAuth }) =>
+        new ContextServer({ transport, auth, resolveAuth, name, version, tools }),
       auth: { scopes: ['tools:read'] },
     }),
   ],
@@ -75,6 +76,16 @@ const app = await createServer({
 await app.listen()
 console.log(`${app.url}/mcp`)
 ```
+
+Handlers read the verified caller from `request.auth`: `issuer`, `subject`, `scopes`, `expiresAt`
+and `claims`. `claims` holds the verifier's decoded claims. The verifier checked their signature,
+but their shape depends on the verifier. Forward `auth` and `resolveAuth` from `createServer` to
+`ContextServer`. On `2025-11-25` sessions, `resolveAuth` gives each request the auth of the token
+that carried it, so scopes and expiry stay current after a refresh.
+
+A `2025-11-25` session is bound to the issuer and subject that sent `initialize`. A request from
+any other identity that names the session (POST, GET or DELETE) gets the same `404` as an
+unknown session id.
 
 `mcpPlugin` registers a shutdown hook that ends subscriptions gracefully before the handler
 closes. Its close hook disposes the handler.

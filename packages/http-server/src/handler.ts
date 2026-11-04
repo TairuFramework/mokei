@@ -10,6 +10,7 @@ import {
 } from '@mokei/context-protocol'
 import type {
   ContextServer,
+  ResolveAuth,
   ServerTransport,
   SubscriptionHub,
   TaskManager,
@@ -18,7 +19,13 @@ import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createRuntime, type Runtime } from '@sozai/runtime'
 import type { AuthInfo } from '@teikyo/oauth'
 
-import { appendReplay, eventsAfter, type Session, SessionManager } from './session.js'
+import {
+  appendReplay,
+  eventsAfter,
+  isSessionOwner,
+  type Session,
+  SessionManager,
+} from './session.js'
 import { createSSEStream, SSE_RESPONSE_HEADERS, SSE_STREAM_HIGH_WATER_MARK } from './sse-stream.js'
 import { type SSEEvent, SSEWriter } from './sse-writer.js'
 import {
@@ -34,6 +41,12 @@ export type HTTPHandlerParams = {
    * {@link HTTPHandlerParams.subscriptionHub} through so a server can borrow it, and -- for a
    * `subscriptions/listen` POST -- the per-POST `connectionID` minted from {@link runtime}. Both
    * are absent on the session/initialize path; a server that ignores them behaves as before.
+   *
+   * `auth` is the verified identity of the request that builds the server. On the
+   * `2025-11-25` session path it is the `initialize` request's, and `resolveAuth` is also
+   * supplied: it answers each later request with the auth that request carried. Forward both
+   * to the `ContextServer` so handlers see current scopes and expiry after a token refresh; a
+   * server given only `auth` sees the initialize-time snapshot.
    */
   createServer: (params: {
     transport: ServerTransport
@@ -41,6 +54,7 @@ export type HTTPHandlerParams = {
     connectionID?: string
     tasks?: TaskManager
     auth?: AuthInfo
+    resolveAuth?: ResolveAuth
   }) => ContextServer
   /**
    * A durable `SubscriptionHub` the caller owns (e.g. a long-lived `ContextServer` with
@@ -318,6 +332,17 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     return allowedOrigins.includes(origin)
   }
 
+  /**
+   * The session `sessionID` names, if `auth` is the identity that opened it. A session opened by
+   * someone else is reported as missing, the same answer as an unknown id, so a caller holding
+   * a valid token cannot learn which session ids exist or drive another subject's session.
+   */
+  function findSession(sessionID: string, auth: AuthInfo | undefined): Session | undefined {
+    const session = sessions.get(sessionID)
+    if (session == null || !isSessionOwner(session, auth)) return undefined
+    return session
+  }
+
   function validateProtocolVersion(request: Request): boolean {
     const header = request.headers.get('MCP-Protocol-Version')
     // Absent header allowed for backward compatibility (treated as the version
@@ -349,6 +374,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
         // Is this a response? (has 'id', no 'method')
         if (isServerResponse(msg)) {
           const requestID = msg.id as string | number
+          session.requestAuth.delete(requestID)
           const postStream = session.postStreams.get(requestID)
           if (postStream != null) {
             await postStream.writeEvent({ data: JSON.stringify(message) })
@@ -439,7 +465,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
 
     // Initialize request: no session ID and message is 'initialize'
     if (sessionID == null && body.method === 'initialize') {
-      return await handleInitialize(body as unknown as ClientMessage)
+      return await handleInitialize(body as unknown as ClientMessage, auth)
     }
 
     // All other POST requests require a session ID
@@ -447,7 +473,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Mcp-Session-Id header required', { status: 400 })
     }
 
-    const session = sessions.get(sessionID)
+    const session = findSession(sessionID, auth)
     if (session == null) {
       return new Response('Session not found', { status: 404 })
     }
@@ -469,6 +495,8 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (isRequest(body)) {
       const requestID = body.id as string | number
 
+      // Recorded before the enqueue so the session server's `resolveAuth` finds it.
+      if (auth != null) session.requestAuth.set(requestID, auth)
       bridge.controller.enqueue(body as unknown as ClientMessage)
 
       // Open SSE stream for the response
@@ -626,10 +654,10 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     })
   }
 
-  async function handleInitialize(message: ClientMessage): Promise<Response> {
+  async function handleInitialize(message: ClientMessage, auth?: AuthInfo): Promise<Response> {
     let session: Session
     try {
-      session = sessions.create()
+      session = sessions.create(auth)
     } catch {
       return new Response('Too many sessions', { status: 503 })
     }
@@ -640,7 +668,12 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       bridges.set(session.sessionID, bridge)
       // A session server manages its own subscription lifecycle (via its own config); the
       // handler's durable hub is the stateless-path hub, so it is not threaded here.
-      const server = createServer({ transport: bridge.transport })
+      const requestAuth = session.requestAuth
+      const server = createServer({
+        transport: bridge.transport,
+        auth,
+        resolveAuth: (requestID) => requestAuth.get(requestID),
+      })
       session.server = server
     } catch {
       // Deleting the session fires onDelete, which tears down the bridge.
@@ -691,7 +724,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     })
   }
 
-  async function handleGET(request: Request): Promise<Response> {
+  async function handleGET(request: Request, auth?: AuthInfo): Promise<Response> {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
     }
@@ -713,7 +746,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Mcp-Session-Id header required', { status: 400 })
     }
 
-    const session = sessions.get(sessionID)
+    const session = findSession(sessionID, auth)
     if (session == null) {
       return new Response('Session not found', { status: 404 })
     }
@@ -775,7 +808,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     })
   }
 
-  async function handleDELETE(request: Request): Promise<Response> {
+  async function handleDELETE(request: Request, auth?: AuthInfo): Promise<Response> {
     if (!validateOrigin(request)) {
       return new Response('Forbidden', { status: 403 })
     }
@@ -795,7 +828,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       return new Response('Mcp-Session-Id header required', { status: 400 })
     }
 
-    const session = sessions.get(sessionID)
+    const session = findSession(sessionID, auth)
     if (session == null) {
       return new Response('Session not found', { status: 404 })
     }
@@ -814,9 +847,9 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       case 'POST':
         return await handlePOST(request, options?.auth)
       case 'GET':
-        return await handleGET(request)
+        return await handleGET(request, options?.auth)
       case 'DELETE':
-        return await handleDELETE(request)
+        return await handleDELETE(request, options?.auth)
       default:
         return new Response('Method not allowed', { status: 405 })
     }

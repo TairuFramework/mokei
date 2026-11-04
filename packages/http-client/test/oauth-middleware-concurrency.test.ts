@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest'
 
 import { type AuthorizationHandler, createOAuthMiddleware } from '../src/oauth/middleware.js'
-import { createMemoryTokenStore } from '../src/oauth/store.js'
+import { createMemoryTokenStore, tokenStoreKey } from '../src/oauth/store.js'
+
+const key = (resource: string, clientID = 'c'): string => tokenStoreKey({ resource, clientID })
 
 const resource = 'https://mcp.example.com/mcp'
 
@@ -63,12 +65,12 @@ test('two concurrent 401s dedupe to a single authorize/token-exchange, both requ
   expect(resA.status).toBe(200)
   expect(resB.status).toBe(200)
   expect(authorizeCalls).toBe(1)
-  expect((await store.get(resource))?.accessToken).toBe('fresh')
+  expect((await store.get(key(resource)))?.accessToken).toBe('fresh')
 })
 
 test('a rejected pre-emptive-refresh leader does not hard-fail a concurrent 401 caller', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'stale',
     tokenType: 'Bearer',
     refreshToken: 'bad-refresh',
@@ -130,7 +132,7 @@ test('a rejected pre-emptive-refresh leader does not hard-fail a concurrent 401 
     }
   }
   expect(authorizeCalls).toBe(1)
-  expect((await store.get(resource))?.accessToken).toBe('fresh')
+  expect((await store.get(key(resource)))?.accessToken).toBe('fresh')
 })
 
 test('two createOAuthMiddleware instances never share a single-flight lock', async () => {
@@ -202,6 +204,6 @@ test('two createOAuthMiddleware instances never share a single-flight lock', asy
   expect(resB.status).toBe(200)
   expect(authorizeCallsA).toBe(1)
   expect(authorizeCallsB).toBe(1)
-  expect((await storeA.get(resource))?.accessToken).toBe('token-a')
-  expect((await storeB.get(resource))?.accessToken).toBe('token-b')
+  expect((await storeA.get(key(resource, 'client-a')))?.accessToken).toBe('token-a')
+  expect((await storeB.get(key(resource, 'client-b')))?.accessToken).toBe('token-b')
 })

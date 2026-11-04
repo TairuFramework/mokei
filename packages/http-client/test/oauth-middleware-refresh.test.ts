@@ -6,7 +6,9 @@ import {
   exchangeRefresh,
   parseTokenResponse,
 } from '../src/oauth/middleware.js'
-import { createMemoryTokenStore } from '../src/oauth/store.js'
+import { createMemoryTokenStore, tokenStoreKey } from '../src/oauth/store.js'
+
+const key = (resource: string, clientID = 'c'): string => tokenStoreKey({ resource, clientID })
 
 const resource = 'https://mcp.example.com/mcp'
 const handler: AuthorizationHandler = {
@@ -24,7 +26,11 @@ function json(body: unknown): Response {
 
 test('attaches the stored access token as Bearer', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, { accessToken: 'tok', tokenType: 'Bearer', expiresAt: 9_999_999_999 })
+  await store.set(key(resource), {
+    accessToken: 'tok',
+    tokenType: 'Bearer',
+    expiresAt: 9_999_999_999,
+  })
   const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 1000 })
   let seenAuth: string | null = null
   const next = async (_url: string, init?: RequestInit): Promise<Response> => {
@@ -37,7 +43,7 @@ test('attaches the stored access token as Bearer', async () => {
 
 test('pre-emptively refreshes an access token near expiry', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'old',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -67,14 +73,14 @@ test('pre-emptively refreshes an access token near expiry', async () => {
   const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
   await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(tokenCalls).toBe(1)
-  expect((await store.get(resource))?.accessToken).toBe('new')
-  expect((await store.get(resource))?.refreshToken).toBe('r2')
+  expect((await store.get(key(resource)))?.accessToken).toBe('new')
+  expect((await store.get(key(resource)))?.refreshToken).toBe('r2')
 })
 
 test('reads and writes the token store under the canonical resource key', async () => {
   const store = createMemoryTokenStore()
   const canonicalKey = 'https://mcp.example.com/mcp'
-  await store.set(canonicalKey, {
+  await store.set(key(canonicalKey), {
     accessToken: 'old',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -99,13 +105,13 @@ test('reads and writes the token store under the canonical resource key', async 
   // resource omitted: derived from the request URL, which carries a query the store key must not.
   const mw = createOAuthMiddleware({ clientID: 'c', handler, store, now: () => 999 })
   await mw(next)('https://mcp.example.com/mcp?x=1', { method: 'POST', body: '{}' })
-  expect((await store.get(canonicalKey))?.accessToken).toBe('new')
-  expect((await store.get(canonicalKey))?.refreshToken).toBe('r2')
+  expect((await store.get(key(canonicalKey)))?.accessToken).toBe('new')
+  expect((await store.get(key(canonicalKey)))?.refreshToken).toBe('r2')
 })
 
 test('a 401 with a usable refresh token refreshes instead of calling authorize', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'stale',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -139,12 +145,12 @@ test('a 401 with a usable refresh token refreshes instead of calling authorize',
   expect(response.status).toBe(200)
   expect(tokenCalls).toBe(1)
   expect(protectedCalls).toBe(2)
-  expect((await store.get(resource))?.accessToken).toBe('refreshed')
+  expect((await store.get(key(resource)))?.accessToken).toBe('refreshed')
 })
 
 test('falls through to interactive authorize when the refresh exchange itself fails', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'stale',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -198,12 +204,12 @@ test('falls through to interactive authorize when the refresh exchange itself fa
   const response = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(response.status).toBe(200)
   expect(authorizeCalls).toBe(1)
-  expect((await store.get(resource))?.accessToken).toBe('fresh')
+  expect((await store.get(key(resource)))?.accessToken).toBe('fresh')
 })
 
 test('the token-refresh fetch is made with redirect: "error" (SSRF/redirect guard)', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'old',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -229,7 +235,7 @@ test('the token-refresh fetch is made with redirect: "error" (SSRF/redirect guar
 
 test('a failed pre-emptive refresh does not fail the outbound request', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'old',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -249,7 +255,7 @@ test('a failed pre-emptive refresh does not fail the outbound request', async ()
   const response = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(response.status).toBe(200)
   expect(seenAuth).toBe('Bearer old')
-  expect((await store.get(resource))?.accessToken).toBe('old')
+  expect((await store.get(key(resource)))?.accessToken).toBe('old')
 })
 
 // exchangeRefresh must validate the token-endpoint JSON before it's turned into StoredTokens,
@@ -309,7 +315,7 @@ test('parseTokenResponse rejects a non-finite expires_in (Infinity)', () => {
 // middleware must cancel it up front, before starting recovery.
 test('the 401 response body is cancelled before the refresh retry starts', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'stale',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -346,7 +352,7 @@ test('the 401 response body is cancelled before the refresh retry starts', async
 
 test('a malformed token response during pre-emptive refresh is not persisted (falls back to the stale token)', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'old',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -370,7 +376,7 @@ test('a malformed token response during pre-emptive refresh is not persisted (fa
   const response = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(response.status).toBe(200)
   expect(seenAuth).toBe('Bearer old')
-  expect((await store.get(resource))?.accessToken).toBe('old')
+  expect((await store.get(key(resource)))?.accessToken).toBe('old')
 })
 
 function oauthError(error: string, status = 400): Response {
@@ -382,7 +388,7 @@ function oauthError(error: string, status = 400): Response {
 
 test('a pre-emptive refresh rejected with invalid_grant clears the store and re-authorises', async () => {
   const store = createMemoryTokenStore()
-  await store.set(resource, {
+  await store.set(key(resource), {
     accessToken: 'old',
     tokenType: 'Bearer',
     refreshToken: 'dead',
@@ -395,7 +401,7 @@ test('a pre-emptive refresh rejected with invalid_grant clears the store and re-
   const sentAuth: Array<string | null> = []
   const authorizingHandler: AuthorizationHandler = {
     async authorize({ state }) {
-      storeAfterRefresh = await store.get(resource)
+      storeAfterRefresh = await store.get(key(resource))
       return { code: 'auth-code', state, redirectURI: 'http://127.0.0.1:5555/cb' }
     },
   }
@@ -435,7 +441,7 @@ test('a pre-emptive refresh rejected with invalid_grant clears the store and re-
   expect(refreshCalls).toBe(1)
   expect(storeAfterRefresh).toBeUndefined()
   expect(sentAuth).toEqual([null, 'Bearer fresh'])
-  expect((await store.get(resource))?.accessToken).toBe('fresh')
+  expect((await store.get(key(resource)))?.accessToken).toBe('fresh')
 })
 
 test('a transient refresh failure keeps the stored tokens', async () => {
@@ -448,7 +454,7 @@ test('a transient refresh failure keeps the stored tokens', async () => {
     tokenEndpoint: 'https://as.example.com/token',
     issuer: 'https://as.example.com',
   }
-  await store.set(resource, stored)
+  await store.set(key(resource), stored)
   const next = async (url: string): Promise<Response> => {
     if (url.endsWith('/token')) return oauthError('temporarily_unavailable', 503)
     return json({ ok: true })
@@ -456,12 +462,12 @@ test('a transient refresh failure keeps the stored tokens', async () => {
   const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
   const response = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(response.status).toBe(200)
-  expect(await store.get(resource)).toEqual(stored)
+  expect(await store.get(key(resource))).toEqual(stored)
 })
 
-test('invalid_grant does not clear a record another flight already replaced', async () => {
-  const store = createMemoryTokenStore()
-  await store.set(resource, {
+test('a refresh that finds the token already replaced uses it and sends no token request', async () => {
+  const base = createMemoryTokenStore()
+  await base.set(key(resource), {
     accessToken: 'old',
     tokenType: 'Bearer',
     refreshToken: 'r1',
@@ -477,15 +483,27 @@ test('invalid_grant does not clear a record another flight already replaced', as
     tokenEndpoint: 'https://as.example.com/token',
     issuer: 'https://as.example.com',
   }
-  const next = async (url: string): Promise<Response> => {
+  // Another process rotates the token between this middleware's read and its locked update.
+  const store: typeof base = {
+    ...base,
+    async update(k, fn) {
+      await base.set(k, replacement)
+      return base.update(k, fn)
+    },
+  }
+  let tokenCalls = 0
+  let sent: string | null = null
+  const next = async (url: string, init?: RequestInit): Promise<Response> => {
     if (url.endsWith('/token')) {
-      // Another process rotated the token while this refresh was in flight.
-      await store.set(resource, replacement)
+      tokenCalls++
       return oauthError('invalid_grant')
     }
+    sent = new Headers(init?.headers).get('Authorization')
     return json({ ok: true })
   }
   const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store, now: () => 999 })
   await mw(next)(resource, { method: 'POST', body: '{}' })
-  expect(await store.get(resource)).toEqual(replacement)
+  expect(tokenCalls).toBe(0)
+  expect(sent).toBe('Bearer other')
+  expect(await base.get(key(resource))).toEqual(replacement)
 })

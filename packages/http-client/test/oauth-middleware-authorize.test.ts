@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest'
 
 import { type AuthorizationHandler, createOAuthMiddleware } from '../src/oauth/middleware.js'
-import { createMemoryTokenStore } from '../src/oauth/store.js'
+import { createMemoryTokenStore, tokenStoreKey } from '../src/oauth/store.js'
+
+const key = (resource: string, clientID = 'c'): string => tokenStoreKey({ resource, clientID })
 
 const resource = 'https://mcp.example.com/mcp'
 
@@ -59,7 +61,7 @@ test('runs full authorize on 401 then retries with the new token', async () => {
   const res = await mw(next)(resource, { method: 'POST', body: '{}' })
   expect(res.status).toBe(200)
   expect(capturedState).not.toBe('')
-  expect((await store.get(resource))?.accessToken).toBe('fresh')
+  expect((await store.get(key(resource)))?.accessToken).toBe('fresh')
   expect(protectedCalls).toBe(2)
 })
 
@@ -119,7 +121,7 @@ test('with no store in config, a default in-memory store retains the token acros
 
 test('refuses to attach a bearer token over cleartext non-loopback HTTP', async () => {
   const store = createMemoryTokenStore()
-  await store.set('http://evil.example/mcp', { accessToken: 'secret', tokenType: 'Bearer' })
+  await store.set(key('http://evil.example/mcp'), { accessToken: 'secret', tokenType: 'Bearer' })
   const handler: AuthorizationHandler = {
     async authorize(): Promise<never> {
       throw new Error('should not authorize')

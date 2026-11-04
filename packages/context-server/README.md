@@ -108,7 +108,10 @@ process.once('SIGTERM', async () => {
 })
 ```
 
-Authenticated `createServer` callbacks must forward `auth` to `ContextServer` for task owner binding.
+Authenticated `createServer` callbacks must forward `auth` to `ContextServer` for task owner binding,
+and `resolveAuth` too, so `2025-11-25` session handlers see each request's own auth. Handlers read
+the caller from `request.auth`. Its `claims` are the token verifier's decoded claims, never stored
+with a task.
 
 `req.task.run` returns immediately with a task ID while the work continues in the manager. A
 persistent store and a `recover` callback are needed to resume running work after a restart.

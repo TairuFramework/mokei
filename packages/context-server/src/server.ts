@@ -64,6 +64,13 @@ import {
 import { defer } from '@sozai/async'
 import { createValidator, type Schema } from '@sozai/schema'
 
+import {
+  type RequestAuth,
+  type ResolveAuth,
+  type ServerAuth,
+  toRequestAuth,
+  toTaskOwner,
+} from './auth.js'
 import { applyCacheHints } from './cache.js'
 import { toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
@@ -85,7 +92,7 @@ import {
   SubscriptionWriter,
 } from './subscriptions.js'
 import type { TaskContext, TaskManager } from './task-manager.js'
-import type { JSONValue, TaskOwner } from './task-store.js'
+import type { JSONValue } from './task-store.js'
 import { settleToolOutcome } from './tool-outcome.js'
 import { withRequestMeta } from './trace.js'
 import type {
@@ -168,7 +175,15 @@ export type ServerConfig = {
 
 export type ServerParams = ServerConfig & {
   transport: ServerTransport
-  auth?: TaskOwner & { expiresAt?: number }
+  /** Verified identity for every request this server handles, unless {@link resolveAuth}
+   * answers for a request first. */
+  auth?: ServerAuth
+  /**
+   * Resolves one inbound request's auth by its JSON-RPC id, for a transport that multiplexes
+   * requests carrying different tokens of one subject onto a single server (the HTTP session
+   * path). An `undefined` answer falls back to {@link auth}.
+   */
+  resolveAuth?: ResolveAuth
   /**
    * Borrows an externally-owned {@link SubscriptionHub} for stateless HTTP: the
    * server serves `subscriptions/listen` against it but neither re-subscribes its producers nor
@@ -246,8 +261,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #tools: ToolDefinitions = {}
   #toolsList: Array<Tool> = []
   #tasks?: TaskManager
-  #auth?: TaskOwner
-  #listenExpiresAt?: number
+  #auth?: RequestAuth
+  #resolveAuth?: ResolveAuth
   #connectionID: string
   #subscriptionHub?: SubscriptionHub
   // True when this server created the hub (owner) and must dispose it; false when it borrows one.
@@ -270,15 +285,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     this.#cache = params.cache
     this.#tasks = params.tasks
-    this.#listenExpiresAt = params.auth?.expiresAt
-    this.#auth =
-      params.auth == null
-        ? undefined
-        : {
-            ...(params.auth.issuer == null ? {} : { issuer: params.auth.issuer }),
-            subject: params.auth.subject,
-            scopes: [...params.auth.scopes],
-          }
+    this.#auth = toRequestAuth(params.auth)
+    this.#resolveAuth = params.resolveAuth
     if (params.tasks != null) {
       this.#capabilities.extensions = { [TASKS_EXTENSION]: {} }
     }
@@ -592,8 +600,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const liftedRequest = { ...request, params: liftedParams } as ClientRequest
     const client = this.#createClient(protocol, protocol.readRequestMeta(request).logLevel)
     const handlerMeta = (meta ?? {}) as Record<string, JSONValue>
+    const auth = this.#authFor(request)
     const result = await withRequestMeta(meta, () => {
-      return this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr, handlerMeta)
+      return this.#dispatchRequest(liftedRequest, protocol, client, signal, mrtr, handlerMeta, auth)
     })
     // A held `subscriptions/listen` response is already the wrapped terminal (or, more precisely,
     // its `terminal` promise resolves to one): the RPC layer writes it verbatim without wrapping,
@@ -658,6 +667,14 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     return protocol.wrapResult(body, { serverInfo: this.#serverInfo }) as ServerResult
   }
 
+  #authFor(request: ClientRequest): RequestAuth | undefined {
+    const id = (request as { id?: unknown }).id
+    if (this.#resolveAuth == null || (typeof id !== 'string' && typeof id !== 'number')) {
+      return this.#auth
+    }
+    return toRequestAuth(this.#resolveAuth(id)) ?? this.#auth
+  }
+
   async #dispatchRequest(
     request: ClientRequest,
     protocol: ProtocolDefinition,
@@ -665,6 +682,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     signal: AbortSignal,
     mrtr: MRTRContext,
     meta: Record<string, JSONValue>,
+    auth: RequestAuth | undefined,
   ): Promise<ServerResult | InputRequiredResult | CreateTaskResult | HeldResponse<ServerResult>> {
     switch (request.method) {
       case 'completion/complete':
@@ -676,7 +694,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           params: request.params,
           signal,
           meta,
-          auth: this.#auth,
+          auth,
           ...mrtr,
         })
       case 'initialize': {
@@ -703,7 +721,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         this.#clientLoggingLevel = request.params.level
         return {}
       case 'prompts/get':
-        return await this.#getPrompt(request, client, signal, mrtr, meta)
+        return await this.#getPrompt(request, client, signal, mrtr, meta, auth)
       case 'prompts/list':
         return { prompts: this.#promptsList, ...this.#cache }
       case 'resources/list':
@@ -715,7 +733,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           params: request.params,
           signal,
           meta,
-          auth: this.#auth,
+          auth,
           ...mrtr,
         })
       case 'resources/read':
@@ -727,7 +745,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           params: request.params,
           signal,
           meta,
-          auth: this.#auth,
+          auth,
           ...mrtr,
         })
       case 'resources/templates/list':
@@ -739,7 +757,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           params: request.params,
           signal,
           meta,
-          auth: this.#auth,
+          auth,
           ...mrtr,
         })
       case 'server/discover':
@@ -755,26 +773,30 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           if (this.#tasks == null) break
           requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
         }
-        return this.#listen(request as SubscriptionsListenRequest, protocol, signal)
+        return this.#listen(request as SubscriptionsListenRequest, protocol, signal, auth)
       case 'tasks/get':
         if (this.#tasks == null) break
         requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
         return {
-          ...(await this.#tasks.get(request.params.taskId, this.#auth)),
+          ...(await this.#tasks.get(request.params.taskId, toTaskOwner(auth))),
           resultType: 'complete',
         }
       case 'tasks/update':
         if (this.#tasks == null) break
         requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
-        await this.#tasks.update(request.params.taskId, request.params.inputResponses, this.#auth)
+        await this.#tasks.update(
+          request.params.taskId,
+          request.params.inputResponses,
+          toTaskOwner(auth),
+        )
         return { resultType: 'complete' }
       case 'tasks/cancel':
         if (this.#tasks == null) break
         requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
-        await this.#tasks.cancel(request.params.taskId, this.#auth)
+        await this.#tasks.cancel(request.params.taskId, toTaskOwner(auth))
         return { resultType: 'complete' }
       case 'tools/call':
-        return await this.#callTool(request, protocol, client, signal, mrtr, meta)
+        return await this.#callTool(request, protocol, client, signal, mrtr, meta, auth)
       case 'tools/list':
         return { tools: this.#toolsList, ...this.#cache }
     }
@@ -788,6 +810,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     signal: AbortSignal,
     mrtr: MRTRContext,
     meta: Record<string, JSONValue>,
+    auth: RequestAuth | undefined,
   ): Promise<CallToolResult | InputRequiredResult | CreateTaskResult> {
     const name = request.params.name
     const tool = Object.hasOwn(this.#tools, name) ? this.#tools[name] : undefined
@@ -807,7 +830,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
                 toolName: name,
                 tool,
                 clientCapabilities: clientCapabilities ?? {},
-                owner: this.#auth,
+                owner: toTaskOwner(auth),
                 requestMeta: meta,
                 work,
                 ...options,
@@ -829,7 +852,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         input: request.params.arguments ?? {},
         client,
         meta,
-        auth: this.#auth,
+        auth,
         progress,
         signal,
         ...(task == null ? {} : { task }),
@@ -861,6 +884,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     signal: AbortSignal,
     mrtr: MRTRContext,
     meta: Record<string, JSONValue>,
+    auth: RequestAuth | undefined,
   ): Promise<GetPromptResult | InputRequiredResult> {
     const name = request.params.name
     const handler = Object.hasOwn(this.#promptHandlers, name)
@@ -874,7 +898,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       client,
       signal,
       meta,
-      auth: this.#auth,
+      auth,
       ...mrtr,
     })
   }
@@ -892,13 +916,16 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     request: SubscriptionsListenRequest,
     protocol: ProtocolDefinition,
     signal: AbortSignal,
+    auth: RequestAuth | undefined,
   ): Promise<HeldResponse<ServerResult>> {
     // Non-null: the dispatch case only reaches here with a hub configured.
     const hub = this.#subscriptionHub as SubscriptionHub
     const id = request.id
     const filter = request.params.notifications
     const acceptedTaskIDs =
-      filter.taskIds === undefined ? undefined : await hub.acceptTaskIDs(filter.taskIds, this.#auth)
+      filter.taskIds === undefined
+        ? undefined
+        : await hub.acceptTaskIDs(filter.taskIds, toTaskOwner(auth))
     const acceptedFilter =
       acceptedTaskIDs === undefined ? filter : { ...filter, taskIds: acceptedTaskIDs }
 
@@ -979,8 +1006,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       subscriptionID: id,
       filter,
       acceptedTaskIDs,
-      auth: this.#auth,
-      expiresAt: this.#listenExpiresAt,
+      auth: toTaskOwner(auth),
+      expiresAt: auth?.expiresAt,
       expire: () => {
         const reason = new Error('Listen authentication expired')
         writer.abort(reason)
