@@ -31,9 +31,10 @@ import type {
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import type { Schema } from '@sozai/schema'
 
+import type { RequestAuth } from './auth.js'
 import type { InputRequiredResult } from './mrtr.js'
 import type { TaskContext } from './task-manager.js'
-import type { JSONValue, TaskOwner } from './task-store.js'
+import type { JSONValue } from './task-store.js'
 
 export type ServerTransport = TransportType<ClientMessage, ServerMessage>
 
@@ -108,7 +109,8 @@ export type ProgressEmitter = (params: {
 export type HandlerRequest<C extends Record<string, unknown> = Record<string, never>> = C & {
   client: ServerClient
   meta: Record<string, JSONValue>
-  auth?: TaskOwner
+  /** Verified identity of the caller, when the transport authenticated this request. */
+  auth?: RequestAuth
   progress?: ProgressEmitter
   signal: AbortSignal
   task?: TaskContext

@@ -14,6 +14,13 @@ export { MOKEI_VERSION } from '@mokei/context-protocol'
 export type { Schema } from '@sozai/schema'
 
 export {
+  type RequestAuth,
+  type ResolveAuth,
+  type ServerAuth,
+  toRequestAuth,
+  toTaskOwner,
+} from './auth.js'
+export {
   type CreatePromptParams,
   type CreateToolParams,
   createPrompt,

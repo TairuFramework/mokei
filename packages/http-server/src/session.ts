@@ -1,4 +1,6 @@
+import type { RequestID } from '@mokei/context-protocol'
 import type { ContextServer } from '@mokei/context-server'
+import type { AuthInfo } from '@teikyo/oauth'
 
 import type { SSEEvent, SSEWriter } from './sse-writer.js'
 
@@ -9,6 +11,15 @@ export type Session = {
   getStream: SSEWriter | null
   lastActivity: number
   replayLog: Array<SSEEvent>
+  /**
+   * The verified identity that opened the session. Every later request naming the session must
+   * carry the same issuer and subject; one that does not is answered as if the session did not
+   * exist. Absent when the session was opened without auth.
+   */
+  owner?: { issuer?: string; subject: string }
+  /** Auth of each in-flight request by JSON-RPC id, read by the session server's `resolveAuth`
+   * and dropped once that id's response is written. */
+  requestAuth: Map<RequestID, AuthInfo>
 }
 
 export type SessionManagerParams = {
@@ -37,7 +48,7 @@ export class SessionManager {
     this.#cleanupInterval.unref()
   }
 
-  create(): Session {
+  create(auth?: AuthInfo): Session {
     if (this.#sessions.size >= this.#maxSessions) {
       throw new Error(`Maximum sessions limit reached (${this.#maxSessions})`)
     }
@@ -49,6 +60,13 @@ export class SessionManager {
       getStream: null,
       lastActivity: Date.now(),
       replayLog: [],
+      requestAuth: new Map(),
+    }
+    if (auth != null) {
+      session.owner = {
+        ...(auth.issuer == null ? {} : { issuer: auth.issuer }),
+        subject: auth.subject,
+      }
     }
 
     this.#sessions.set(session.sessionID, session)
@@ -89,6 +107,8 @@ export class SessionManager {
       session.getStream.close()
     }
 
+    session.requestAuth.clear()
+
     // Notify the owner last, after the session's own resources are released, so
     // the bridge is torn down for timer-driven cleanup as well as explicit deletes.
     this.#onDelete?.(sessionID)
@@ -111,6 +131,16 @@ export class SessionManager {
       }
     }
   }
+}
+
+/**
+ * Whether `auth` is the identity that opened `session`: the same issuer and subject, or no auth
+ * on either side. Scopes may differ, since a refreshed token can carry a different grant.
+ */
+export function isSessionOwner(session: Session, auth: AuthInfo | undefined): boolean {
+  const owner = session.owner
+  if (owner == null || auth == null) return owner == null && auth == null
+  return owner.issuer === auth.issuer && owner.subject === auth.subject
 }
 
 export function appendReplay(session: Session, event: SSEEvent, cap: number): void {

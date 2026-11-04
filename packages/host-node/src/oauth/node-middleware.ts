@@ -22,13 +22,26 @@ export type NodeOAuthOptions = {
   timeoutMs?: number
 }
 
+// One default loopback handler per timeout, shared by every middleware in the process, so the
+// core serialises their interactive authorisations into one browser window at a time.
+const defaultHandlers = new Map<number | undefined, AuthorizationHandler>()
+
+function defaultHandler(timeoutMs: number | undefined): AuthorizationHandler {
+  let handler = defaultHandlers.get(timeoutMs)
+  if (handler == null) {
+    handler = createLoopbackAuthorizationHandler({ timeoutMs })
+    defaultHandlers.set(timeoutMs, handler)
+  }
+  return handler
+}
+
 /**
  * Composes {@link createOAuthMiddleware} with Node-specific defaults: a loopback browser
- * authorisation handler (RFC 8252) and, when `tokensPath` is given, a file-backed token store.
+ * authorisation handler (RFC 8252), shared process-wide, and, when `tokensPath` is given, a
+ * file-backed token store that coordinates refreshes with other processes using the same file.
  */
 export function createNodeOAuthMiddleware(options: NodeOAuthOptions): FetchMiddleware {
-  const handler =
-    options.handler ?? createLoopbackAuthorizationHandler({ timeoutMs: options.timeoutMs })
+  const handler = options.handler ?? defaultHandler(options.timeoutMs)
   const store =
     options.store ?? (options.tokensPath ? createFileTokenStore(options.tokensPath) : undefined)
 

@@ -23,7 +23,14 @@ export {
   createOAuthMiddleware,
   type OAuthClientConfig,
 } from './oauth/middleware.js'
-export { createMemoryTokenStore, type StoredTokens, type TokenStore } from './oauth/store.js'
+export {
+  createMemoryTokenStore,
+  parseTokenStoreKey,
+  type StoredTokens,
+  type TokenStore,
+  tokenStoreKey,
+} from './oauth/store.js'
+export { createMemoryStore, type KeyValueStore } from './store.js'
 export {
   type CreateHTTPClientParams,
   createHTTPClient,

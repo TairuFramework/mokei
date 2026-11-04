@@ -6,6 +6,7 @@
 
 export { createClient, type DaemonOptions, type HostClient, runDaemon } from './daemon.js'
 export { composeHandlers, type HostDaemonParams, serveHostDaemon } from './daemon-server.js'
+export { createJSONFileStore, type JSONFileStoreOptions } from './json-file-store.js'
 export {
   type AddLocalContextParams,
   NodeContextHost,

@@ -73,6 +73,25 @@ Most applications connect HTTP contexts through the host via `contextHost.addHTT
 or `session.contextHost.addHTTPContext(...)` rather than constructing the client directly.
 Those take a `protocolVersion` too, defaulting to `'auto'`.
 
+## OAuth
+
+`createOAuthMiddleware({ clientID, scopes, resource, handler, store })` gives `HTTPTransport` an
+OAuth 2.1 client. It attaches stored bearer tokens, refreshes them shortly before they expire,
+and on a 401 discovers the authorisation server and runs PKCE through `handler`.
+
+Tokens live in a `TokenStore`, which is a `KeyValueStore<StoredTokens>`. The generic
+`KeyValueStore<V>` interface (`get`, `set`, `delete`, `keys` and an atomic `update`) and its
+in-memory implementation `createMemoryStore<V>()` are exported for any other use.
+`@mokei/host-node` adds `createJSONFileStore<V>(path)` and `createFileTokenStore(path)`, a JSON
+file whose writes are locked across processes. The default store is in memory.
+
+- Tokens are keyed by `tokenStoreKey({ resource, clientID, scopes })`, so clients with
+  different IDs or scope sets on one resource keep separate tokens.
+- Every middleware sharing a store shares its in-flight refreshes and sign-ins.
+- A refresh runs inside `store.update`. With the file store, processes that share a tokens file
+  redeem a rotating refresh token once.
+- Sign-ins through one `AuthorizationHandler` run one at a time.
+
 ## Documentation
 
 See the full documentation at [mokei.dev](https://mokei.dev).

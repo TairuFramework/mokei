@@ -1,4 +1,4 @@
-import { createMemoryTokenStore } from '@mokei/http-client'
+import { createMemoryTokenStore, tokenStoreKey } from '@mokei/http-client'
 import { expect, test } from 'vitest'
 
 import { createNodeOAuthMiddleware } from '../src/oauth/node-middleware.js'
@@ -15,7 +15,10 @@ test('returns a FetchMiddleware that composes into a callable fetch-like functio
 test('wires a pre-seeded store into the middleware without invoking the handler', async () => {
   const resource = 'https://api.example.com/mcp'
   const store = createMemoryTokenStore()
-  await store.set(resource, { accessToken: 'seeded-token', tokenType: 'Bearer' })
+  await store.set(tokenStoreKey({ resource, clientID: 'c' }), {
+    accessToken: 'seeded-token',
+    tokenType: 'Bearer',
+  })
 
   const handler = {
     authorize: () => {
