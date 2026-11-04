@@ -18,6 +18,7 @@ export {
   SessionExpiredError,
   type SessionExpiredErrorParams,
 } from './errors.js'
+export { parseBearerChallenge } from './oauth/challenge.js'
 export {
   type AuthorizationHandler,
   createOAuthMiddleware,

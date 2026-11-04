@@ -10,11 +10,11 @@ bypass; each needs its own design.
 
 ## Items
 
-- **Per-tool scopes and step-up (MCP `insufficient_scope`).** Scopes are still enforced
-  server-wide only (`requiredScopes`). Add `createTool({ scopes })`, answer HTTP 403
-  `insufficient_scope` with `WWW-Authenticate: scope=…` (on `2026-07-28` the gate can read the
-  tool from the `Mcp-Method` and name headers without parsing the body), and teach the client
-  middleware to step up on 403, not only recover from 401.
+- **Per-tool scope follow-ons.** Per-tool scopes and `403` step-up shipped
+  (`completed/2026-11-04-per-tool-oauth-scopes.complete.md`). Still open: advertising tool scopes
+  in `tools/list` or filtering the list by the caller's scopes; scopes on prompts and resources;
+  and a gate in front of the handler keyed on the `Mcp-Method` / `Mcp-Name` headers, which first
+  needs the server to reject requests whose headers do not match the body.
 
 - **Daemon-held tokens, keychain store, logout.** The daemon could own the token store,
   refreshes and sign-in prompts for every context. An OS keychain store would implement

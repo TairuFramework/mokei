@@ -92,6 +92,19 @@ file whose writes are locked across processes. The default store is in memory.
   redeem a rotating refresh token once.
 - Sign-ins through one `AuthorizationHandler` run one at a time.
 
+### Step-up on `403 insufficient_scope`
+
+When a server answers `403` with a `Bearer error="insufficient_scope", scope="…"` challenge, the
+middleware signs in again for the configured scopes, the stored token's scopes and the challenge
+scopes together. It stores the new token under the same key and retries the request once.
+`StoredTokens.requestedScopes` records the wider set, so later refreshes and re-authorisations do
+not narrow it. A `scope` in a 401 challenge joins the authorisation request the same way.
+
+The middleware never prompts for scopes it has already requested. If the authorisation server
+granted less than it asked for, the `403` is returned, and the transport surfaces the server's
+JSON-RPC error. Concurrent `403`s for one key prompt once. Pass `stepUp: false` to return every
+`403` unchanged. `parseBearerChallenge(header)` is exported for reading other challenges.
+
 ## Documentation
 
 See the full documentation at [mokei.dev](https://mokei.dev).

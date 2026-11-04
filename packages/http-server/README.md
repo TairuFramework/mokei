@@ -83,6 +83,37 @@ but their shape depends on the verifier. Forward `auth` and `resolveAuth` from `
 `ContextServer`. On `2025-11-25` sessions, `resolveAuth` gives each request the auth of the token
 that carried it, so scopes and expiry stay current after a refresh.
 
+### Per-tool scopes
+
+`auth.scopes` (or `serveHTTP`'s `auth.requiredScopes`) is required on every request. A tool can
+also require scopes of its own:
+
+```typescript
+const tools = {
+  purge: createTool({
+    description: 'Delete everything',
+    inputSchema: { type: 'object' } as const,
+    scopes: ['admin'],
+    handler: () => ({ content: [] }),
+  }),
+}
+```
+
+When a `tools/call` carries a token without the tool's scopes, the handler answers before the
+call reaches the server, on both revisions. The response is `403` with a JSON-RPC error body and
+a challenge naming the server-wide scopes and the tool's scopes:
+
+```
+WWW-Authenticate: Bearer error="insufficient_scope", scope="tools:read admin",
+  resource_metadata="…", error_description="Tool purge requires scope admin"
+```
+
+The tool is read from the parsed body, never from the `Mcp-Method` or `Mcp-Name` headers, which
+this server does not check against the body. `ContextServer` enforces the scopes too, whenever a
+request carries auth. Without auth (stdio, or HTTP without OAuth), scopes are not enforced.
+Scopes are not listed in `tools/list`. `@mokei/http-client`'s OAuth middleware steps up on this
+challenge.
+
 A `2025-11-25` session is bound to the issuer and subject that sent `initialize`. A request from
 any other identity that names the session (POST, GET or DELETE) gets the same `404` as an
 unknown session id.

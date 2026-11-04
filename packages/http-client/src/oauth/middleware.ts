@@ -1,6 +1,7 @@
 import { toB64U } from '@sozai/codec'
 
 import type { FetchLike, FetchMiddleware } from '../transport.js'
+import { parseBearerChallenge, splitScopes } from './challenge.js'
 import { discover, parseResourceMetadataURL } from './discovery.js'
 import { fetchOAuthJSON, OAuthResponseError } from './fetch.js'
 import { createPKCE } from './pkce.js'
@@ -33,6 +34,24 @@ export type OAuthClientConfig = {
   /** Picks an authorisation server when the protected-resource metadata lists more than one;
    * defaults to the first. */
   selectAuthServer?: (servers: Array<string>) => string
+  /**
+   * Step up on `403` with an `insufficient_scope` challenge (default `true`). The middleware
+   * re-authorises interactively for the configured scopes, the stored token's scopes and the
+   * challenge scopes together, then retries the request once. It never steps up for scopes it
+   * already requested, so a server that keeps refusing gets its `403` back rather than a
+   * sign-in loop. Set `false` to pass every `403` through untouched.
+   */
+  stepUp?: boolean
+}
+
+function unionScopes(...lists: Array<ReadonlyArray<string> | undefined>): Array<string> {
+  return [...new Set(lists.flatMap((list) => list ?? []))]
+}
+
+/** Whether `tokens` were requested or granted for every scope in `wanted`. */
+function coversScopes(tokens: StoredTokens, wanted: ReadonlyArray<string>): boolean {
+  const held = new Set([...(tokens.requestedScopes ?? []), ...splitScopes(tokens.scope)])
+  return wanted.every((scope) => held.has(scope))
 }
 
 /** Whether `tokens` is at or past `now() + skew` (all in seconds). */
@@ -246,11 +265,14 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     key: string,
     staleAccessToken: string | undefined,
     run: () => Promise<StoredTokens>,
+    accept: (current: StoredTokens) => boolean = () => true,
   ): Promise<StoredTokens> {
     function start(): Promise<StoredTokens> {
       const flight = (async () => {
         const current = await store.get(key)
-        if (current != null && current.accessToken !== staleAccessToken) return current
+        if (current != null && current.accessToken !== staleAccessToken && accept(current)) {
+          return current
+        }
         return run()
       })()
       flights.set(key, flight)
@@ -290,7 +312,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
           failure = { error: new Error('OAuth refresh: no refresh token stored') }
           return current
         }
-        const { tokenEndpoint, refreshToken, issuer } = current
+        const { tokenEndpoint, refreshToken, issuer, requestedScopes } = current
         try {
           const refreshed = await exchangeRefresh({
             fetchUnwrapped: next,
@@ -298,11 +320,17 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
             clientID: config.clientID,
             resource,
             refreshToken,
-            scopes: config.scopes,
+            // A stepped-up token refreshes with its wider scopes, not back down to the config's.
+            scopes: requestedScopes ?? config.scopes,
             now,
             signal,
           })
-          return { ...refreshed, tokenEndpoint, issuer }
+          return {
+            ...refreshed,
+            tokenEndpoint,
+            issuer,
+            ...(requestedScopes == null ? {} : { requestedScopes }),
+          }
         } catch (error) {
           failure = { error }
           return isInvalidGrant(error) ? undefined : current
@@ -314,19 +342,28 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     })
   }
 
-  /** Discovers the authorisation server, runs PKCE + `config.handler.authorize`, exchanges the
-   * returned code for tokens, and persists them under `resource`. */
-  async function authorize(
-    next: FetchLike,
-    key: string,
-    resource: string,
-    staleAccessToken: string | undefined,
-    wwwAuthenticate: string | null,
-    signal?: AbortSignal,
-  ): Promise<StoredTokens> {
+  /** Discovers the authorisation server, runs PKCE + `config.handler.authorize` for `scopes`,
+   * exchanges the returned code for tokens, and persists them under `key`. */
+  async function authorize(params: {
+    next: FetchLike
+    key: string
+    resource: string
+    staleAccessToken: string | undefined
+    wwwAuthenticate: string | null
+    scopes: Array<string>
+    accept?: (current: StoredTokens) => boolean
+    signal?: AbortSignal
+  }): Promise<StoredTokens> {
+    const { next, key, resource, staleAccessToken, wwwAuthenticate, scopes, signal } = params
     // Another context (or process) may have signed in while this one waited for the handler.
     const current = await store.get(key)
-    if (current != null && current.accessToken !== staleAccessToken) return current
+    if (
+      current != null &&
+      current.accessToken !== staleAccessToken &&
+      (params.accept?.(current) ?? true)
+    ) {
+      return current
+    }
 
     const resourceMetadataURL = parseResourceMetadataURL(wwwAuthenticate) ?? undefined
     const { as } = await discover({
@@ -348,8 +385,8 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       authURL.searchParams.set('code_challenge', pkce.challenge)
       authURL.searchParams.set('code_challenge_method', 'S256')
       authURL.searchParams.set('state', state)
-      if (config.scopes != null && config.scopes.length > 0) {
-        authURL.searchParams.set('scope', config.scopes.join(' '))
+      if (scopes.length > 0) {
+        authURL.searchParams.set('scope', scopes.join(' '))
       }
       authURL.searchParams.set('resource', resource)
       return authURL.toString()
@@ -373,6 +410,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     })
     const tokens: StoredTokens = {
       ...exchanged,
+      ...(scopes.length > 0 ? { requestedScopes: scopes } : {}),
       tokenEndpoint: as.token_endpoint,
       issuer: as.issuer,
     }
@@ -418,6 +456,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       }
 
       const response = await next(url, tokens != null ? attach(init) : init)
+      if (response.status === 403) return await stepUp(response)
       if (response.status !== 401) return response
 
       // Cancel the 401 body before recovery: an SSE/unbounded body would pin the socket for the
@@ -438,13 +477,72 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
 
       const stale = tokens?.accessToken
       const wwwAuthenticate = response.headers.get('WWW-Authenticate')
+      // Signing in again keeps any scopes a step-up added, plus a `scope` the 401 names.
+      const scopes = unionScopes(
+        config.scopes,
+        tokens?.requestedScopes,
+        splitScopes(parseBearerChallenge(wwwAuthenticate)?.scope),
+      )
       const authorized = await withSingleFlight(key, stale, () => {
         return serialiseAuthorize(config.handler, () => {
-          return authorize(next, key, resource, stale, wwwAuthenticate, signal)
+          return authorize({
+            next,
+            key,
+            resource,
+            staleAccessToken: stale,
+            wwwAuthenticate,
+            scopes,
+            signal,
+          })
         })
       })
       tokens = authorized
       return next(url, attach(init))
+
+      /**
+       * A `403 insufficient_scope` naming scopes this client has not yet asked for: sign in again
+       * for the wider set and retry once. Any other `403` (or one with nothing new to ask for) is
+       * returned as-is, body intact, so the transport can surface the server's error.
+       */
+      async function stepUp(forbidden: Response): Promise<Response> {
+        if (config.stepUp === false || tokens == null) return forbidden
+        const wwwAuthenticate = forbidden.headers.get('WWW-Authenticate')
+        const challenge = parseBearerChallenge(wwwAuthenticate)
+        if (challenge?.error !== 'insufficient_scope') return forbidden
+        const challenged = splitScopes(challenge.scope)
+        const held = unionScopes(config.scopes, tokens.requestedScopes, splitScopes(tokens.scope))
+        if (challenged.every((scope) => held.includes(scope))) return forbidden
+        await forbidden.body?.cancel().catch(() => {})
+
+        const wanted = unionScopes(held, challenged)
+        const accept = (current: StoredTokens) => coversScopes(current, wanted)
+        const stale = tokens.accessToken
+        const run = (staleAccessToken: string) => () =>
+          serialiseAuthorize(config.handler, () => {
+            return authorize({
+              next,
+              key,
+              resource,
+              staleAccessToken,
+              wwwAuthenticate,
+              scopes: wanted,
+              accept,
+              signal,
+            })
+          })
+        let elevated = await withSingleFlight(key, stale, run(stale), accept)
+        // Joined a flight for something else (a refresh, a narrower step-up): ask once more.
+        if (!accept(elevated)) {
+          elevated = await withSingleFlight(
+            key,
+            elevated.accessToken,
+            run(elevated.accessToken),
+            accept,
+          )
+        }
+        tokens = elevated
+        return next(url, attach(init))
+      }
     }
   }
 }

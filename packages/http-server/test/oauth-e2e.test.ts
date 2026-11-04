@@ -1,5 +1,5 @@
 import type { ClientMessage, ServerMessage } from '@mokei/context-protocol'
-import { ContextServer, type ServerConfig } from '@mokei/context-server'
+import { ContextServer, createTool, type ServerConfig } from '@mokei/context-server'
 import {
   type AuthorizationHandler,
   createMemoryTokenStore,
@@ -174,5 +174,120 @@ describe('OAuth client<->server interop', () => {
 
     expect(authorizeCalls).toBe(1)
     expect(tokenCalls).toBe(1)
+  })
+
+  test('client steps up on 403 insufficient_scope and the tool call succeeds', async () => {
+    // Tokens are `tok:<comma-separated scopes>`, so the verifier grants whatever was requested.
+    const scopedVerifier: OAuthTokenVerifier = {
+      async verifyAccessToken(token) {
+        if (!token.startsWith('tok:'))
+          throw new TokenVerificationError({ code: 'invalid_token', message: 'no' })
+        return { subject: 'u', scopes: token.slice(4).split(',').filter(Boolean) }
+      },
+    }
+    let purged = 0
+    server = await serveHTTP({
+      createServer: ({ transport: t, auth, resolveAuth }) =>
+        new ContextServer({
+          ...SERVER_CONFIG,
+          transport: t,
+          auth,
+          resolveAuth,
+          tools: {
+            purge: createTool({
+              description: 'Needs admin',
+              inputSchema: { type: 'object' } as const,
+              scopes: ['admin'],
+              handler: () => {
+                purged += 1
+                return { content: [{ type: 'text', text: 'purged' }] }
+              },
+            }),
+          },
+        }),
+      port: 0,
+      hostname: '127.0.0.1',
+      auth: {
+        verifier: scopedVerifier,
+        resource: RESOURCE,
+        authorizationServers: [AS_ISSUER],
+        requiredScopes: ['read'],
+      },
+    })
+    const port = Number(new URL(server.server.url).port)
+
+    const requestedScopes: Array<string | null> = []
+    const handler: AuthorizationHandler = {
+      async authorize({ buildAuthorizationURL, state }) {
+        const url = new URL(buildAuthorizationURL('http://127.0.0.1:1/cb'))
+        const scope = url.searchParams.get('scope')
+        requestedScopes.push(scope)
+        return { code: scope ?? '', state, redirectURI: 'http://127.0.0.1:1/cb' }
+      },
+    }
+    const realFetch = globalThis.fetch.bind(globalThis)
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit): Promise<Response> => {
+      if (url === AS_METADATA_URL) {
+        return json({
+          issuer: AS_ISSUER,
+          authorization_endpoint: `${AS_ISSUER}/authorize`,
+          token_endpoint: AS_TOKEN_URL,
+          code_challenge_methods_supported: ['S256'],
+        })
+      }
+      if (url === AS_TOKEN_URL) {
+        const code = new URLSearchParams(String(init?.body)).get('code') ?? ''
+        return json({
+          access_token: `tok:${code.replaceAll(' ', ',')}`,
+          token_type: 'Bearer',
+          expires_in: 3600,
+        })
+      }
+      const target = new URL(url)
+      if (target.hostname === '127.0.0.1') target.port = String(port)
+      return realFetch(target.toString(), init)
+    })
+
+    const store = createMemoryTokenStore()
+    transport = new HTTPTransport({
+      url: RESOURCE,
+      fetchMiddleware: createOAuthMiddleware({
+        clientID: 'e2e-client',
+        resource: RESOURCE,
+        scopes: ['read'],
+        handler,
+        store,
+      }),
+    })
+
+    await transport.write({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'e2e', version: '1.0' },
+      },
+    } as ClientMessage)
+    const init = (await transport.read()).value as ServerMessage & { error?: unknown }
+    expect(init.error).toBeUndefined()
+    await transport.write({ jsonrpc: '2.0', method: 'notifications/initialized' } as ClientMessage)
+    expect(requestedScopes).toEqual(['read'])
+
+    await transport.write({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'purge', arguments: {} },
+    } as ClientMessage)
+    const called = (await transport.read()).value as ServerMessage & {
+      result?: { content?: unknown }
+      error?: unknown
+    }
+    expect(called.error).toBeUndefined()
+    expect(called.result?.content).toEqual([{ type: 'text', text: 'purged' }])
+    expect(requestedScopes).toEqual(['read', 'read admin'])
+    expect(purged).toBe(1)
   })
 })

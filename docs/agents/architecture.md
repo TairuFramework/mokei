@@ -175,6 +175,19 @@ On the server, `@mokei/http-server` builds on `@sozai/http-server` and provides 
 `mcpPlugin`. OAuth resource protection, metadata and token verification come from
 `@teikyo/oauth`; verified identity is available to task handlers for owner binding.
 
+Scopes work at two levels. The server-wide `requiredScopes` are checked by the `@teikyo/oauth`
+bearer gate in front of the route. Per-tool `createTool({ scopes })` is checked inside
+`createHTTPHandler`, after the body is parsed and before dispatch, through
+`ContextServer.requiredScopes(request)`. On `2025-11-25` the session server is asked before the
+request is queued. On `2026-07-28` the per-POST server is asked through `runStatelessExchange`'s
+`authorize` hook. A token missing a tool's scopes gets `403` with
+`WWW-Authenticate: Bearer error="insufficient_scope", scope=<server-wide + tool scopes>` and a
+JSON-RPC error body. The `Mcp-Method` and `Mcp-Name` headers are not used for this, because the
+server does not check them against the body. `ContextServer` enforces tool scopes itself whenever
+a request carries auth. The client middleware steps up on that `403`: it re-authorises for the
+union of configured, held and challenged scopes, then retries once. It records
+`StoredTokens.requestedScopes` so refreshes keep the wider set.
+
 ---
 
 ## API Conventions

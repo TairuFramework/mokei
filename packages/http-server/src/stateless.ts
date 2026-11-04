@@ -88,6 +88,12 @@ export type StatelessExchangeParams = {
    */
   requestID: string | number | null
   createServer: (transport: ServerTransport) => ContextServer
+  /**
+   * Runs once the server is built and before the message reaches it. A returned `Response` is
+   * the exchange's answer and the message is never dispatched (the handler's
+   * `403 insufficient_scope`); `null` lets the exchange proceed.
+   */
+  authorize?: (server: ContextServer) => Response | null
   replayBufferSize: number
   timeoutMs: number
   /**
@@ -126,6 +132,7 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
     message,
     requestID,
     createServer,
+    authorize,
     replayBufferSize,
     timeoutMs,
     signal,
@@ -288,6 +295,12 @@ export function runStatelessExchange(params: StatelessExchangeParams): Promise<R
     // request in flight there is nothing for it to correlate against either.
     finish()
     return Promise.resolve(new Response(null, { status: 202 }))
+  }
+
+  const denied = authorize?.(server)
+  if (denied != null) {
+    finish()
+    return Promise.resolve(denied)
   }
 
   signal?.addEventListener('abort', onAbort, { once: true })
