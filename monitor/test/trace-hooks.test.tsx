@@ -14,7 +14,7 @@ import { expect, test, vi } from 'vitest'
 
 import { type HostConnection, HostConnectionContext } from '../src/host/HostConnectionProvider.js'
 import { useTrace } from '../src/traces/useTrace.js'
-import { useTraceList } from '../src/traces/useTraceList.js'
+import { MAX_LIVE_TRACES, pruneSummaries, useTraceList } from '../src/traces/useTraceList.js'
 import { clientFixture } from './host-connection-fixture.js'
 
 const summary: TraceSummary = {
@@ -149,6 +149,43 @@ test('list retry repeats the failed page and preserves previously loaded summari
   expect(hook.result.current.error).toBeUndefined()
   act(() => hook.result.current.retry())
   expect(env.fixture.request).toHaveBeenCalledTimes(3)
+})
+
+test('pruning drops the oldest inactive summaries and keeps active ones', () => {
+  const entries = [
+    { ...summary, traceID: 'old-active', startTime: 1, active: true },
+    { ...summary, traceID: 'old', startTime: 2, active: false },
+    { ...summary, traceID: 'new', startTime: 3, active: false },
+  ]
+  const current = new Map(entries.map((entry) => [entry.traceID, entry]))
+  expect(pruneSummaries(current, 3)).toEqual({ summaries: current, pruned: false })
+  const { summaries, pruned } = pruneSummaries(current, 2)
+  expect(pruned).toBe(true)
+  expect([...summaries.keys()]).toEqual(['old-active', 'new'])
+})
+
+test('live summaries are capped and paging resumes from the oldest kept trace', async () => {
+  const env = setup()
+  env.fixture.request.mockResolvedValue({ traces: [] } as never)
+  const hook = renderHook(() => useTraceList({}), { wrapper: env.wrapper })
+  await act(async () => {})
+  expect(hook.result.current.hasMore).toBe(false)
+  act(() => {
+    for (let index = 0; index <= MAX_LIVE_TRACES; index++) {
+      env.emit({
+        type: 'trace:summary',
+        meta,
+        data: { ...summary, traceID: `trace-${index}`, active: false, startTime: 1000 + index },
+      })
+    }
+  })
+  expect(hook.result.current.traces).toHaveLength(MAX_LIVE_TRACES)
+  expect(hook.result.current.traces.at(-1)?.traceID).toBe('trace-1')
+  expect(hook.result.current.hasMore).toBe(true)
+  await act(async () => hook.result.current.loadMore())
+  expect(env.fixture.request).toHaveBeenLastCalledWith('traces.list', {
+    param: { until: 1001, limit: 50 },
+  })
 })
 
 test('selected trace failures expose an error and retry merges the snapshot with live events', async () => {

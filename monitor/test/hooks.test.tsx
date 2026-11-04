@@ -140,6 +140,21 @@ test('a limited working list backfills the older run when the newest completes',
   expect(f.control.runs.list).toHaveBeenLastCalledWith({ states: ['working'], limit: 1 })
 })
 
+test('a limited list ignores runs outside its page leaving the filter', async () => {
+  const f = fixture()
+  const newest = { ...run('newest', 'working'), createdAt: 3 }
+  vi.mocked(f.control.runs.list).mockResolvedValue([newest])
+  const { result } = renderHook(() => useRuns({ states: ['working'], limit: 1 }), {
+    wrapper: f.wrapper,
+  })
+  await waitFor(() => expect(result.current.runs).toEqual([newest]))
+  act(() => {
+    f.emit({ type: 'run:state', data: run('elsewhere', 'completed') })
+  })
+  expect(result.current.runs).toEqual([newest])
+  expect(f.control.runs.list).toHaveBeenCalledTimes(1)
+})
+
 test('buffered run events re-read affected IDs rather than replay stale data', async () => {
   const f = fixture()
   const snapshot = deferred<Array<ReturnType<typeof run>>>()

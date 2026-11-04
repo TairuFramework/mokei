@@ -5,6 +5,26 @@ import { useHostConnection } from '../host/useHostConnection.js'
 import { mergeSummaries } from './trace-merge.js'
 import { traceSearchText } from './trace-summary.js'
 
+/** Live summaries beyond this count drop the oldest inactive traces, so an open page stays bounded. */
+export const MAX_LIVE_TRACES = 1000
+
+/** Drop the oldest inactive summaries above `cap`; returns the pruned map and whether it changed. */
+export function pruneSummaries(
+  current: Map<string, TraceSummary>,
+  cap: number,
+): { summaries: Map<string, TraceSummary>; pruned: boolean } {
+  if (current.size <= cap) return { summaries: current, pruned: false }
+  const next = new Map(current)
+  const inactive = [...current.values()]
+    .filter((summary) => !summary.active)
+    .sort((a, b) => a.startTime - b.startTime)
+  for (const summary of inactive) {
+    if (next.size <= cap) break
+    next.delete(summary.traceID)
+  }
+  return { summaries: next, pruned: next.size < current.size }
+}
+
 export type TraceListFilters = {
   kind?: TraceSummary['kind']
   active?: boolean
@@ -38,6 +58,9 @@ export function useTraceList(filters: TraceListFilters): {
     let pending = false
     let failed = false
     let cursor: string | undefined
+    // After pruning, paging resumes from the oldest kept trace instead of the server cursor.
+    let resumeUntil: number | undefined
+    let loaded = 0
     let current = new Map<string, TraceSummary>()
     let buffered: Array<TraceSummary> = []
     const queryFilters = { kind, active, outcome, name, since, until }
@@ -47,15 +70,25 @@ export function useTraceList(filters: TraceListFilters): {
     setError(undefined)
     if (!connected) return
 
-    function publish(incoming: Array<TraceSummary>) {
+    function publish(incoming: Array<TraceSummary>, live = false) {
       current = mergeSummaries(current, incoming)
+      if (live) {
+        const result = pruneSummaries(current, Math.max(MAX_LIVE_TRACES, loaded))
+        if (result.pruned) {
+          current = result.summaries
+          const oldest = Math.min(...[...current.values()].map((summary) => summary.startTime))
+          resumeUntil = Number.isFinite(oldest) ? oldest : undefined
+          cursor = undefined
+          setHasMore(true)
+        }
+      }
       setSummaries(current)
     }
     // Keep nonmatching revisions too, so delayed events cannot restore filtered-out traces.
     const off = subscribe(['trace:summary'], (event, eventEpoch) => {
       if (stopped || eventEpoch !== epoch) return
       if (pending) buffered.push(event.data)
-      else publish([event.data])
+      else publish([event.data], true)
     })
     async function read() {
       if (stopped || pending) return
@@ -63,11 +96,17 @@ export function useTraceList(filters: TraceListFilters): {
       setLoading(true)
       setError(undefined)
       try {
+        const resume =
+          cursor == null && resumeUntil != null
+            ? { until: Math.min(resumeUntil, queryFilters.until ?? resumeUntil) }
+            : {}
         const result = await client.request('traces.list', {
-          param: { ...queryFilters, limit: 50, ...(cursor == null ? {} : { cursor }) },
+          param: { ...queryFilters, ...resume, limit: 50, ...(cursor == null ? {} : { cursor }) },
         })
         if (stopped) return
         cursor = result.cursor
+        resumeUntil = undefined
+        loaded = Math.max(loaded, current.size) + result.traces.length
         setHasMore(cursor != null)
         failed = false
         publish([...result.traces, ...buffered])
@@ -86,7 +125,7 @@ export function useTraceList(filters: TraceListFilters): {
       }
     }
     fetchMore.current = () => {
-      if (cursor != null) void read()
+      if (cursor != null || resumeUntil != null) void read()
     }
     retryRead.current = () => {
       if (failed) void read()
