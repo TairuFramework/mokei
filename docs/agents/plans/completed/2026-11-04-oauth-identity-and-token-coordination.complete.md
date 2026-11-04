@@ -29,6 +29,9 @@ hijack, and stop OAuth clients that share tokens from racing each other's refres
 - **Breaking (0.16).** `TokenStore.clear` is renamed `delete`, and `update` and `keys` are
   required. Tokens stored under the old resource-only key are ignored, so each user signs in once.
 
+This also closes `backlog/2026-09-04-oauth-multi-context-token-coordination.md` (removed), which
+asked for one refresh flight across contexts sharing a store and a cross-process file lock.
+
 ## Decisions
 
 - Persistence stays opt-in (`--oauth-tokens`): no default tokens file, no OS keychain store.

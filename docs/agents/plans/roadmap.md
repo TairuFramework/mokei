@@ -207,11 +207,9 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Near-term (backlog/)
 
-- **OAuth identity for handlers** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- pass the
-  gate's verified `AuthInfo` to tool and resource handlers.
-- **Multi-context OAuth token coordination**
-  (`backlog/2026-09-04-oauth-multi-context-token-coordination.md`) -- one refresh flight per
-  resource across contexts sharing a token store; needs a `TokenStore` contract design pass.
+- **OAuth follow-ups** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- per-tool scopes
+  with 403 `insufficient_scope` step-up; daemon-held tokens, a keychain store and `mokei auth
+  logout`.
 - **Session elicitation follow-ons** (`backlog/2026-09-29-session-elicitation-follow-ons.md`) --
   host-level sampling and roots, and server-side URL-mode completion on `2025-11-25`.
 - **Unified traces follow-ons** (`backlog/2026-10-08-unified-traces-follow-ons.md`) -- reverse
