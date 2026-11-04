@@ -55,4 +55,58 @@ describe('openURL', () => {
 
     await expect(openURL('https://example.test/', { runner, platform: 'linux' })).rejects.toThrow()
   })
+
+  test('forwards the signal and rejects with its reason when aborted', async () => {
+    const controller = new AbortController()
+    const reason = new Error('stop')
+    let received: AbortSignal | undefined
+    const runner: Runner = {
+      run(_command, _args, options) {
+        received = options.signal
+        return new Promise((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => reject(options.signal?.reason))
+        })
+      },
+      async dispose() {},
+    }
+
+    const opening = openURL('https://example.test/', {
+      runner,
+      platform: 'linux',
+      signal: controller.signal,
+    })
+    controller.abort(reason)
+
+    await expect(opening).rejects.toBe(reason)
+    expect(received).toBe(controller.signal)
+  })
+
+  test('rejects when the opener times out', async () => {
+    const runner: Runner = {
+      async run() {
+        return { code: null, stdout: '', stderr: '', timedOut: true }
+      },
+      async dispose() {},
+    }
+
+    await expect(openURL('https://example.test/', { runner, platform: 'darwin' })).rejects.toThrow(
+      'Opening URL timed out',
+    )
+  })
+
+  test('does not dispose a caller-supplied runner', async () => {
+    let disposed = false
+    const runner: Runner = {
+      async run() {
+        return { code: 0, stdout: '', stderr: '', timedOut: false }
+      },
+      async dispose() {
+        disposed = true
+      },
+    }
+
+    await openURL('https://example.test/', { runner, platform: 'linux' })
+
+    expect(disposed).toBe(false)
+  })
 })
