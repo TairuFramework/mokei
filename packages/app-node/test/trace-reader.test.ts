@@ -383,7 +383,10 @@ test('get lists calls from other traces, open and ended, newest first', async ()
     attributes: { 'mokei.root': true, 'mokei.kind': 'flow' },
   })
   const inFlow = trace.setSpan(context.active(), flow)
-  const call = (name: string, startTime: number) =>
+  // Explicit dates: OpenTelemetry reads a small number as a `performance.now()` offset.
+  const base = Date.now()
+  const at = (offset: number) => new Date(base + offset)
+  const call = (name: string, startTime: Date) =>
     tracer.startSpan(
       name,
       {
@@ -393,9 +396,9 @@ test('get lists calls from other traces, open and ended, newest first', async ()
       },
       inFlow,
     )
-  const first = call('tools/call read', 1000)
-  first.end(1500)
-  const second = call('tools/call write', 2000)
+  const first = call('tools/call read', at(1000))
+  first.end(at(1500))
+  const second = call('tools/call write', at(2000))
   const flowTraceID = flow.spanContext().traceId
   // Same-trace spans carrying the attribute are not calls *into* another trace.
   tracer
@@ -413,12 +416,12 @@ test('get lists calls from other traces, open and ended, newest first', async ()
       traceID: flowTraceID,
       name: 'tools/call read',
       outcome: 'ok',
-      endTime: 1500,
+      endTime: base + 1500,
     }),
   ])
   expect(live?.callsTruncated).toBe(false)
 
-  second.end(2500)
+  second.end(at(2500))
   await recorder.forceFlush()
   const stored = await reader.get(contextTraceID)
   expect(stored?.calls?.map((entry) => [entry.name, entry.outcome])).toEqual([
