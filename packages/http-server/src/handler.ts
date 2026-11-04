@@ -2,18 +2,21 @@ import { Transport } from '@enkaku/transport'
 import {
   type ClientMessage,
   INTERNAL_ERROR,
+  INVALID_REQUEST,
   isHandshakeRequired,
   isSupportedProtocolVersion,
   PROTOCOLS,
   type ProtocolVersion,
   type ServerMessage,
 } from '@mokei/context-protocol'
-import type {
-  ContextServer,
-  ResolveAuth,
-  ServerTransport,
-  SubscriptionHub,
-  TaskManager,
+import {
+  type ContextServer,
+  INSUFFICIENT_SCOPE,
+  missingScopes,
+  type ResolveAuth,
+  type ServerTransport,
+  type SubscriptionHub,
+  type TaskManager,
 } from '@mokei/context-server'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createRuntime, type Runtime } from '@sozai/runtime'
@@ -71,6 +74,15 @@ export type HTTPHandlerParams = {
    */
   subscriptionHub?: SubscriptionHub
   tasks?: TaskManager
+  /**
+   * OAuth details for the `403 insufficient_scope` challenge sent when a request's token lacks
+   * the scopes of the tool it calls (`ContextServer.requiredScopes`). The check runs whenever
+   * `handleRequest` receives `auth`; this only shapes the challenge. `resourceMetadataURL` is
+   * sent as `resource_metadata`, and `requiredScopes` (the server-wide scopes the bearer gate
+   * enforces) are listed in `scope` with the tool's, so the challenge names every scope the
+   * request needs. `mcpPlugin` fills both in.
+   */
+  oauth?: { resourceMetadataURL?: string; requiredScopes?: Array<string> }
   /**
    * RN-safe runtime primitives (`@sozai/runtime`). Resolved once via `createRuntime` and threaded
    * to `runSubscriptionExchange`, which mints each listen POST's `connectionID` from its
@@ -229,6 +241,66 @@ async function readBodyText(request: Request, maxBytes: number): Promise<string 
   return new TextDecoder().decode(merged)
 }
 
+/**
+ * Quote an auth-param value (RFC 9110 §11.2): characters outside printable ASCII become `?`
+ * (a non-Latin-1 header value would make the response throw), then `\` and `"` are escaped.
+ */
+function quoteAuthParam(value: string): string {
+  return `"${value.replace(/[^\x20-\x7e]/g, '?').replace(/[\\"]/g, '\\$&')}"`
+}
+
+/**
+ * The `403` for a request whose token lacks scopes the called tool requires, or `null` when the
+ * token holds them all (or the request carries no auth: scopes bind only authenticated callers).
+ * Decided from the parsed body on both revisions -- never from the `Mcp-Method`/`Mcp-Name`
+ * headers, which this server does not check against the body and a client could set to anything.
+ */
+export function insufficientScopeResponse(params: {
+  server: Pick<ContextServer, 'requiredScopes'>
+  body: Record<string, unknown>
+  auth: AuthInfo | undefined
+  requiredScopes?: Array<string>
+  resourceMetadataURL?: string
+}): Response | null {
+  const { server, body, auth } = params
+  if (auth == null) return null
+  const toolScopes = server.requiredScopes(body)
+  const missing = missingScopes(toolScopes, auth.scopes)
+  if (missing.length === 0) return null
+  const needed = [...new Set([...(params.requiredScopes ?? []), ...toolScopes])]
+  const name = (body.params as { name?: unknown } | undefined)?.name
+  const description = `Tool ${String(name)} requires scope ${missing.join(' ')}`
+  const challenge: Array<[string, string]> = [
+    ['error', INSUFFICIENT_SCOPE],
+    ['scope', needed.join(' ')],
+    ...(params.resourceMetadataURL == null
+      ? []
+      : [['resource_metadata', params.resourceMetadataURL] as [string, string]]),
+    ['error_description', description],
+  ]
+  const id = typeof body.id === 'string' || typeof body.id === 'number' ? body.id : null
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      error: {
+        code: INVALID_REQUEST,
+        message: description,
+        data: { error: INSUFFICIENT_SCOPE, scopes: needed },
+      },
+    }),
+    {
+      status: 403,
+      headers: {
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': `Bearer ${challenge
+          .map(([key, value]) => `${key}=${quoteAuthParam(value)}`)
+          .join(', ')}`,
+      },
+    },
+  )
+}
+
 const DEFAULT_LOCALHOST_ORIGINS = [
   'http://localhost',
   'http://127.0.0.1',
@@ -251,9 +323,24 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     maxSubscriptionExchanges = DEFAULT_MAX_SUBSCRIPTION_EXCHANGES,
     subscriptionHub,
     tasks,
+    oauth,
     runtime: runtimeOverrides,
     logger = getMokeiLogger('http-server'),
   } = params
+
+  function denyInsufficientScope(
+    server: Pick<ContextServer, 'requiredScopes'>,
+    body: Record<string, unknown>,
+    auth: AuthInfo | undefined,
+  ): Response | null {
+    return insufficientScopeResponse({
+      server,
+      body,
+      auth,
+      requiredScopes: oauth?.requiredScopes,
+      resourceMetadataURL: oauth?.resourceMetadataURL,
+    })
+  }
 
   // Resolved once and threaded to every listen exchange, which mints its per-POST `connectionID`
   // from `getRandomID()`. A single shared instance is the "handler's own runtime" the subscription
@@ -495,6 +582,13 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
     if (isRequest(body)) {
       const requestID = body.id as string | number
 
+      // Before the enqueue, so a call the token may not make never reaches the session server
+      // and the answer can still be a `403` rather than an error inside the SSE stream.
+      if (session.server != null) {
+        const denied = denyInsufficientScope(session.server, body, auth)
+        if (denied != null) return denied
+      }
+
       // Recorded before the enqueue so the session server's `resolveAuth` finds it.
       if (auth != null) session.requestAuth.set(requestID, auth)
       bridge.controller.enqueue(body as unknown as ClientMessage)
@@ -578,6 +672,7 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       // capabilities -- `resources.subscribe` in particular -- match the listen path's. It never
       // registers a subscription itself, so no `connectionID` is threaded here.
       createServer: (transport) => createServer({ transport, subscriptionHub, tasks, auth }),
+      authorize: (server) => denyInsufficientScope(server, body, auth),
       replayBufferSize,
       timeoutMs: statelessTimeoutMs,
       // The client hanging up is a stateless exchange's only cancellation channel.

@@ -110,6 +110,8 @@ export type CreateToolParams<
   description: string
   inputSchema: InputSchema
   outputSchema?: OutputSchema
+  /** OAuth scopes required to call this tool. See {@link GenericToolDefinition.scopes}. */
+  scopes?: Array<string>
   handler: TypedToolHandler<Arguments, Output>
 }
 
@@ -121,7 +123,7 @@ export function createTool<
 >(
   params: CreateToolParams<InputSchema, OutputSchema, Arguments, Output>,
 ): ToolDefinition<Arguments> {
-  const { description, inputSchema, outputSchema, handler } = params
+  const { description, inputSchema, outputSchema, scopes, handler } = params
 
   const validateInput = createValidator<InputSchema, Arguments>(inputSchema, {
     draft: inferSchemaDraft(inputSchema),
@@ -158,6 +160,9 @@ export function createTool<
   }
   if (outputSchema != null) {
     definition.outputSchema = outputSchema as ToolOutputSchema
+  }
+  if (scopes != null && scopes.length > 0) {
+    definition.scopes = [...scopes]
   }
   // The phantom `_arguments` witness is type-level only; nothing writes it at runtime.
   return definition as ToolDefinition<Arguments>

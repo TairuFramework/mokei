@@ -57,3 +57,15 @@ export function toTaskOwner(auth: RequestAuth | undefined): TaskOwner | undefine
     scopes: [...auth.scopes],
   }
 }
+
+/** The scopes in `required` that `granted` lacks, in `required` order, without duplicates. */
+export function missingScopes(
+  required: ReadonlyArray<string>,
+  granted: ReadonlyArray<string>,
+): Array<string> {
+  const held = new Set(granted)
+  return [...new Set(required)].filter((scope) => !held.has(scope))
+}
+
+/** `data.error` of the JSON-RPC error a call lacking a tool's scopes fails with. */
+export const INSUFFICIENT_SCOPE = 'insufficient_scope'

@@ -6,6 +6,13 @@ export type StoredTokens = {
   refreshToken?: string
   expiresAt?: number
   scope?: string
+  /**
+   * The scopes sent in the authorisation request that obtained this token. They can be wider
+   * than the configured scopes after a `403 insufficient_scope` step-up. Refreshes request
+   * these scopes, so a refresh never narrows the token. Absent on tokens stored before step-up
+   * existed, which fall back to the configured scopes.
+   */
+  requestedScopes?: Array<string>
   /** Token endpoint to use for a pre-emptive or 401-triggered refresh, set on authorise. */
   tokenEndpoint?: string
   /** Authorisation server issuer this token was obtained from, set on authorise. */

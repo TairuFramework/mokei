@@ -1,0 +1,7 @@
+---
+"@mokei/context-server": minor
+"@mokei/http-server": minor
+"@mokei/http-client": minor
+---
+
+Per-tool OAuth scopes with step-up. `createTool({ scopes })` (and `GenericToolDefinition.scopes`) declares the scopes a tool needs on top of the server-wide ones. They are never listed in `tools/list`. `ContextServer.requiredScopes(request)` reports them for a `tools/call`. `ContextServer` rejects a call whose auth lacks them with `INVALID_REQUEST` and `data: { error: 'insufficient_scope', scopes }`; without auth, scopes are not enforced. The HTTP handler answers such a call before dispatch with `403` and `WWW-Authenticate: Bearer error="insufficient_scope", scope=…, resource_metadata=…`, on both `2025-11-25` sessions and `2026-07-28` stateless requests. It reads the tool from the parsed body, never from the `Mcp-Method`/`Mcp-Name` headers. New: `HTTPHandlerParams.oauth` (`resourceMetadataURL`, `requiredScopes`, filled in by `mcpPlugin`), `runStatelessExchange`'s `authorize` hook and `insufficientScopeResponse`. The client OAuth middleware steps up on that `403`: it re-authorises for the configured, held and challenged scopes, stores the token under the same key with the new `StoredTokens.requestedScopes`, and retries once. Refreshes and re-authorisations keep the wider scopes, a 401 challenge's `scope` joins the authorisation request, and `stepUp: false` opts out. `parseBearerChallenge` is exported.

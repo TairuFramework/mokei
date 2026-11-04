@@ -40,6 +40,7 @@ import {
   INPUT_REQUEST_CAPABILITIES,
   INTERNAL_ERROR,
   INVALID_PARAMS,
+  INVALID_REQUEST,
   isCreateTaskResult,
   isHandshakeRequired,
   isPerRequestLogLevel,
@@ -65,6 +66,8 @@ import { defer } from '@sozai/async'
 import { createValidator, type Schema } from '@sozai/schema'
 
 import {
+  INSUFFICIENT_SCOPE,
+  missingScopes,
   type RequestAuth,
   type ResolveAuth,
   type ServerAuth,
@@ -357,7 +360,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
 
     for (const [name, tool] of Object.entries(params.tools ?? {})) {
-      const { handler, ...info } = tool
+      // `scopes` is server-side policy, not part of the MCP `Tool` shape.
+      const { handler, scopes, ...info } = tool
       this.#tools[name] = tool
       this.#toolsList.push({ name, ...info })
     }
@@ -367,6 +371,21 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
 
     this._handle()
+  }
+
+  /**
+   * The OAuth scopes a request needs beyond the server-wide ones: the called tool's
+   * {@link GenericToolDefinition.scopes} for a `tools/call`, and `[]` for any other method or
+   * an unknown tool. Reads only `method` and `params.name`, so a transport can check it before
+   * dispatch (the HTTP server answers `403 insufficient_scope` from it).
+   */
+  requiredScopes(request: { method?: unknown; params?: unknown }): Array<string> {
+    if (request.method !== 'tools/call') return []
+    const params = request.params
+    if (params == null || typeof params !== 'object') return []
+    const name = (params as { name?: unknown }).name
+    if (typeof name !== 'string' || !Object.hasOwn(this.#tools, name)) return []
+    return [...(this.#tools[name]?.scopes ?? [])]
   }
 
   get clientInitialize(): ClientInitialize | undefined {
@@ -817,6 +836,17 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (tool == null) {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
       throw new RPCError({ code: INVALID_PARAMS, message: `Tool ${name} not found` })
+    }
+    // Scopes bind only callers with auth: a transport without any (stdio) has no token to check.
+    if (auth != null && tool.scopes != null) {
+      const missing = missingScopes(tool.scopes, auth.scopes)
+      if (missing.length > 0) {
+        throw new RPCError({
+          code: INVALID_REQUEST,
+          message: `Insufficient scope for tool ${name}: requires ${missing.join(' ')}`,
+          data: { error: INSUFFICIENT_SCOPE, scopes: [...tool.scopes] },
+        })
+      }
     }
     const clientCapabilities = protocol.readRequestMeta(request).clientCapabilities
     const tasks = this.#tasks

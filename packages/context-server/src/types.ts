@@ -219,6 +219,13 @@ export type GenericToolDefinition = {
   description: string
   inputSchema: ToolInputSchema
   outputSchema?: ToolOutputSchema
+  /**
+   * OAuth scopes a caller's token must hold to call this tool, on top of any server-wide
+   * scopes. Enforced only when the request carries auth: the HTTP server answers `403
+   * insufficient_scope` before dispatch, and `ContextServer` rejects the call itself. Never
+   * advertised in `tools/list`.
+   */
+  scopes?: Array<string>
   handler: GenericToolHandler
 }
 

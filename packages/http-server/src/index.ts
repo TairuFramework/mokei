@@ -18,6 +18,7 @@ export {
   DEFAULT_MAX_SUBSCRIPTION_EXCHANGES,
   type HTTPHandler,
   type HTTPHandlerParams,
+  insufficientScopeResponse,
 } from './handler.js'
 export { type MCPPluginParams, MOKEI_MCP, type MokeiMCP, mcpPlugin } from './plugin.js'
 export { type ServeHTTPParams, type ServeHTTPResult, serveHTTP } from './serve.js'
