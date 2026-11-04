@@ -14,8 +14,9 @@ token store, and a way to list and end stored sign-ins with RFC 7009 revocation.
   keychain entry per key (account) under a service, values JSON-encoded. It uses `@napi-rs/keyring`
   `^2.1.2` (the stack's version, as in `@kokuin`), imported on first use. `keys()` uses
   `findCredentials`. The keychain has no locking, so `set`, `delete` and `update` are serialised
-  per service in-process and, with `lockPath`, across processes. The lock is the JSON file store's
-  heartbeat lock, moved to `file-lock.ts`. `createKeychainTokenStore` defaults to service
+  per service in-process and, with `lockPath`, across processes. Both this store and the JSON file
+  store lock with `@sozai/lock`, through the adapter in `file-lock.ts`, replacing mokei's own
+  heartbeat lock. A provably live holder is never taken over. `createKeychainTokenStore` defaults to service
   `mokei-oauth` and a lock in `getStateDir('mokei')`. It returns one store per service and lock
   path, so middlewares share in-flight refreshes. Failures surface as `KeychainUnavailableError`.
 - **Wiring.** `createNodeOAuthMiddleware({ keychain })` and the chat command

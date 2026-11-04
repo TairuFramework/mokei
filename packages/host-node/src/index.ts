@@ -6,7 +6,7 @@
 
 export { createClient, type DaemonOptions, type HostClient, runDaemon } from './daemon.js'
 export { composeHandlers, type HostDaemonParams, serveHostDaemon } from './daemon-server.js'
-export { type FileLockOptions, withFileLock } from './file-lock.js'
+export type { FileLockOptions } from './file-lock.js'
 export { createJSONFileStore, type JSONFileStoreOptions } from './json-file-store.js'
 export {
   createKeychainStore,

@@ -178,7 +178,8 @@ token refresh, plus `revokeTokens` (RFC 7009). `@mokei/host-node` adds
 `createNodeOAuthMiddleware`, `createLoopbackAuthorizationHandler` and two persistent stores:
 `createFileTokenStore` (a JSON file) and `createKeychainTokenStore` (the OS keychain through
 `@napi-rs/keyring`, loaded only when used). The keychain store has no locking of its own, so
-writes hold a lock file in mokei's state directory, the same heartbeat lock the file store uses.
+writes hold a lock file in mokei's state directory. That is the same `@sozai/lock` lock the file store
+uses, and it never takes a lock from a holder whose process is provably alive.
 That keeps refreshes exclusive across processes. `Session.addHTTPContext` accepts HTTP contexts.
 The CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
 `--oauth-scope`, and either `--oauth-tokens <path>` or `--oauth-keychain`. Persistence stays
