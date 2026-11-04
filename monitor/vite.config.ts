@@ -5,7 +5,11 @@ import { defineConfig } from 'vitest/config'
 // https://vite.dev/config/
 export default defineConfig({
   test: { environment: 'jsdom', setupFiles: ['./test/setup.ts'] },
-  plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react()],
+  plugins: [
+    // Split routes for the build only: under Vitest, lazy route chunks race the tests' DOM queries.
+    tanstackRouter({ target: 'react', autoCodeSplitting: process.env.VITEST == null }),
+    react(),
+  ],
   build: {
     rolldownOptions: {
       output: {
