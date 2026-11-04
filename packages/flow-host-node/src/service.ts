@@ -1,21 +1,20 @@
 import { randomUUID } from 'node:crypto'
 import type { StoreProvider } from '@hozon/db'
 import type { FlowHost, TraceStore } from '@mokei/flow-host'
-import { createFlowHost } from '@mokei/flow-host'
+import { createFlowHost, RegisteredFlowError } from '@mokei/flow-host'
 import { NodeContextHost } from '@mokei/host-node'
 import type { FlowServiceStatus, HostEvent } from '@mokei/host-protocol'
 import { NodeSession } from '@mokei/session-node'
 import { lazy } from '@sozai/async'
-import { getReporter } from '@sozai/log'
 
 import { FlowConfigError, loadFlowConfig } from './config.js'
 import type { FlowDesktopAdapter, FlowDesktopController } from './desktop.js'
 import { createFlowDesktopController } from './desktop.js'
-import { loadFlowDirs } from './flow-dirs.js'
+import { FlowFileError, loadFlowDirs } from './flow-dirs.js'
 import type { MonitorPresence } from './monitor-presence.js'
 import { createMonitorSurface } from './monitor-surface.js'
 import { createNativeSurface } from './native-surface.js'
-import { FLOW_REPORT_CATEGORY } from './report.js'
+import { getFlowReporter } from './report.js'
 import { startRetention } from './retention.js'
 import { getFlowRunStore } from './run-store.js'
 import { getFlowTaskStore } from './task-store.js'
@@ -70,10 +69,39 @@ export type FlowServiceDependencies = {
   createSession(): NodeSession
   createHost: typeof createFlowHost
   startRetention: typeof startRetention
-  report(error: unknown): void
+  /** `message` describes where the error happened; it defaults to a generic service label. */
+  report(error: unknown, message?: string): void
 }
 
-function failedStatus(error: unknown, stage: string): FlowServiceStatus {
+// Flow definition field names that may appear in a checker issue path.
+const DEFINITION_FIELDS = new Set([
+  'id',
+  'name',
+  'version',
+  'start',
+  'nodes',
+  'flows',
+  'kind',
+  'flow',
+  'tool',
+  'args',
+  'schema',
+  'prompt',
+  'next',
+  'cases',
+  'default',
+  'decline',
+  'retry',
+  'result',
+  'input',
+  'output',
+  'outcome',
+  'state',
+  'value',
+  'ref',
+])
+
+function failedStatus(error: unknown, stage: string, file?: string): FlowServiceStatus {
   if (error instanceof FlowConfigError) {
     // Parser excerpts and arbitrary object keys can contain credentials.
     const fields = new Set([
@@ -112,11 +140,59 @@ function failedStatus(error: unknown, stage: string): FlowServiceStatus {
       },
     }
   }
+  if (error instanceof FlowFileError) {
+    // The JSON parser message can quote file content, so only the path and reason are kept.
+    return {
+      state: 'failed',
+      error: {
+        type: 'FlowFileError',
+        message: error.reason === 'invalid_json' ? 'Invalid flow JSON' : 'Cannot read flow files',
+        path: error.path,
+      },
+    }
+  }
+  if (error instanceof RegisteredFlowError) {
+    // Flow ids, node ids and some checker messages are flow-authored text. Keep issue codes and
+    // definition field names only; the full issues go to the log.
+    return {
+      state: 'failed',
+      error: {
+        type: 'FlowDefinitionError',
+        message: 'Invalid flow definition',
+        ...(file === undefined ? {} : { path: file }),
+        issues: error.issues.map((issue) => {
+          const path = (issue.path ?? [])
+            .map((part) => {
+              const key = typeof part === 'object' ? part.key : part
+              if (typeof key === 'number') return key
+              return typeof key === 'string' && DEFINITION_FIELDS.has(key) ? key : '*'
+            })
+            .join('.')
+          return path === '' ? issue.code : `${path}: ${issue.code}`
+        }),
+      },
+    }
+  }
   return { state: 'failed', error: { type: 'FlowStartupError', message: `Failed to ${stage}` } }
 }
 
+/** The last loaded file declaring `flowID`; a duplicate id names the file that collided. */
+function flowFile(
+  loaded: { files: Array<string>; flows: Array<unknown> } | undefined,
+  flowID: string,
+): string | undefined {
+  if (loaded === undefined) return undefined
+  for (let index = loaded.flows.length - 1; index >= 0; index--) {
+    const flow = loaded.flows[index]
+    if (typeof flow === 'object' && flow !== null && (flow as { id?: unknown }).id === flowID) {
+      return loaded.files[index]
+    }
+  }
+  return undefined
+}
+
 export function createFlowService(params: FlowServiceParams): FlowService {
-  const report = getReporter([...FLOW_REPORT_CATEGORY], '@mokei/flow-host-node')
+  const report = getFlowReporter('@mokei/flow-host-node')
   return createFlowServiceWithDependencies(params, {
     loadConfig: loadFlowConfig,
     loadFlows: loadFlowDirs,
@@ -127,7 +203,7 @@ export function createFlowService(params: FlowServiceParams): FlowService {
     },
     createHost: createFlowHost,
     startRetention: startRetention,
-    report: (error) => report('Flow service error', error),
+    report: (error, message = 'Flow service error') => report(message, error),
   })
 }
 
@@ -185,13 +261,15 @@ export function createFlowServiceWithDependencies(
   async function initialize(): Promise<void> {
     if (stopping) return
     let stage = 'load configuration'
+    let loaded: Awaited<ReturnType<typeof loadFlowDirs>> | undefined
     publishStatus()
     try {
       if (stopping) return
       const config = await dependencies.loadConfig(params.configPath)
       if (stopping) return
       stage = 'load flow files'
-      const { flows } = await dependencies.loadFlows(config.flowDirs)
+      loaded = await dependencies.loadFlows(config.flowDirs)
+      const { flows } = loaded
       if (stopping) return
       stage = 'open the flow stores'
       const runStore = await getFlowRunStore(params.database)
@@ -266,9 +344,13 @@ export function createFlowServiceWithDependencies(
       // Establish the boundary before admitted operations run in their next microtask.
       if (!stopping) desktop.restored(host.inbox.list())
     } catch (error) {
-      dependencies.report(error)
+      const file = error instanceof RegisteredFlowError ? flowFile(loaded, error.flowID) : undefined
+      dependencies.report(
+        error,
+        `Flow service failed to ${stage}${file === undefined ? '' : ` (${file})`}`,
+      )
       if (!stopping) {
-        status = failedStatus(error, stage)
+        status = failedStatus(error, stage, file)
         publishStatus()
       }
       await cleanup

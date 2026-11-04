@@ -11,6 +11,7 @@ import { type FlowDefinition, formatIssues } from '@sozai/flow-graph'
 
 import { FLOW_GRANT_META } from './call-meta.js'
 import { checkFlow, type FlowCheckResult } from './definition-checks.js'
+import { RegisteredFlowError } from './flow-errors.js'
 import type { FlowSummary } from './flow-tools.js'
 import { flowSummaries, flowToolName } from './flow-tools.js'
 import { createGrantStore } from './grants.js'
@@ -103,7 +104,19 @@ export async function addDecisionFlow(
         )
       })
     ) {
-      throw new Error(`Registered flow ${flow.id} requires elicitation`)
+      throw new RegisteredFlowError({
+        flowID: flow.id,
+        message: `Registered flow ${flow.id} requires elicitation`,
+        issues: [
+          {
+            severity: 'error',
+            code: 'input_without_elicitation',
+            path: ['nodes'],
+            message: 'Input nodes require elicitation.',
+            hint: 'Enable elicitation on the context host before registering this flow.',
+          },
+        ],
+      })
     }
     const checked = await checkFlow({
       definition: flow,
@@ -112,7 +125,13 @@ export async function addDecisionFlow(
       predictor,
       elicitation: host.elicitationEnabled,
     })
-    if (checked.issues) throw new Error(`Invalid registered flow ${flow.id}: ${checked.formatted}`)
+    if (checked.issues) {
+      throw new RegisteredFlowError({
+        flowID: flow.id,
+        issues: checked.issues,
+        message: `Invalid registered flow ${flow.id}: ${checked.formatted}`,
+      })
+    }
   }
 
   let reserved = pendingKeys.get(host)

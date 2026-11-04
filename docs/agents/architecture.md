@@ -458,7 +458,9 @@ entry still works and reports flow services unavailable. `runDaemon({ entry, soc
 lets custom applications select an executable entry without changing the normal socket default.
 
 `info.flowService` reports `starting`, `ready` or `failed`. Failures carry a public type and
-message, with sanitised configuration path/issues when available. Proxy serving and monitor
+message, with a sanitised configuration or flow file path and issues when available. A rejected
+registered flow throws `RegisteredFlowError` (`@mokei/decision-flow-server`), which the service
+maps to its file and issue codes; the daemon log keeps the full cause. Proxy serving and monitor
 status inspection remain available while flows start or after startup fails. Ready publication
 follows initial task and inbox reconciliation for recovered runs, without waiting for their
 completion or user answers. Recovery retains run, task, inbox and trace identities. Individual

@@ -24,7 +24,18 @@ export function ConnectionBanner() {
   if (status?.state === 'failed') {
     return (
       <Alert color="red" title="Flow service failed">
-        {status.error.message}
+        <Stack gap={4}>
+          <Text size="sm">
+            {status.error.message}
+            {status.error.path == null ? null : ` (${status.error.path})`}
+          </Text>
+          {status.error.issues?.map((issue, index) => (
+            // Sanitized issues can repeat, so the position disambiguates them.
+            <Text key={`${index}:${issue}`} size="sm" ff="monospace">
+              {issue}
+            </Text>
+          ))}
+        </Stack>
       </Alert>
     )
   }

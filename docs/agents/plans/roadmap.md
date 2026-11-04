@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-10-05
+**Last updated:** 2026-11-04
 
 ## Vision
 
@@ -53,13 +53,25 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **Flow monitor follow-ons** (`next/2026-10-04-flow-monitor-follow-ons.md`) -- monitor UI pass and flow service
-  startup error causes. The flow daemon milestone is complete (sub-project 5, the monitor, shipped with manual QA).
+- **Flow monitor follow-ons** (`next/2026-10-04-flow-monitor-follow-ons.md`) -- the Inbox and Flows pages design
+  and usability pass, waiting on the specific issues from the user. Flow service startup errors now keep their cause
+  (2026-11-04): the daemon log names the stage, flow file and full error, and the status carries the file and
+  sanitized issue codes.
 
 The **MCP `2026-07-28` spec migration is complete** (see Recently shipped / Design decisions) -- both
 revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
+
+- **OTel GenAI semantic conventions** (2026-10-18, PR #79) -- spans and metrics follow the OpenTelemetry GenAI and
+  MCP conventions, with each logical operation counted once. See
+  [OTel GenAI semconv](completed/2026-10-18-otel-genai-semconv.complete.md) and its
+  [follow-ons](completed/2026-10-18-otel-genai-follow-ons.complete.md).
+- **Unified traces** (2026-10-08 to 2026-10-09, PR #78) -- one OpenTelemetry trace model for flow runs, flow steps and MCP
+  traffic, live and persisted, behind one monitor Traces page. See
+  [unified traces](completed/2026-10-09-unified-traces.complete.md).
+- **MCP HTTP on teikyo** (2026-10-07, PR #77) -- `@mokei/http-server` runs on `@sozai/http-server` with OAuth from
+  `@teikyo/oauth`. See [teikyo HTTP](completed/2026-10-07-teikyo-http.complete.md).
 
 - **Flow daemon milestone** (2026-10-01 to 2026-10-05, PRs #69 to #73) -- decision flows run in the per-user daemon.
   It covers the portable flow runtime, SQLite storage and telemetry, the shared flow service, and the CLI and MCP

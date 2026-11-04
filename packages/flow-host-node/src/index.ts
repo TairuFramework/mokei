@@ -11,7 +11,12 @@ export {
   DesktopPromptUnavailableError,
   InboxPromptInProgressError,
 } from './desktop.js'
-export { loadFlowDirs } from './flow-dirs.js'
+export {
+  FlowFileError,
+  type FlowFileErrorParams,
+  type FlowFileErrorReason,
+  loadFlowDirs,
+} from './flow-dirs.js'
 export { createFlowHandlers, type FlowHandlers } from './handlers.js'
 export { createMonitorHandlers, type MonitorHandlers } from './monitor-handlers.js'
 export type {

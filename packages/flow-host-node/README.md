@@ -20,7 +20,7 @@ The package requires Node.js. The application owns the shared database and telem
 | `createFlowTraceStore(db)` | Creates a portable `TraceStore` for span and log capture, lookup and deletion. |
 | `flowStoreDefinitions`, `runStoreDefinition`, `taskStoreDefinition` | Flow run and task store definitions to register in the app database. |
 | `loadFlowConfig(path?)` | Reads and validates `flows.json`, applies defaults and resolves configured paths. |
-| `loadFlowDirs(dirs)` | Returns `{ files, flows }` from JSON files in the supplied directories. |
+| `loadFlowDirs(dirs)` | Returns `{ files, flows }` from JSON files in the supplied directories. Throws `FlowFileError` (`path`, `reason`) for an unreadable directory or file, or malformed JSON. |
 | `startRetention({ runStore, taskStore, traceStore, days, intervalMs? })` | Starts immediate and periodic pruning and returns asynchronous `stop`. |
 | `createFlowService({ database, configPath?, desktop?, onEvent, ... })` | Creates the service over an application-owned database. |
 | `createFlowHandlers(service)` | Binds the 13 flow, run and inbox host-protocol procedures to that service. |
@@ -41,10 +41,14 @@ The service's `start()` is idempotent. Generic proxy and monitor status inspecti
 while flows initialise, and stay available if flow startup fails.
 
 `info.flowService` reports `{ state: 'starting' }`, `{ state: 'ready' }`, or
-`{ state: 'failed', error: { type, message, path?, issues? } }`. Configuration errors identify
-the configuration path and sanitised validation issues. Messages exclude credentials and
-configured environment values. Other fatal startup errors identify the failing initialisation
-stage. Flow procedures reject while starting, failed or shutting down. Correct the cause and
+`{ state: 'failed', error: { type, message, path?, issues? } }`. Configuration errors
+(`FlowConfigError`) identify the configuration path and sanitised validation issues. Messages
+exclude credentials and configured environment values. Flow file errors (`FlowFileError`)
+identify the unreadable directory or malformed file. Rejected flow definitions
+(`FlowDefinitionError`) identify the flow file and list checker issue codes with definition
+field paths, with flow-authored names replaced by `*`. Other fatal startup errors identify the
+failing initialisation stage. The daemon log names the stage and flow file and prints the full
+error, including every checker issue. Flow procedures reject while starting, failed or shutting down. Correct the cause and
 restart the daemon: there is no automatic startup retry or hot reload.
 
 Ready status follows configuration and flow loading, SQLite and telemetry setup, sibling
@@ -251,7 +255,7 @@ Retention days must be an integer of at least one.
 
 `loadFlowDirs` reads only top-level `.json` files, in sorted filename order within each directory.
 Directory order follows the supplied array. It parses JSON without validating flow definitions.
-`createFlowHost` validates definitions during registration. Directory and read errors propagate, and malformed JSON errors identify the file.
+`createFlowHost` validates definitions during registration. Directory and read failures and malformed JSON throw `FlowFileError`, identifying the directory or file.
 
 ## Storage contracts
 
