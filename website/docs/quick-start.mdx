@@ -379,93 +379,97 @@ The following instructions assume you have [Ollama](https://ollama.com/) running
 
 #### Start the interactive session
 
-Simply use the Mokei CLI to start a chat using Ollama:
+Start a chat session with Ollama, from the `mokei-quick-start` directory used in this guide. Pass a
+model [supporting tools](https://ollama.com/search?c=tools) with `--model`; without it, the CLI
+asks you to pick one of your local models when you send the first message, or with `/model`:
 
 ```sh
-mokei chat ollama
+mokei chat --provider ollama --model llama3.1:8b
 ```
 
-This should produce the following prompt:
+The CLI connects to Ollama and the Mokei daemon, then shows its prompt. Type `/help` to list the
+available slash commands:
 
-```sh
-? Select an action … 
-❯ End the session
-  Send a message
-  Add a context
-  Remove a context
-  Select tools to enable
+```txt
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  llama3.1:8b · idle                                                          │
+│ › type a message or /help                                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 #### Add the MCP server
 
-Select the `Add a context` option in the prompt:
+Add the server as a context with `/context add <key> <command> [args...]`:
 
-```sh
-❯ Add a context
+```txt
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  llama3.1:8b · idle                                                          │
+│ › /context add sqlite node index.js                                          │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Fill-in the prompts to add the context, here assuming you are running the Mokei CLI from the `mokei-quick-start` directory used in this guide:
+Once the client connects to the server, the CLI lists the tools the server exposes, all enabled.
+Press space to deselect a tool, then enter to confirm, keeping all tools enabled here:
 
-```sh
-✔ Context key (unique per session) · sqlite
-✔ MCP server command · node
-✔ MCP server arguments (comma separated) · index.js
+```txt
+✓ context sqlite added (3 tool(s) enabled — deselect any below)
+╭──────────────────────────────────────────────────────────────────────────────╮
+│enable tools                                                                  │
+│❯sqlite:sqlite_all — This method executes a prepared statement and returns   ✔│
+│ all results as an array of objects                                           │
+│  sqlite:sqlite_get — This method executes a prepared statement and returns  ✔│
+│  the first result as an object                                               │
+│  sqlite:sqlite_run — This method executes a prepared statement and returns  ✔│
+│  an object summarizing the resulting changes                                 │
+│[enter] confirm [esc] cancel                                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-If the client successfully connects to the server, it will display the list of tools available:
+The monitor UI in your Web browser should now display the events of the interactions between the
+client and server during this setup. Use `/tools` later to change the enabled tools, and
+`/context list` or `/context remove <key>` to manage contexts.
 
-```sh
-? Select tools to enable for context sqlite … 
-✔ sqlite_all: This method executes a prepared statement and returns all results as an array of objects
-✔ sqlite_get: This method executes a prepared statement and returns the first result as an object
-✔ sqlite_run: This method executes a prepared statement and returns an object summarizing the resulting changes
-```
+#### Send a message
 
-This prompt allows to select what tools should be enabled for the session, simply press enter here to continue with all tools enabled:
-
-```sh
-✔ Select tools to enable for context sqlite · sqlite:sqlite_all, sqlite:sqlite_get, sqlite:sqlite_run
-```
-
-Once the context has been added, the monitor UI in your Web browser should display a list of events describing the interactions between the client and server that happened during this setup.
-
-Back in the main prompt of the CLI, select the `Send a message` option in the prompt:
-
-```sh
-❯ Send a message
-```
-
-If you have not provided a model using the `--model` flag when running the `chat ollama` command, the next prompt should ask you to select a model, for example:
-
-```sh
-? Select a model … 
-❯ mistral-small:24b
-  deepseek-r1:8b
-  llama3.1:8b
-```
-
-Your should then be able to send a message:
-
-```sh
-? Your message ›  
-```
-
-You can try the following prompt for example:
+Type a message at the prompt, for example:
 
 ```txt
 Using the SQLite tool, create a simple key/value table
 ```
 
-If your LLM handles the context as expected, the Mokei CLI should then ask for confirmation to execute a tool call requested by the LLM.
+If your LLM handles the context as expected, it requests a tool call, and the CLI asks for approval
+before executing it on the MCP server. The exact arguments depend on your model:
 
-Pressing `y` will allow the call to be executed on the MCP server, and the response from the server will be sent to the LLM, for example:
-
-```sh
-✔ Allow call of tool sqlite_run in context sqlite with arguments {"parameters":{},"sql":"CREATE TABLE IF NOT EXISTS keyValue (key TEXT PRIMARY KEY, value TEXT)"}? (y/N) · true
-
-ℹ Tool call accepted
-✔ Tool call successful, result: {"lastInsertRowid":0,"changes":0}
+```txt
+╭──────────────────────────────────────────────────────────────────────────────╮
+│approve tool call?                                                            │
+│tool: sqlite:sqlite_run                                                       │
+│args: {"sql":"CREATE TABLE IF NOT EXISTS keyValue (key TEXT PRIMARY KEY, value│
+│ TEXT)","parameters":{}}                                                      │
+│[y] approve [n / esc] deny                                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  llama3.1:8b · awaiting-approval · ctx: sqlite                               │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
+
+Press `y` to approve the call. The server's result is shown and sent back to the LLM, which
+then answers:
+
+```txt
+╭─────────────────────────────────╮
+│tool · sqlite:sqlite_run · 0.0s  │
+│{"lastInsertRowid":0,"changes":0}│
+╰─────────────────────────────────╯
+● Created the keyValue table with a text primary key and a text value column.
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  llama3.1:8b · idle · ctx: sqlite                                            │
+│ › type a message or /help                                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+Press `n` or `esc` to deny a call instead, and `esc` while a turn is running to cancel it. Type
+`/quit` to end the session.
 
 ### Using Claude for Desktop with a Mokei proxy
 
