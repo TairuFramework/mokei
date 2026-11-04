@@ -22,4 +22,3 @@ now; revisit if shutdown races appear.
 
 - The monitor bridge has no `dispose()`. `startMonitor` wraps SSE bodies to close them on daemon reconnect. A bridge
   `dispose()` that ends its sessions is requested upstream; adopt it when available.
-- `@mokei/flow-host`'s `watcher.ts` uses a local sleep; switch to `@sozai/async`.
