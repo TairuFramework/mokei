@@ -54,7 +54,8 @@ published package in one `versioning.fixed` lockstep group.
 ## Now (next/)
 
 Nothing scheduled. The backlog was trimmed on 2026-11-04
-([backlog trim](completed/2026-11-04-backlog-trim.complete.md)): flow service startup errors keep
+([backlog trim](completed/2026-11-04-backlog-trim.complete.md)), with a second pass the same day
+that dropped work for deprecated or `2025-11-25`-only surfaces. The first pass: flow service startup errors keep
 their cause, versions report `MOKEI_VERSION`, the monitor bounds its trace list and splits its
 bundle, and the website walkthrough matches the CLI.
 
@@ -63,6 +64,14 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **OAuth scopes, step-up, header validation and logout** (2026-11-04, PRs #84 to #87) -- per-tool,
+  prompt and resource scopes with `403 insufficient_scope` step-up; SEP-2243 standard and
+  `Mcp-Param-*` header validation on the server; an OS keychain token store; and `mokei auth
+  list` / `logout` with RFC 7009 revocation. See
+  [per-tool scopes](completed/2026-11-04-per-tool-oauth-scopes.complete.md),
+  [scope follow-ons](completed/2026-11-04-oauth-scope-follow-ons.complete.md),
+  [`Mcp-Param-*` validation](completed/2026-11-04-mcp-param-header-validation.complete.md) and
+  [keychain and logout](completed/2026-11-04-oauth-keychain-and-logout.complete.md).
 - **OAuth identity and token coordination** (2026-11-04, PR #82) -- `2025-11-25` HTTP sessions are
   bound to their subject, handlers get per-request auth and verifier claims, and OAuth clients share
   a coordinated token store across contexts and processes. See
@@ -207,13 +216,8 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 ## Near-term (backlog/)
 
-- **OAuth identity for handlers** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- pass the
-  gate's verified `AuthInfo` to tool and resource handlers.
-- **Multi-context OAuth token coordination**
-  (`backlog/2026-09-04-oauth-multi-context-token-coordination.md`) -- one refresh flight per
-  resource across contexts sharing a token store; needs a `TokenStore` contract design pass.
-- **Session elicitation follow-ons** (`backlog/2026-09-29-session-elicitation-follow-ons.md`) --
-  host-level sampling and roots, and server-side URL-mode completion on `2025-11-25`.
+- **Daemon-held OAuth tokens** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- deferred until
+  a daemon connects HTTP contexts.
 - **Unified traces follow-ons** (`backlog/2026-10-08-unified-traces-follow-ons.md`) -- reverse
   links, an `events` type filter, context server names in trace rows, and smaller gaps.
 - **Upstream dependency gaps** (`backlog/2026-11-04-upstream-dependency-gaps.md`) -- workarounds

@@ -96,8 +96,9 @@ terminal event before the tool terminal event. Run, tool, stream-abandonment and
 cancellation abort pending answers. Unattributed requests reach `onEvent` only.
 
 `@mokei/host`, `@mokei/session` and `@mokei/context-server` remain Node-free. Stdio support
-lives in `@mokei/host-node` and `@mokei/session-node`. URL-mode requests reach the handler,
-but `notifications/elicitation/complete` is not forwarded to the application yet.
+lives in `@mokei/host-node` and `@mokei/session-node`. URL-mode requests reach the handler.
+When a `2025-11-25` server sends `notifications/elicitation/complete`, the host emits
+`elicitation:complete` and an `AgentSession` emits `elicitation-complete`, to `onEvent` only.
 
 `@mokei/host-desktop` provides a Node-only `HostElicitHandler`, `createDesktopElicitHandler`. In
 `dialog` mode it answers each form with native dialogs (`alerter` or `osascript` on macOS, `zenity`

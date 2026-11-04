@@ -76,3 +76,27 @@ Recorded here instead of carried as backlog; reopen as a new plan if a consumer 
 - Session elicitation: host-level sampling and roots; server-side URL-mode completion.
 - Unified traces follow-ons.
 - Upstream dependency gaps, collected in one list.
+
+## Second pass: deprecated and `2025-11-25`-only work
+
+Also on 2026-11-04, after the OAuth follow-ons shipped (PRs #84 to #87). Dropped, not deferred.
+`2025-11-25` stays served and supported, but new work targets `2026-07-28`. On that revision, roots,
+sampling and logging are deprecated (SEP-2577) and HTTP sessions do not exist.
+
+- **Host-level sampling and roots** (from `backlog/2026-09-29-session-elicitation-follow-ons.md`) --
+  giving sampling and roots the host-construction and override model elicitation has. Both are
+  deprecated on `2026-07-28`, so new host plumbing for them is not worth building. Per-client
+  `createMessage` and `listRoots` handlers keep working on both revisions.
+- **Server-side URL-mode completion** (same file) -- `ContextServer` sending
+  `notifications/elicitation/complete`. `2026-07-28` forbids the notification, so this was
+  `2025-11-25`-only. Clients still forward the notification when a `2025-11-25` server sends it.
+- **Session ID accessor for caller-built HTTP registrations** (from
+  `backlog/2026-10-08-unified-traces-follow-ons.md`) -- `mcp.session.id` on their request spans.
+  `Mcp-Session-Id` exists only on `2025-11-25` HTTP sessions.
+
+Closed without work:
+
+- **Multi-context OAuth token coordination** (`backlog/2026-09-04-oauth-multi-context-token-coordination.md`)
+  -- shipped in PR #82: middlewares sharing a store share in-flight refreshes and sign-ins, and
+  refreshes run inside `store.update`. PR #87 moved the cross-process lock to `@sozai/lock`.
+
