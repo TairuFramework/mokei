@@ -146,6 +146,7 @@ async function setup() {
       'monitor.attach': () => {},
       'monitor.presence': () => {},
       'traces.list': () => ({ traces: [] }),
+      'traces.logs': () => ({ logs: [] }),
       'traces.get': async () => {
         throw new Error('Trace not found')
       },

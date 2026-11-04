@@ -26,6 +26,7 @@ export const traceSummarySchema = {
         'mokei.run.id': { type: 'string' },
         'mokei.flow.id': { type: 'string' },
         'mokei.context.id': { type: 'string' },
+        'mokei.server.name': { type: 'string' },
         label: { type: 'string' },
       },
       additionalProperties: false,
@@ -111,6 +112,26 @@ export const tracesGetParamsSchema = {
   additionalProperties: false,
 } as const satisfies Schema
 
+/**
+ * A request span in another trace that called into this one: a span carrying
+ * `mokei.context.trace_id` set to this trace's ID, such as a flow's tool call into a context.
+ */
+export const traceCallSchema = {
+  type: 'object',
+  properties: {
+    traceID: { type: 'string' },
+    spanID: { type: 'string' },
+    name: { type: 'string' },
+    startTime: { type: 'number' },
+    endTime: { type: 'number' },
+    /** `null` while the call is still open. */
+    outcome: { type: ['string', 'null'], enum: ['ok', 'error', null] },
+  },
+  required: ['traceID', 'spanID', 'name', 'startTime', 'outcome'],
+  additionalProperties: false,
+} as const satisfies Schema
+export type TraceCall = FromSchema<typeof traceCallSchema>
+
 export const tracesGetResultSchema = {
   definitions: jsonDefinitions,
   type: 'object',
@@ -119,11 +140,44 @@ export const tracesGetResultSchema = {
     spans: { type: 'array', items: { anyOf: [storedSpanSchema, openSpanSchema] } },
     logs: { type: 'array', items: traceLogSchema },
     logsTruncated: { type: 'boolean' },
+    /** Calls into this trace from other traces, newest first. */
+    calls: { type: 'array', items: traceCallSchema },
+    callsTruncated: { type: 'boolean' },
   },
   required: ['summary', 'spans', 'logs', 'logsTruncated'],
   additionalProperties: false,
 } as const satisfies Schema
 export type TracesGetResult = FromSchema<typeof tracesGetResultSchema>
+
+export const tracesLogsParamsSchema = {
+  type: 'object',
+  properties: {
+    traceID: { type: 'string' },
+    /** Only logs recorded under this span. */
+    spanID: { type: 'string' },
+    /** Only logs at or before this time (milliseconds), to page back from logs already held. */
+    before: { type: 'number' },
+    limit: { type: 'integer' },
+    cursor: { type: 'string' },
+  },
+  required: ['traceID', 'limit'],
+  additionalProperties: false,
+} as const satisfies Schema
+export type TracesLogsParams = FromSchema<typeof tracesLogsParamsSchema>
+
+export const tracesLogsResultSchema = {
+  definitions: jsonDefinitions,
+  type: 'object',
+  properties: {
+    /** Newest first. */
+    logs: { type: 'array', items: traceLogSchema },
+    /** Pass back to read the next, older page; absent on the last page. */
+    cursor: { type: 'string' },
+  },
+  required: ['logs'],
+  additionalProperties: false,
+} as const satisfies Schema
+export type TracesLogsResult = FromSchema<typeof tracesLogsResultSchema>
 
 export const tracingInfoSchema = {
   type: 'object',

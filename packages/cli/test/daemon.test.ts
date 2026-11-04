@@ -182,7 +182,7 @@ test('failed flow initialization preserves info, events and proxy handlers', asy
   await writeFile(params.flowsConfigPath, '{ invalid')
   const daemon = await startMokeiDaemon(params)
   const client = await createClient(params.socketPath)
-  const stream = client.createStream('events')
+  const stream = client.createStream('events', { param: {} })
   void stream.catch(() => {})
   const received: Array<HostEvent> = []
   const reading = (async () => {
@@ -227,7 +227,7 @@ test('two connections share one flow service and event bridge', async () => {
     createClient(params.socketPath),
     createClient(params.socketPath),
   ])
-  const streams = clients.map((client) => client.createStream('events'))
+  const streams = clients.map((client) => client.createStream('events', { param: {} }))
   const collectors = streams.map((stream) => {
     const events: Array<HostEvent> = []
     void stream.catch(() => {})

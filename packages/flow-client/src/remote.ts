@@ -19,7 +19,8 @@ const HANDLER_CODES: ReadonlySet<FlowControlErrorCode> = new Set(
   FLOW_CONTROL_ERROR_CODES.filter((code) => code !== 'DISCONNECTED'),
 )
 
-const FLOW_EVENT_TYPES: ReadonlySet<string> = new Set(['run:state', 'inbox:added', 'inbox:settled'])
+const FLOW_EVENT_TYPE_LIST = ['run:state', 'inbox:added', 'inbox:settled'] as const
+const FLOW_EVENT_TYPES: ReadonlySet<string> = new Set(FLOW_EVENT_TYPE_LIST)
 
 function createDisconnectedError(cause?: unknown): FlowControlError {
   return new FlowControlError({
@@ -85,7 +86,9 @@ async function subscribe(
 ): Promise<FlowSubscription> {
   signal?.throwIfAborted()
 
-  const stream = client.createStream('events')
+  // The daemon sends only these types, so the span and log traffic flow events never need
+  // (payloads up to 64 KB each) is never sent. The client-side check below stays as a guard.
+  const stream = client.createStream('events', { param: { types: [...FLOW_EVENT_TYPE_LIST] } })
   const queue = createEventQueue({
     signal,
     teardown: () => {

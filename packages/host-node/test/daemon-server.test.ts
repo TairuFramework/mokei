@@ -59,7 +59,7 @@ describe('spawn handler child-exit cleanup', () => {
     const client = new Client<BaseProtocol>({ transport: transports.client })
 
     const stops: Array<Record<string, unknown>> = []
-    const events = client.createStream('events')
+    const events = client.createStream('events', { param: {} })
     // StreamCall is also a Promise; events.close() rejects it with 'Close'.
     // Attach a no-op catch so the expected teardown rejection stays silent.
     void events.catch(() => {})
@@ -234,88 +234,15 @@ test('validates unsigned start requests before dispatch over the production sock
   }
 }, 20_000)
 
-test.each([true, false])(
-  'context:message is built only with a subscriber (%s), forwarding stays unchanged',
-  async (subscribed) => {
-    const events = new EventEmitter<HostEvents>()
-    const messages: Array<{ from: string; message: unknown }> = []
-    if (subscribed)
-      events.on('context:message', (event) => {
-        messages.push(event.data)
-      })
-    const dispatch = vi.spyOn(events, 'fire')
-    const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
-    const server = serve<BaseProtocol>({
-      handlers: createHandlers({
-        activeContexts: {},
-        children: new Map(),
-        events,
-        tracing: { payloads: 'on' },
-        startedTime: Date.now(),
-      }),
-      transport: transports.server,
-      requireAuth: false,
-    })
-    const client = new Client<BaseProtocol>({ transport: transports.client })
-    const channel = client.createChannel('spawn', {
-      param: {
-        command: process.execPath,
-        args: [
-          '-e',
-          "require('node:readline').createInterface({input:process.stdin}).on('line', line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{receivedToken:request.params.token}})+'\\n') })",
-        ],
-      },
-    })
-    void channel.catch(() => {})
-    const request = {
-      jsonrpc: '2.0' as const,
-      id: 1,
-      method: 'tools/call' as const,
-      params: { name: 'echo', token: 't' },
-    }
-    try {
-      const writer = channel.writable.getWriter()
-      await writer.write(request)
-      writer.releaseLock()
-      const reader = channel.readable.getReader()
-      const response = await reader.read()
-      reader.releaseLock()
-      expect(response.value).toMatchObject({ result: { receivedToken: 't' } })
-      if (subscribed) {
-        expect(messages.find((entry) => entry.from === 'client')?.message).toMatchObject({
-          params: { token: '[redacted]' },
-        })
-      } else {
-        expect(dispatch.mock.calls.some(([type]) => type === 'context:message')).toBe(false)
-      }
-      expect(request.params.token).toBe('t')
-    } finally {
-      channel.close()
-      await client.dispose()
-      await server.dispose()
-      await transports.dispose()
-    }
-  },
-)
-
-test.each([
-  [true, 'echo'],
-  [false, undefined],
-])('context:message honours the GenAI content env var (%s)', async (enabled, expectedName) => {
-  if (enabled) vi.stubEnv('OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT', 'true')
-  else vi.stubEnv('OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT', '')
+test('proxied traffic is forwarded unchanged', async () => {
   const events = new EventEmitter<HostEvents>()
-  const messages: Array<{ from: string; message: unknown }> = []
-  events.on('context:message', (event) => {
-    messages.push(event.data)
-  })
   const transports = new DirectTransports<HostServerMessage, HostClientMessage>()
   const server = serve<BaseProtocol>({
     handlers: createHandlers({
       activeContexts: {},
       children: new Map(),
       events,
-      tracing: {},
+      tracing: { payloads: 'on' },
       startedTime: Date.now(),
     }),
     transport: transports.server,
@@ -327,29 +254,28 @@ test.each([
       command: process.execPath,
       args: [
         '-e',
-        "require('node:readline').createInterface({input:process.stdin}).on('line', line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{}})+'\\n') })",
+        "require('node:readline').createInterface({input:process.stdin}).on('line', line => { const request = JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{receivedToken:request.params.token}})+'\\n') })",
       ],
     },
   })
   void channel.catch(() => {})
+  const request = {
+    jsonrpc: '2.0' as const,
+    id: 1,
+    method: 'tools/call' as const,
+    params: { name: 'echo', token: 't' },
+  }
   try {
     const writer = channel.writable.getWriter()
-    await writer.write({
-      jsonrpc: '2.0' as const,
-      id: 1,
-      method: 'tools/call' as const,
-      params: { name: 'echo' },
-    })
+    await writer.write(request)
     writer.releaseLock()
     const reader = channel.readable.getReader()
-    await reader.read()
+    const response = await reader.read()
     reader.releaseLock()
-    const sent = messages.find((entry) => entry.from === 'client')?.message as
-      | { params?: { name?: string } }
-      | undefined
-    expect(sent?.params?.name).toBe(expectedName)
+    // Redaction applies to what is observed (spans), never to the forwarded traffic.
+    expect(response.value).toMatchObject({ result: { receivedToken: 't' } })
+    expect(request.params.token).toBe('t')
   } finally {
-    vi.unstubAllEnvs()
     channel.close()
     await client.dispose()
     await server.dispose()
@@ -357,18 +283,29 @@ test.each([
   }
 })
 
-function eventContext(writable: WritableStream<HostEvent>, signal: AbortSignal) {
+/**
+ * A child that answers each line it reads with a progress notification and never exits, so a
+ * test can tell the proxy has forwarded a request by reading that notification back.
+ */
+const ACK_CHILD =
+  "require('node:readline').createInterface({input:process.stdin}).on('line', () => process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/progress',params:{progressToken:'ack',progress:1}})+'\\n')); setInterval(() => {}, 1e9)"
+
+function eventContext(
+  writable: WritableStream<HostEvent>,
+  signal: AbortSignal,
+  param: { types?: Array<string> } = {},
+) {
   return {
     signal,
     writable,
-    param: undefined as never,
+    param: param as never,
     message: {
       header: { typ: 'JWT' as const, alg: 'none' as const },
       payload: {
         typ: 'stream' as const,
         prc: 'events' as const,
         rid: 'event-subscription',
-        prm: undefined as never,
+        prm: param as never,
       },
     },
   }
@@ -383,6 +320,37 @@ function eventHandlers(events: EventEmitter<HostEvents>, options: Partial<Handle
     ...options,
   })
 }
+
+test('a types filter subscribes to those event types only', async () => {
+  const events = new EventEmitter<HostEvents>()
+  const received: Array<HostEvent['type']> = []
+  const controller = new AbortController()
+  const subscription = eventHandlers(events).events(
+    eventContext(
+      new WritableStream({
+        write: (event) => {
+          received.push(event.type)
+        },
+      }),
+      controller.signal,
+      { types: ['run:state', 'context:stop', 'not-an-event'] },
+    ),
+  )
+  await vi.waitFor(() => expect(events.listenerCount('run:state')).toBe(1))
+  // No listener at all for unrequested types, so the recorder builds no event for them.
+  expect(events.listenerCount('span:start')).toBe(0)
+  expect(events.listenerCount('log')).toBe(0)
+  expect(events.listenerCount('context:stop')).toBe(1)
+  events.fire('context:stop', { meta: { contextID: 'c', eventID: 'e1', time: 1 } })
+  events.fire('context:start', {
+    meta: { contextID: 'c', eventID: 'e2', time: 2 },
+    data: { transport: 'stdio', command: 'node', args: [] },
+  })
+  await vi.waitFor(() => expect(received).toEqual(['context:stop']))
+  controller.abort()
+  await subscription
+  expect(events.listenerCount('run:state')).toBe(0)
+})
 
 test('forwards span:start, span:end, log and trace:summary events', async () => {
   const events = new EventEmitter<HostEvents>()
@@ -622,8 +590,6 @@ test('daemon shutdown ends a proxied context root as stopped', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mokei-host-shutdown-'))
   const socketPath = join(directory, 'daemon.sock')
   const events = new EventEmitter<HostEvents>()
-  const observed = vi.fn()
-  events.on('context:message', observed)
   const daemon = await serveHostDaemon({
     socketPath,
     pidPath: join(directory, 'daemon.pid'),
@@ -632,7 +598,7 @@ test('daemon shutdown ends a proxied context root as stopped', async () => {
   })
   const client = await createClient(socketPath)
   const proxy = client.createChannel('spawn', {
-    param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
+    param: { command: process.execPath, args: ['-e', ACK_CHILD] },
   })
   void proxy.catch(() => {})
   try {
@@ -642,7 +608,10 @@ test('daemon shutdown ends a proxied context root as stopped', async () => {
     const writer = proxy.writable.getWriter()
     await writer.write({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'pending' } })
     writer.releaseLock()
-    await vi.waitFor(() => expect(observed).toHaveBeenCalled())
+    // The child's acknowledgement means the proxy forwarded (and traced) the request.
+    const reader = proxy.readable.getReader()
+    await reader.read()
+    reader.releaseLock()
     await client.request('shutdown')
     await vi.waitFor(() => {
       const roots = exporter.getFinishedSpans().filter((span) => span.name === 'mcp.context')
@@ -665,28 +634,35 @@ test('daemon shutdown ends a proxied context root as stopped', async () => {
 
 test('proxy transport errors end the context and open requests as lost', async () => {
   const events = new EventEmitter<HostEvents>()
-  const observed = vi.fn()
-  events.on('context:message', observed)
   const children = new Map<string, ReturnType<typeof spawn>>()
   const handlers = createHandlers({ activeContexts: {}, children, events, startedTime: 1 })
   let input!: ReadableStreamDefaultController
+  let acknowledge!: () => void
+  const acknowledged = new Promise<void>((resolve) => {
+    acknowledge = resolve
+  })
   const failure = new Error('broken transport')
   const pending = Promise.resolve(
     handlers.spawn({
       signal: new AbortController().signal,
-      param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
+      param: { command: process.execPath, args: ['-e', ACK_CHILD] },
       readable: new ReadableStream({
         start: (controller) => {
           input = controller
         },
       }),
-      writable: new WritableStream(),
+      writable: new WritableStream({
+        write: () => {
+          acknowledge()
+        },
+      }),
     } as Parameters<typeof handlers.spawn>[0]),
   )
   void pending.catch(() => {})
   try {
     input.enqueue({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'pending' } })
-    await vi.waitFor(() => expect(observed).toHaveBeenCalled())
+    // The child's acknowledgement means the proxy forwarded (and traced) the request.
+    await acknowledged
     input.error(failure)
     await expect(pending).rejects.toBe(failure)
     const spans = exporter

@@ -50,7 +50,8 @@ changes require a daemon restart. See the [flow service guide](../flow-host-node
 for initial reconciliation, resource shutdown, desktop policy and public error codes.
 
 The `events` stream includes context, flow service status, run and inbox changes with event IDs
-and timestamps. Events are live and have no replay cursor. Subscribe before querying `info`,
+and timestamps, plus live trace spans, logs and summaries. Pass `{ types: [...] }` to receive only
+those event types, or `{}` for all of them: the `param` is required. Events are live and have no replay cursor. Subscribe before querying `info`,
 run snapshots and the pending inbox. Buffer incoming events during those queries, then re-read
 affected identifiers to reconcile current state. Repeat on reconnect. Closing one stream
 removes its listeners without affecting other clients or runtime transitions.

@@ -91,7 +91,7 @@ function subscribe(client: Client<Protocol>): {
   close(): void
   received: Array<HostEvent>
 } {
-  const stream = client.createStream('events')
+  const stream = client.createStream('events', { param: {} })
   void stream.catch(() => {})
   const received: Array<HostEvent> = []
   void (async () => {
@@ -148,7 +148,6 @@ describe('daemon composition', () => {
     for (const type of [
       'context:start',
       'context:stop',
-      'context:message',
       'service:status',
       'run:state',
       'inbox:added',
@@ -525,12 +524,17 @@ describe('proxy spawn cancellation', () => {
   })
 })
 
+/**
+ * A child that answers each line it reads with a progress notification and never exits, so a
+ * test can tell the proxy has forwarded a request by reading that notification back.
+ */
+const ACK_CHILD =
+  "require('node:readline').createInterface({input:process.stdin}).on('line', () => process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/progress',params:{progressToken:'ack',progress:1}})+'\\n')); setInterval(() => {}, 1e9)"
+
 test.each(['cleanup', 'close', 'rpc', 'abort', 'SIGTERM', 'SIGINT'] as const)(
   '%s shutdown settles proxy spans before killing tracked children',
   async (method) => {
     const events = new EventEmitter<HostEvents>()
-    const observed = vi.fn()
-    events.on('context:message', observed)
     const signal = new AbortController()
     const daemon = await serveHostDaemon({
       events,
@@ -539,7 +543,7 @@ test.each(['cleanup', 'close', 'rpc', 'abort', 'SIGTERM', 'SIGINT'] as const)(
     })
     const client = connect()
     const proxy = client.createChannel('spawn', {
-      param: { command: process.execPath, args: ['-e', 'setInterval(() => {}, 1e9)'] },
+      param: { command: process.execPath, args: ['-e', ACK_CHILD] },
     })
     void proxy.catch(() => {})
     await vi.waitFor(async () =>
@@ -548,7 +552,10 @@ test.each(['cleanup', 'close', 'rpc', 'abort', 'SIGTERM', 'SIGINT'] as const)(
     const writer = proxy.writable.getWriter()
     await writer.write({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'pending' } })
     writer.releaseLock()
-    await vi.waitFor(() => expect(observed).toHaveBeenCalled())
+    // The child's acknowledgement means the proxy forwarded (and traced) the request.
+    const reader = proxy.readable.getReader()
+    await reader.read()
+    reader.releaseLock()
     const kill = ChildProcess.prototype.kill
     const spansAtKill: Array<Array<{ name: string; status: number; errorType: unknown }>> = []
     vi.spyOn(ChildProcess.prototype, 'kill').mockImplementation(function (

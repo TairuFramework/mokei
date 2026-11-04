@@ -64,6 +64,10 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **Unified traces follow-ons** (2026-11-04) -- context trace rows named by their server, a
+  "Called from" index of cross-trace calls, newest-first log paging (`traces.logs`), verified
+  counting of lost summary deltas, an `events` type filter, and `context:message` removed from
+  the wire. See [traces follow-ons](completed/2026-11-04-unified-traces-follow-ons.complete.md).
 - **OAuth scopes, step-up, header validation and logout** (2026-11-04, PRs #84 to #87) -- per-tool,
   prompt and resource scopes with `403 insufficient_scope` step-up; SEP-2243 standard and
   `Mcp-Param-*` header validation on the server; an OS keychain token store; and `mokei auth
@@ -218,10 +222,8 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 - **Daemon-held OAuth tokens** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- deferred until
   a daemon connects HTTP contexts.
-- **Unified traces follow-ons** (`backlog/2026-10-08-unified-traces-follow-ons.md`) -- reverse
-  links, an `events` type filter, context server names in trace rows, and smaller gaps.
 - **Upstream dependency gaps** (`backlog/2026-11-04-upstream-dependency-gaps.md`) -- workarounds
-  to drop once enkaku, inkjs, sozai and hozon releases land.
+  to drop once enkaku, inkjs and sozai releases land.
 
 ## Planned — P2
 

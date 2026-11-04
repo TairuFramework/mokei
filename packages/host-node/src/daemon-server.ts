@@ -2,13 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createTransportStream } from '@enkaku/node-streams'
 import { HandlerError, type ProcedureHandlers, serve } from '@enkaku/server'
-import {
-  type PayloadCapture,
-  resolveContentCapture,
-  sanitizeMessage,
-  type TerminationReason,
-  type TraceParentFrom,
-} from '@mokei/context-client'
+import type { PayloadCapture, TerminationReason, TraceParentFrom } from '@mokei/context-client'
 import type {
   ActiveContextInfo,
   BaseProtocol,
@@ -100,7 +94,12 @@ export function createHandlers({
         await new Promise<void>((resolve) => {
           sub.signal.addEventListener('abort', () => resolve(), { once: true })
           ctx.signal.addEventListener('abort', abortSubscription, { once: true })
-          for (const type of EVENT_TYPES) {
+          // `types` narrows the subscription itself: no listener, so no event is built for
+          // types nobody asked for.
+          const wanted = ctx.param?.types
+          const types =
+            wanted == null ? EVENT_TYPES : EVENT_TYPES.filter((type) => wanted.includes(type))
+          for (const type of types) {
             // The loop widens type and payload separately, losing their correlation.
             events.on(type, (payload) => handleEvent({ type, ...payload } as HostEvent), {
               signal: sub.signal,
@@ -133,7 +132,6 @@ export function createHandlers({
         spawned.childProcess.kill()
         return
       }
-      const contentCapture = resolveContentCapture(tracing?.payloads)
       const proxyTracing = createProxyTracing({
         contextID,
         command: ctx.param.command,
@@ -182,14 +180,6 @@ export function createHandlers({
             .pipeThrough(
               tap((message) => {
                 proxyTracing.observe('client', message)
-                if (events.listenerCount('context:message') > 0)
-                  events.fire('context:message', {
-                    meta: createEventMeta(contextID),
-                    data: {
-                      from: 'client',
-                      message: sanitizeMessage(message, contentCapture) as Record<string, unknown>,
-                    },
-                  })
               }),
             )
             .pipeTo(stream.writable, { signal: controller.signal }),
@@ -197,14 +187,6 @@ export function createHandlers({
             .pipeThrough(
               tap((message) => {
                 proxyTracing.observe('server', message)
-                if (events.listenerCount('context:message') > 0)
-                  events.fire('context:message', {
-                    meta: createEventMeta(contextID),
-                    data: {
-                      from: 'server',
-                      message: sanitizeMessage(message, contentCapture) as Record<string, unknown>,
-                    },
-                  })
               }),
             )
             .pipeTo(ctx.writable, { signal: controller.signal }),
@@ -217,7 +199,6 @@ export function createHandlers({
 }
 
 const EVENT_TYPES = [
-  'context:message',
   'context:start',
   'context:stop',
   'service:status',

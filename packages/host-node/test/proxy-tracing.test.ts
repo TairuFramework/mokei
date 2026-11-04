@@ -253,6 +253,30 @@ test('initialize response sets the negotiated protocol version on the context an
   expect(requests()[1]?.attributes['mcp.protocol.version']).toBe('2025-11-25')
 })
 
+test.each([
+  ['initialize', { protocolVersion: '2025-11-25', serverInfo: { name: 'files', version: '1' } }],
+  [
+    'server/discover',
+    { _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'files', version: '1' } } },
+  ],
+])('a %s response names the server on the context span', (method, result) => {
+  const proxy = fixture()
+  proxy.observe('client', { id: 1, method, params: {} })
+  proxy.observe('server', { id: 1, result })
+  proxy.end('stopped')
+  const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+  expect(root?.attributes['mokei.server.name']).toBe('files')
+})
+
+test('a response without server info leaves the server name unset', () => {
+  const proxy = fixture()
+  proxy.observe('client', { id: 1, method: 'tools/list' })
+  proxy.observe('server', { id: 1, result: { serverInfo: { name: 'not-from-initialize' } } })
+  proxy.end('stopped')
+  const root = exporter.getFinishedSpans().find((span) => span.name === 'mcp.context')
+  expect(root?.attributes['mokei.server.name']).toBeUndefined()
+})
+
 test('an error response sets the status message and rpc.response.status_code', () => {
   const proxy = fixture()
   proxy.observe('client', { id: 1, method: 'tools/call', params: { name: 'echo' } })

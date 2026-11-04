@@ -1,19 +1,58 @@
 import type { ColumnType, Selectable, StoreDefinition, StoreProvider } from '@hozon/db'
 import { sql } from '@hozon/db'
-import type { TraceSummary, TracesListParams, TracesListResult } from '@mokei/host-protocol'
+import type {
+  TraceCall,
+  TraceSummary,
+  TracesListParams,
+  TracesListResult,
+} from '@mokei/host-protocol'
 
 import { decodeJSONColumn } from './json-column.js'
 import { decodeTraceCursor, encodeTraceCursor } from './trace-cursor.js'
 
+/**
+ * The root-span attributes a trace summary keeps. `mokei.server.name` is set after a context's
+ * root span starts, so callers re-read it from the live span.
+ */
+export function pickSummaryAttributes(
+  attributes: Readonly<Record<string, unknown>>,
+): TraceSummary['attributes'] {
+  const picked: TraceSummary['attributes'] = {}
+  for (const key of [
+    'mokei.run.id',
+    'mokei.flow.id',
+    'mokei.context.id',
+    'mokei.server.name',
+  ] as const) {
+    const value = attributes[key]
+    if (typeof value === 'string') picked[key] = value
+  }
+  const label = attributes['mokei.run.label']
+  if (typeof label === 'string') picked.label = label
+  return picked
+}
+
 export function traceSearchText(summary: TraceSummary): string {
-  return [summary.name, summary.attributes.label, summary.attributes['mokei.flow.id']]
+  return [
+    summary.name,
+    summary.attributes.label,
+    summary.attributes['mokei.flow.id'],
+    summary.attributes['mokei.server.name'],
+  ]
     .filter((value) => typeof value === 'string')
     .join('\n')
     .toLowerCase()
 }
 
+/** A {@link TraceCall} with the trace it called into. */
+export type IndexedTraceCall = TraceCall & { contextTraceID: string }
+
 export type TraceIndexStore = {
   upsert(summaries: Array<TraceSummary>): Promise<void>
+  /** Records calls into other traces; a call already recorded for the span is replaced. */
+  addCalls(calls: Array<IndexedTraceCall>): Promise<void>
+  /** Calls into `contextTraceID`, newest first. */
+  listCalls(contextTraceID: string, limit: number): Promise<Array<TraceCall>>
   get(traceID: string): Promise<TraceSummary | undefined>
   list(params: TracesListParams): Promise<TracesListResult>
   listActiveIDs(): Promise<Array<string>>
@@ -39,6 +78,15 @@ export type TraceIndexTables = {
     error_count: number
     dropped_count: number
     revision: number
+  }
+  trace_calls: {
+    span_id: string
+    trace_id: string
+    context_trace_id: string
+    name: string
+    start_time: number
+    end_time: number | null
+    outcome: TraceCall['outcome']
   }
 }
 
@@ -102,6 +150,33 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
         await db.schema.dropTable('traces').execute()
       },
     },
+    '1-calls': {
+      async up(db) {
+        await db.schema
+          .createTable('trace_calls')
+          .addColumn('span_id', ctx.types.text, (column) => column.primaryKey())
+          .addColumn('trace_id', ctx.types.text, (column) => column.notNull())
+          .addColumn('context_trace_id', ctx.types.text, (column) => column.notNull())
+          .addColumn('name', ctx.types.text, (column) => column.notNull())
+          .addColumn('start_time', ctx.types.double, (column) => column.notNull())
+          .addColumn('end_time', ctx.types.double)
+          .addColumn('outcome', ctx.types.text)
+          .execute()
+        await db.schema
+          .createIndex('mokei_trace_calls_context_start_time')
+          .on('trace_calls')
+          .columns(['context_trace_id', 'start_time'])
+          .execute()
+        await db.schema
+          .createIndex('mokei_trace_calls_trace_id')
+          .on('trace_calls')
+          .column('trace_id')
+          .execute()
+      },
+      async down(db) {
+        await db.schema.dropTable('trace_calls').execute()
+      },
+    },
   }),
   createAPI(db, adapter) {
     return {
@@ -135,6 +210,46 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
             })
             .execute()
         }
+      },
+      async addCalls(calls) {
+        for (const call of calls) {
+          const row = {
+            span_id: call.spanID,
+            trace_id: call.traceID,
+            context_trace_id: call.contextTraceID,
+            name: call.name,
+            start_time: call.startTime,
+            end_time: call.endTime ?? null,
+            outcome: call.outcome,
+          }
+          await db
+            .insertInto('trace_calls')
+            .values(row)
+            .onConflict((conflict) => conflict.column('span_id').doUpdateSet(row))
+            .execute()
+        }
+      },
+      async listCalls(contextTraceID, limit) {
+        if (!Number.isInteger(limit) || limit < 0) {
+          throw new RangeError('Trace call limit must be a non-negative integer')
+        }
+        if (limit === 0) return []
+        const rows = await db
+          .selectFrom('trace_calls')
+          .selectAll()
+          .where('context_trace_id', '=', contextTraceID)
+          .orderBy('start_time', 'desc')
+          .orderBy('span_id', 'desc')
+          .limit(limit)
+          .execute()
+        return rows.map((row) => ({
+          traceID: row.trace_id,
+          spanID: row.span_id,
+          name: row.name,
+          startTime: row.start_time,
+          ...(row.end_time == null ? {} : { endTime: row.end_time }),
+          outcome: row.outcome,
+        }))
       },
       async get(traceID) {
         const row = await db
@@ -212,6 +327,13 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
       },
       async deleteByTrace(traceIDs) {
         if (traceIDs.length === 0) return 0
+        // A call goes with either end: the trace that made it or the trace it called into.
+        await db
+          .deleteFrom('trace_calls')
+          .where((eb) =>
+            eb.or([eb('trace_id', 'in', traceIDs), eb('context_trace_id', 'in', traceIDs)]),
+          )
+          .execute()
         const result = await db
           .deleteFrom('traces')
           .where('trace_id', 'in', traceIDs)
@@ -225,6 +347,16 @@ export const traceIndexStoreDefinition: StoreDefinition<TraceIndexTables, TraceI
           .where(sql<boolean>`coalesce(end_time, start_time) < ${time}`)
         if (params?.keepTraceIDs?.length)
           query = query.where('trace_id', 'not in', params.keepTraceIDs)
+        // Calls age out like spans: unless the trace on either end is kept.
+        let calls = db
+          .deleteFrom('trace_calls')
+          .where(sql<boolean>`coalesce(end_time, start_time) < ${time}`)
+        if (params?.keepTraceIDs?.length) {
+          calls = calls
+            .where('trace_id', 'not in', params.keepTraceIDs)
+            .where('context_trace_id', 'not in', params.keepTraceIDs)
+        }
+        await calls.execute()
         return Number((await query.executeTakeFirstOrThrow()).numDeletedRows)
       },
     }

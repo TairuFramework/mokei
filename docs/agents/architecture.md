@@ -409,7 +409,7 @@ trace. Notifications are traced log records on the context span.
 
 Payload capture defaults to 65536 bytes and can be disabled or given another byte cap through
 `tracing.payloads`. Redaction runs before every observation sink: local storage, live events,
-OTLP export and sanitised `context:message` events. Secret-like object keys are replaced with
+and OTLP export. Secret-like object keys are replaced with
 `[redacted]`; `_meta` retains only `traceparent` and `dev.mokei/flow-run`. Capture limits mark
 truncated payloads, and the forwarded MCP traffic is not modified.
 
@@ -420,8 +420,8 @@ GenAI content attributes (`gen_ai.input.messages`, `gen_ai.output.messages`, `ge
 is unset or `off`. The variable also enables raw MCP payload capture (`mokei.mcp.request` and
 `mokei.mcp.response`), redacted and capped the same way. Key redaction and the byte cap apply to every
 content attribute, except `gen_ai.tool.definitions`, which is a schema and only gets the cap. Any truncated
-content attribute sets `mokei.payload.truncated` on its span. The variable also applies to daemon
-`context:message` events.
+content attribute sets `mokei.payload.truncated` on its span. The daemon no longer sends raw MCP
+messages as `context:message` events: proxied traffic reaches subscribers only as trace spans.
 
 A proxied request whose `_meta` carries a valid W3C `traceparent` is traced by its caller as well. The
 proxy span then sets `mokei.mcp.proxied` and records no `mcp.client.operation.duration` or
@@ -456,12 +456,34 @@ Hozon decodes the stores' `data` columns as JSON. Nested strings remain unchange
 The `traces` store is the trace index, with one summary per trace. It tracks root and active
 segment IDs, kind, name, outcome, time range, selected flow/context attributes, span and error
 counts, dropped count and revision. Its reader decodes the `attributes` JSON column once, preserving nested strings.
+The summary attributes are `mokei.run.id`, `mokei.flow.id`, `mokei.context.id`, `mokei.server.name`
+and `label`. The recorder holds open spans live, not as start-time copies. Attributes set after
+start, such as a context's `mokei.server.name` (set by `ContextHost`, `ContextClient` or the daemon
+proxy once the server names itself), reach summaries on the next flush tick and reach open-span
+snapshots at once. The monitor titles a context row by its server name.
+
+The same store keeps a `trace_calls` index, one row per span that calls into another trace (a span
+carrying `mokei.context.trace_id`, such as a flow's tool call into a context). It is written in
+the span's flush transaction, and pruned with either end's trace.
 `traces.list` filters and pages newest-first summaries;
-`traces.get` returns a summary, ended and open spans, and logs. The daemon merges recorder
-memory with persisted data so unflushed spans remain readable. `runs.trace` remains as a
+`traces.get` returns a summary, ended and open spans, logs, and `calls` into the trace (newest
+first, capped at 200, `callsTruncated`). `traces.logs` pages a trace's logs newest first,
+optionally for one span or before a time, with a cursor; the monitor uses it for "Load older
+logs". The daemon merges recorder memory with persisted data so unflushed spans, calls and logs
+remain readable.
+
+When the hydration limit drops a child-only summary delta, the recorder looks the trace up. An
+indexed trace counts in `lostSummaryCount`; a trace the index does not hold is unrooted, and
+nothing was lost. When hydration fails for good, a delta that held child spans counts as lost,
+because the trace cannot be verified. `runs.trace` remains as a
 deprecated adapter with its legacy response shape.
 
 The host `events` stream sends `span:start`, `span:end`, `log` and `trace:summary` live events.
+It takes `{ types? }`: the daemon then subscribes only to those types, so nobody pays for
+unrequested span and log events. `flow-client` asks for its three flow event types. Enkaku 0.22
+requires `prm` once a procedure declares a param, so every caller sends one (`{}` for all events),
+and a CLI and a daemon from releases on either side of this change cannot share an `events`
+stream.
 Each subscriber is bounded to 2000 pending writes, measured through the Enkaku handler writable.
 Enkaku's default stream high water mark of 1 propagates transport backpressure to that writable.
 When another event arrives at the bound, the daemon ends that subscriber's stream.
@@ -501,7 +523,7 @@ Configuration changes and fatal-startup recovery require restart, with no hot re
 Direct sibling elicitation outside the durable task inbox uses the existing decline fallback.
 
 The portable host protocol exposes `flows.list`, `flows.check`, `runs.start`, `runs.get`,
-`runs.list`, `runs.cancel`, `runs.trace` (deprecated), `traces.list`, `traces.get`, `inbox.list`, `inbox.get`, `inbox.answer`,
+`runs.list`, `runs.cancel`, `runs.trace` (deprecated), `traces.list`, `traces.get`, `traces.logs`, `inbox.list`, `inbox.get`, `inbox.answer`,
 `inbox.decline`, `inbox.cancel` and `inbox.prompt`. Wire snapshots exclude private persistence
 metadata and validation functions. Trace reads merge recorder memory and persisted data, and do
 not force flushing. A known run without a trace yields empty spans/logs through the deprecated

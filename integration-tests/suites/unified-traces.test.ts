@@ -161,7 +161,7 @@ test('live events arrive on the events stream before the trace is persisted', as
   const fixture = await startFlowDaemonFixture({ flushIntervalMs: 600_000 })
   try {
     const client = await fixture.connect()
-    const stream = client.createStream('events')
+    const stream = client.createStream('events', { param: {} })
     const observed = Promise.withResolvers<{ trace: TracesGetResult; persistedCount: number }>()
     const reading = (async () => {
       for await (const event of stream.readable) {

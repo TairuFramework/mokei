@@ -40,6 +40,8 @@ import {
   tracesGetResultSchema,
   tracesListParamsSchema,
   tracesListResultSchema,
+  tracesLogsParamsSchema,
+  tracesLogsResultSchema,
   tracingInfoSchema,
 } from './trace-schemas.js'
 
@@ -73,18 +75,24 @@ export {
 export {
   type OpenSpan,
   openSpanSchema,
+  type TraceCall,
   type TraceLog,
   type TraceSummary,
   type TracesGetResult,
   type TracesListParams,
   type TracesListResult,
+  type TracesLogsParams,
+  type TracesLogsResult,
   type TracingInfo,
+  traceCallSchema,
   traceLogSchema,
   traceSummarySchema,
   tracesGetParamsSchema,
   tracesGetResultSchema,
   tracesListParamsSchema,
   tracesListResultSchema,
+  tracesLogsParamsSchema,
+  tracesLogsResultSchema,
   tracingInfoSchema,
 } from './trace-schemas.js'
 
@@ -196,24 +204,6 @@ export const hostEventSchema = {
       required: ['type', 'meta'],
       additionalProperties: false,
     },
-    {
-      type: 'object',
-      properties: {
-        type: { type: 'string', const: 'context:message' },
-        meta: hostEventMetaSchema,
-        data: {
-          type: 'object',
-          properties: {
-            from: { type: 'string', enum: ['client', 'server'] },
-            message: { type: 'object' },
-          },
-          required: ['from', 'message'],
-          additionalProperties: false,
-        },
-      },
-      required: ['type', 'meta', 'data'],
-      additionalProperties: false,
-    },
     ...[
       {
         type: 'object',
@@ -309,9 +299,25 @@ const settledResultSchema = {
   additionalProperties: false,
 } as const satisfies Schema
 
+/** Every `type` the `events` stream can send. */
+export const HOST_EVENT_TYPES = hostEventSchema.anyOf.map(
+  (variant) => variant.properties.type.const,
+) as ReadonlyArray<HostEvent['type']>
+
+export const eventsParamSchema = {
+  type: 'object',
+  properties: {
+    /** Only send events of these types. Absent sends every event. */
+    types: { type: 'array', items: { type: 'string' } },
+  },
+  additionalProperties: false,
+} as const satisfies Schema
+export type EventsParams = FromSchema<typeof eventsParamSchema>
+
 export const protocol = {
   events: {
     type: 'stream',
+    param: eventsParamSchema,
     receive: hostEventSchema,
   },
   info: {
@@ -422,6 +428,11 @@ export const protocol = {
   },
   'traces.list': { type: 'request', param: tracesListParamsSchema, result: tracesListResultSchema },
   'traces.get': { type: 'request', param: tracesGetParamsSchema, result: tracesGetResultSchema },
+  'traces.logs': {
+    type: 'request',
+    param: tracesLogsParamsSchema,
+    result: tracesLogsResultSchema,
+  },
   'inbox.list': {
     type: 'request',
     param: {
@@ -464,7 +475,7 @@ export const protocol = {
 export type Protocol = typeof protocol
 export type BaseProtocol = Pick<Protocol, 'events' | 'info' | 'shutdown' | 'spawn'>
 export type MonitorProcedure = 'monitor.attach' | 'monitor.presence'
-export type TraceProcedure = 'traces.list' | 'traces.get'
+export type TraceProcedure = 'traces.list' | 'traces.get' | 'traces.logs'
 export type TraceProtocol = Pick<Protocol, TraceProcedure>
 export type FlowProcedure = Exclude<
   keyof Protocol,

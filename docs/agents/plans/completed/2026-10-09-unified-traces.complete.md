@@ -69,4 +69,4 @@ The monitor uses one Traces page for live observation, request and response insp
 - **`monitor/`:** one host connection, trace hooks, live and placeholder span trees, Traces pages, payload inspection and legacy route redirects.
 - **Documentation and release:** architecture and package guidance, a patch release intent, and the follow-ons backlog.
 
-Follow-ons: [unified traces backlog](../backlog/2026-10-08-unified-traces-follow-ons.md).
+Follow-ons: shipped or dropped on 2026-11-04, see [traces follow-ons](2026-11-04-unified-traces-follow-ons.complete.md).

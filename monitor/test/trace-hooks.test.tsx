@@ -541,3 +541,74 @@ test.each([
     expect(hook.result.current.traces.map((trace) => trace.traceID)).toEqual(['live'])
   },
 )
+
+test('spans from other traces that call into the selected trace become live calls', async () => {
+  const env = setup()
+  env.fixture.request.mockResolvedValue(snapshot as never)
+  const hook = renderHook(() => useTrace(summary.traceID), { wrapper: env.wrapper })
+  await act(async () => {})
+  const call: OpenSpan = {
+    ...open,
+    traceID: 'flow-trace',
+    spanID: 'call-1',
+    name: 'tools/call read',
+    startTime: 120,
+    attributes: { 'mokei.context.trace_id': summary.traceID },
+  }
+  env.emit({ type: 'span:start', meta, data: call })
+  expect([...(hook.result.current.state?.calls.values() ?? [])]).toEqual([
+    {
+      traceID: 'flow-trace',
+      spanID: 'call-1',
+      name: 'tools/call read',
+      startTime: 120,
+      outcome: null,
+    },
+  ])
+  env.emit({
+    type: 'span:end',
+    meta,
+    data: { ...call, endTime: 130, status: { code: 1 }, events: [] },
+  })
+  expect(hook.result.current.state?.calls.get('call-1')).toMatchObject({
+    endTime: 130,
+    outcome: 'ok',
+  })
+  // An unrelated span from another trace changes nothing.
+  const before = hook.result.current.state
+  env.emit({ type: 'span:start', meta, data: { ...open, traceID: 'other', spanID: 'x' } })
+  expect(hook.result.current.state).toBe(before)
+})
+
+test('loadOlderLogs pages back from the oldest log held, then follows the cursor', async () => {
+  const env = setup()
+  const older: TraceLog = { ...log, logID: 'log-old', timestamp: 120, message: 'Older' }
+  const oldest: TraceLog = { ...log, logID: 'log-oldest', timestamp: 110, message: 'Oldest' }
+  env.fixture.request.mockImplementation(((procedure: string, options: { param: unknown }) => {
+    if (procedure === 'traces.get')
+      return Promise.resolve({ ...snapshot, logs: [log], logsTruncated: true })
+    const param = options.param as { before?: number; cursor?: string }
+    if (param.cursor == null) return Promise.resolve({ logs: [older], cursor: 'next' })
+    return Promise.resolve({ logs: [oldest] })
+  }) as never)
+  const hook = renderHook(() => useTrace(summary.traceID), { wrapper: env.wrapper })
+  await act(async () => {})
+  expect(hook.result.current.state?.logsTruncated).toBe(true)
+  await act(async () => hook.result.current.loadOlderLogs())
+  await act(async () => {})
+  expect(env.fixture.request).toHaveBeenCalledWith('traces.logs', {
+    param: { traceID: summary.traceID, limit: 500, before: 150 },
+  })
+  expect(hook.result.current.state?.logsTruncated).toBe(true)
+  await act(async () => hook.result.current.loadOlderLogs())
+  await act(async () => {})
+  expect(env.fixture.request).toHaveBeenCalledWith('traces.logs', {
+    param: { traceID: summary.traceID, limit: 500, cursor: 'next' },
+  })
+  expect(hook.result.current.state?.logsTruncated).toBe(false)
+  expect([...(hook.result.current.state?.logs.keys() ?? [])].sort()).toEqual([
+    'log-a',
+    'log-old',
+    'log-oldest',
+  ])
+})
