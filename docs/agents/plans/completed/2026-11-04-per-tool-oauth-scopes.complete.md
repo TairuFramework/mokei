@@ -2,6 +2,7 @@
 
 **Status:** complete
 **Date:** 2026-11-04
+**PR:** #84
 
 ## Goal
 
