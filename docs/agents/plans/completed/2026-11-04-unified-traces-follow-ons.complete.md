@@ -33,6 +33,9 @@ listed as waiting upstream.
 - **`context:message` removed** from the protocol and the daemon, with the unused monitor
   `EventBadge`. Proxy tests now wait on a child acknowledgement instead of the event.
 
+The backlog's session ID accessor for caller-built HTTP registrations was dropped earlier the same
+day, as `2025-11-25`-only. See the second pass in `2026-11-04-backlog-trim.complete.md`.
+
 ## Decisions
 
 - **Breaking `events` change**, chosen over a second procedure. Enkaku 0.22 requires `prm` once a
