@@ -38,6 +38,11 @@ export type ChatBackend = {
   cliProvider: string
   /** `mokei chat --api-url` value, when the backend is not the CLI provider's default. */
   cliAPIURL?: string
+  /**
+   * Whether reasoning streams as its own channel, so the CLI renders `thinking…`. ollama
+   * splits it; llama-server leaves LFM2.5's `<think>` tags inline in the content.
+   */
+  separatesReasoning: boolean
 }
 
 /**
@@ -111,6 +116,7 @@ async function resolveLlamaServer(url: string): Promise<ChatBackend> {
     model: model ?? LLAMA_SERVER_MODEL,
     cliProvider: 'openai',
     cliAPIURL: openaiBaseURL,
+    separatesReasoning: false,
   }
 }
 
@@ -123,6 +129,7 @@ async function resolveOllama(url: string): Promise<ChatBackend> {
     openaiBaseURL: `${baseURL}/v1`,
     model: OLLAMA_MODEL,
     cliProvider: 'ollama',
+    separatesReasoning: true,
   }
 }
 
