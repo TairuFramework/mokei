@@ -132,7 +132,14 @@ On `tools/call`, `prompts/get`, `resources/read` and `tasks/get|update|cancel` i
 for disagreement. Any failure answers `400` with JSON-RPC `-32020` and
 `data.mismatch: { header, body }`, before the scope check. `@mokei/http-client` always sends
 these headers. Callers that build requests by hand must add them. `validateStandardHeaders` and
-`decodeHeaderValue` are exported. `Mcp-Param-*` headers are not checked yet.
+`decodeHeaderValue` are exported.
+
+On `tools/call`, each argument the tool's `inputSchema` marks with `x-mcp-header` must arrive in
+a matching `Mcp-Param-{Name}` header. An absent or `null` argument needs none, numbers compare
+numerically, and tools with invalid annotations are skipped. A missing, badly encoded or
+different header is rejected the same way, naming the header in `data.mismatch.header`.
+`@mokei/http-client` treats that as a stale schema: it refreshes `tools/list` and retries once.
+`validateParamHeaders` is exported.
 
 A `2025-11-25` session is bound to the issuer and subject that sent `initialize`. A request from
 any other identity that names the session (POST, GET or DELETE) gets the same `404` as an

@@ -22,7 +22,7 @@ import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { createRuntime, type Runtime } from '@sozai/runtime'
 import type { AuthInfo } from '@teikyo/oauth'
 
-import { validateStandardHeaders } from './headers.js'
+import { validateParamHeaders, validateStandardHeaders } from './headers.js'
 import {
   appendReplay,
   eventsAfter,
@@ -666,7 +666,11 @@ export function createHTTPHandler(params: HTTPHandlerParams): HTTPHandler {
       // capabilities -- `resources.subscribe` in particular -- match the listen path's. It never
       // registers a subscription itself, so no `connectionID` is threaded here.
       createServer: (transport) => createServer({ transport, subscriptionHub, tasks, auth }),
-      authorize: (server) => denyInsufficientScope(server, body, auth),
+      // `Mcp-Param-*` headers need the tool's schema, so they are checked here rather than with
+      // the standard headers, and still before the scope check: a malformed request is a `400`.
+      authorize: (server) =>
+        validateParamHeaders({ request, body, server }) ??
+        denyInsufficientScope(server, body, auth),
       replayBufferSize,
       timeoutMs: statelessTimeoutMs,
       // The client hanging up is a stateless exchange's only cancellation channel.

@@ -188,3 +188,9 @@ export {
   type TasksGetResult,
   type TasksUpdateRequest,
 } from './versions/index.js'
+export {
+  type CollectResult,
+  collectHeaderAnnotations,
+  type HeaderAnnotation,
+  isValidHeaderParamName,
+} from './x-mcp-header.js'

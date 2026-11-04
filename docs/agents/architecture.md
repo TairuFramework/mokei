@@ -117,9 +117,13 @@ re-sent once if the header set changed. Callers see an ordinary successful call,
 to two extra round trips. The HTTP server checks `MCP-Protocol-Version`, `Mcp-Method` and
 `Mcp-Name` against the body of every `2026-07-28` POST (`validateStandardHeaders`). It requires
 them on requests, and rejects a missing or disagreeing header with `400` and `-32020`. Both sides
-read the method-to-field table from `MCP_NAME_HEADER_SOURCE` in `@mokei/context-protocol`. The
-server does not check `Mcp-Param-*` headers yet. Conformance of the encoder, and the retry
-itself, are covered by SDK interop tests.
+read the method-to-field table from `MCP_NAME_HEADER_SOURCE` in `@mokei/context-protocol`. On a
+`tools/call` the server also checks each `Mcp-Param-*` header against the tool's `x-mcp-header`
+annotations (`validateParamHeaders`, through `ContextServer.toolInputSchema` and the shared
+`collectHeaderAnnotations`), before the scope check. A mismatch there names the `Mcp-Param-*`
+header, so a mokei client with a stale schema refreshes and retries against a mokei server too.
+The refresh reads a JSON or an SSE answer. Conformance of the encoder, and the retry itself,
+are also covered by SDK interop tests.
 
 ### MCP Tasks
 

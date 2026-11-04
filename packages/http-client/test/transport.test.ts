@@ -1714,6 +1714,54 @@ describe('HTTPTransport', () => {
       await transport.dispose()
     })
 
+    test('reads a refresh answered over SSE, as a stateless mokei server answers', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(false)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+      // The refresh answer is on an SSE stream, after a priming frame and an unrelated message,
+      // and is matched by the internal request id the transport chose.
+      fetchMock.mockImplementationOnce(async (_url: string, init?: RequestInit) => {
+        const { id } = JSON.parse(String(init?.body)) as { id: string }
+        return sseResponse([
+          { data: '' },
+          { data: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/message' }) },
+          { data: JSON.stringify({ ...listResult([searchTool(true)]), id }) },
+        ])
+      })
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ jsonrpc: '2.0', id: 6, result: { content: [] } }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(callRequest)
+
+      const { value } = await transport.read()
+      expect(value).toEqual({ jsonrpc: '2.0', id: 6, result: { content: [] } })
+      expect(posts(fetchMock.mock.calls)[3]?.[1]?.headers?.['Mcp-Param-Region']).toBe('us-east-1')
+
+      await transport.dispose()
+    })
+
+    test('ignores an SSE refresh frame answering another request id', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(listResult([searchTool(false)])))
+      fetchMock.mockResolvedValueOnce(mismatchResponse(6, 'Mcp-Param-Region'))
+      fetchMock.mockResolvedValueOnce(
+        sseResponse([{ data: JSON.stringify({ ...listResult([searchTool(true)]), id: 'other' }) }]),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(listRequest)
+      await transport.read()
+      await transport.write(callRequest)
+
+      const { value } = await transport.read()
+      expect((value as ErrorFrame).error?.code).toBe(-32020)
+      expect(posts(fetchMock.mock.calls)).toHaveLength(3)
+
+      await transport.dispose()
+    })
+
     test('passes a -32020 through on a method other than tools/call', async () => {
       fetchMock.mockResolvedValueOnce(mismatchResponse(7, 'Mcp-Param-Region'))
 

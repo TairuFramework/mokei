@@ -1,0 +1,236 @@
+/**
+ * The `x-mcp-header` tool-parameter annotation (SEP-2243), shared by the client that mirrors
+ * annotated `tools/call` arguments into `Mcp-Param-{Name}` headers and the server that checks
+ * those headers against the body.
+ *
+ * A server marks a `tools/call` argument to be mirrored into an HTTP header by adding
+ * `"x-mcp-header": "<Name>"` to that parameter's schema entry inside the tool's `inputSchema`.
+ *
+ * @see https://modelcontextprotocol.io/specification/draft/basic/transports/streamable-http
+ */
+
+/** RFC 9110 field-name token characters (`1*tchar`). */
+const TCHAR = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/
+
+/** JSON Schema primitive types eligible for `x-mcp-header` (note: not `number`). */
+const PRIMITIVE_TYPES = new Set(['boolean', 'integer', 'string'])
+
+/**
+ * Whether a JSON Schema `type` keyword is eligible for `x-mcp-header`: a single primitive
+ * type, or a union (e.g. `["string", "null"]`) whose non-`null` members are all primitive
+ * -- nullable primitives are common and their `null` value is simply omitted at call time.
+ */
+function isEligibleType(type: unknown): boolean {
+  if (typeof type === 'string') {
+    return PRIMITIVE_TYPES.has(type)
+  }
+  if (Array.isArray(type)) {
+    const nonNull = type.filter((entry) => entry !== 'null')
+    return nonNull.length > 0 && nonNull.every((entry) => PRIMITIVE_TYPES.has(entry as string))
+  }
+  return false
+}
+
+/** A validated `x-mcp-header` annotation and the argument path it maps to. */
+export type HeaderAnnotation = {
+  /** Header name portion: produces the `Mcp-Param-{headerName}` header. */
+  headerName: string
+  /** Property path into the `tools/call` arguments object. */
+  path: Array<string>
+}
+
+/** Result of collecting `x-mcp-header` annotations from a tool `inputSchema`. */
+export type CollectResult = {
+  /** Valid annotations discovered (empty when {@link CollectResult.valid} is false). */
+  annotations: Array<HeaderAnnotation>
+  /** Whether every annotation in the schema satisfies the SEP-2243 constraints. */
+  valid: boolean
+  /** Human-readable validation errors (used for tool-list filtering warnings). */
+  errors: Array<string>
+}
+
+/**
+ * Whether a string is a valid `x-mcp-header` name: non-empty and matching the RFC 9110
+ * `1*tchar` field-name token syntax.
+ */
+export function isValidHeaderParamName(name: string): boolean {
+  return name.length > 0 && TCHAR.test(name)
+}
+
+/** Decode a single JSON Pointer reference token (`~1` → `/`, `~0` → `~`). */
+function decodePointerToken(token: string): string {
+  return token.replace(/~1/g, '/').replace(/~0/g, '~')
+}
+
+/**
+ * Resolve a local JSON Pointer `$ref` (e.g. `#/$defs/Region`) against the schema root.
+ * Returns `undefined` for non-local refs or pointers that do not resolve.
+ */
+function resolveLocalRef(root: unknown, ref: string): unknown {
+  if (!ref.startsWith('#/')) {
+    return undefined
+  }
+  const tokens = ref.slice(2).split('/').map(decodePointerToken)
+  let node: unknown = root
+  for (const token of tokens) {
+    if (node == null || typeof node !== 'object') {
+      return undefined
+    }
+    node = (node as Record<string, unknown>)[token]
+  }
+  return node
+}
+
+/**
+ * Walk a tool `inputSchema` and collect every `x-mcp-header` annotation, validating the
+ * SEP-2243 constraints: header names must be valid tokens, case-insensitively unique
+ * within the schema, and may annotate only primitive (boolean/integer/string, optionally
+ * nullable) types.
+ *
+ * Traverses nested object `properties`, local `$ref` targets (`#/$defs/*`,
+ * `#/definitions/*`, with circular-ref detection), and the `allOf`/`anyOf`/`oneOf`
+ * composition keywords (branches share the parent's argument path). An `x-mcp-header`
+ * found inside array element schemas (`items` / `prefixItems`) is an ERROR -- a scalar
+ * header cannot carry a multi-element array value -- rather than a silent miss. The
+ * argument-path model stays a flat `Array<string>` of object-property keys.
+ */
+export function collectHeaderAnnotations(inputSchema: unknown): CollectResult {
+  const annotations: Array<HeaderAnnotation> = []
+  const errors: Array<string> = []
+  const seen = new Set<string>()
+  // The header name claimed at each argument path. A `$ref` target is walked at the *same* path
+  // as the referencing property, so a name re-arriving at a claimed path is one declaration seen
+  // twice -- not the two-properties-one-name collision `seen` guards.
+  const claimed = new Map<string, string>()
+  // Paths whose eligibility check is deferred: a `$ref` wrapper declaring no `type` waits for a
+  // node that supplies one at the same path.
+  const pending = new Map<string, string>()
+  const root = inputSchema
+
+  const walk = (
+    schema: unknown,
+    path: Array<string>,
+    refStack: Set<string>,
+    inArray: boolean,
+  ): void => {
+    if (schema == null || typeof schema !== 'object') {
+      return
+    }
+    const node = schema as Record<string, unknown>
+    const here = path.join('.') || '<root>'
+
+    // Self-annotation check: applies when this node is reached as a named property
+    // (path non-empty) -- either directly or via a resolved $ref / composition branch.
+    // Checking here rather than in the parent properties loop means $ref targets that
+    // carry the annotation directly are processed correctly.
+    if (path.length > 0) {
+      const at = path.join('.')
+
+      // Settle a deferral as soon as a node at this path declares a `type`. Array element schemas
+      // are excluded: their `type` describes an element, not the annotated argument.
+      if (!inArray && node.type !== undefined) {
+        const deferredName = pending.get(at)
+        if (deferredName !== undefined) {
+          pending.delete(at)
+          if (!isEligibleType(node.type)) {
+            errors.push(
+              `x-mcp-header "${deferredName}" at ${at} must annotate boolean/integer/string`,
+            )
+          }
+        }
+      }
+
+      const annotation = node['x-mcp-header']
+      if (annotation !== undefined) {
+        // 2020-12 allows keywords beside `$ref`, so a wrapper declaring its own `type` is judged
+        // here. Only a typeless one defers, and the deferral is recorded rather than waved
+        // through, so the check always lands somewhere.
+        const defers = node.$ref !== undefined && node.type === undefined
+        if (inArray) {
+          errors.push(`x-mcp-header at ${at} cannot be inside array items (scalar header)`)
+        } else if (typeof annotation !== 'string' || !isValidHeaderParamName(annotation)) {
+          errors.push(`Invalid x-mcp-header name at ${at}`)
+        } else if (!defers && !isEligibleType(node.type)) {
+          // Checked before the uniqueness branches so a property's declared type is validated
+          // before the same-path acceptance branch can skip it.
+          errors.push(`x-mcp-header "${annotation}" at ${at} must annotate boolean/integer/string`)
+        } else if (claimed.get(at) === annotation) {
+          // Same path, same name: property and `$ref` target agree. Already collected, and any
+          // deferral the first sighting recorded still stands.
+        } else if (claimed.has(at)) {
+          errors.push(`Conflicting x-mcp-header "${claimed.get(at)}" and "${annotation}" at ${at}`)
+        } else if (seen.has(annotation.toLowerCase())) {
+          errors.push(`Duplicate x-mcp-header "${annotation}" at ${at}`)
+        } else {
+          seen.add(annotation.toLowerCase())
+          claimed.set(at, annotation)
+          annotations.push({ headerName: annotation, path })
+          if (defers) {
+            pending.set(at, annotation)
+          }
+        }
+      }
+    }
+
+    // $ref: resolve against root, guard cycles, continue at the same path.
+    // 2020-12 allows sibling keywords next to $ref, so we still walk the rest of this node.
+    const ref = node.$ref
+    if (typeof ref === 'string') {
+      if (refStack.has(ref)) {
+        errors.push(`Circular $ref "${ref}" at ${here}`)
+      } else {
+        const target = resolveLocalRef(root, ref)
+        if (target === undefined) {
+          errors.push(`Unresolved $ref "${ref}" at ${here}`)
+        } else {
+          walk(target, path, new Set(refStack).add(ref), inArray)
+        }
+      }
+    }
+
+    // Composition: descend each branch at the same object level / path.
+    for (const key of ['allOf', 'anyOf', 'oneOf'] as const) {
+      const branches = node[key]
+      if (Array.isArray(branches)) {
+        for (const branch of branches) {
+          walk(branch, path, refStack, inArray)
+        }
+      }
+    }
+
+    // Array element schemas: descend in error-detect mode (inArray = true).
+    for (const key of ['prefixItems', 'items'] as const) {
+      const sub = node[key]
+      if (Array.isArray(sub)) {
+        for (const entry of sub) {
+          walk(entry, path, refStack, true)
+        }
+      } else if (sub != null && typeof sub === 'object') {
+        walk(sub, path, refStack, true)
+      }
+    }
+
+    // Object properties: walk each child at its named path.
+    const properties = node.properties
+    if (properties == null || typeof properties !== 'object') {
+      return
+    }
+    for (const [key, rawChild] of Object.entries(properties as Record<string, unknown>)) {
+      if (rawChild == null || typeof rawChild !== 'object') {
+        continue
+      }
+      const child = rawChild as Record<string, unknown>
+      const childPath = [...path, key]
+      walk(child, childPath, refStack, inArray)
+    }
+  }
+
+  walk(inputSchema, [], new Set<string>(), false)
+  // Still pending after the whole walk: no node ever declared a `type`. Unprovable is not
+  // eligible -- better to report the tool invalid than offer a header this client cannot honour.
+  for (const [at, headerName] of pending) {
+    errors.push(`x-mcp-header "${headerName}" at ${at} must annotate boolean/integer/string`)
+  }
+  const valid = errors.length === 0
+  return { annotations: valid ? annotations : [], valid, errors }
+}
