@@ -136,7 +136,7 @@ the clients:
    no retry after it, abort during backoff, `Retry-After` honoured, non-retryable passes
    through, retries disabled with `false`.
 4. CLI rendering of retry events and per-kind messages.
-5. Docs: provider guide section on errors and retry; changeset (minor: new exports and
+5. Docs: provider guide section on errors and retry; changeset (minor, per Decisions: new exports and
    options; errors thrown by providers change type, so note it as behaviour change).
 
 ## Done when
@@ -147,9 +147,10 @@ the clients:
 - OpenAI and Ollama in-stream error payloads surface as `ProviderError`s.
 - `pnpm build`, `pnpm test` and `pnpm lint` pass.
 
-## Open questions
+## Decisions
 
-- Default on or off? Proposed on (2 retries), since a single 429 ending an agent run is the
-  worse default; `retry: false` opts out.
-- `ky` `HTTPError` is still reachable as `cause`. Anyone matching on it directly breaks;
-  acceptable for a minor in this lockstep release line?
+- **Retry is on by default** (2 retries), since a single `429` ending an agent run is the worse
+  default; `retry: false` opts out. Agreed 2026-11-05.
+- **Ships as a minor.** Providers throw `ProviderError` instead of ky's `HTTPError`, which stays
+  reachable as `cause`; code matching on the ky type directly must switch. The changeset notes
+  this as a behaviour change. Agreed 2026-11-05.
