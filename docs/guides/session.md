@@ -480,7 +480,42 @@ session.events.on('message-part', (part) => {
       break
   }
 })
+
+// A chat request failed before producing output and is being retried
+session.events.on('provider-retry', ({ provider, model, attempt, maxRetries, error, retryInMs }) => {
+  console.log(`${provider} ${model}: retry ${attempt}/${maxRetries} in ${retryInMs}ms`, error)
+})
 ```
+
+## Retrying Chat Requests
+
+`chat()` and `streamChatTurn()` retry a request that fails before producing any output, such as
+a `429` rate limit, an overloaded provider or a dropped connection. Only retryable
+`ProviderError`s are retried (see [Errors and Retry](./providers.md#errors-and-retry)); an
+authentication or context-length failure fails at once. By default a request is retried up to 2
+times with exponential backoff and jitter, waiting as long as the provider's `Retry-After` asks,
+capped at 30 seconds.
+
+```typescript
+// Session-wide policy (`false` disables retries)
+const session = new Session({
+  providers: { openai },
+  retry: { retries: 3, baseDelayMs: 1000, maxDelayMs: 20_000 },
+})
+
+// Per request: override the policy, and observe retries
+await session.chat({
+  provider: 'openai',
+  model: 'gpt-4',
+  messages,
+  retry: false,
+  onRetry: ({ attempt, retryInMs }) => console.log(`retry ${attempt} in ${retryInMs}ms`),
+})
+```
+
+Each request keeps one inference span: a retried attempt is recorded as a `mokei.retry` span
+event, and the span's status and `error.type` (the `ProviderError` kind) reflect only the final
+outcome.
 
 ## Accessing Host Directly
 

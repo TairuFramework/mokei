@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-11-04
+**Last updated:** 2026-11-05
 
 ## Vision
 
@@ -64,6 +64,11 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **Provider error handling** (2026-11-05) -- typed `ProviderError` across all providers
+  (in-stream errors included), retry for embeddings and model listing, and chat retry with
+  backoff before the first output part in `Session` and `AgentSession`, so a `429` or overload no
+  longer ends an agent run. See
+  [provider error handling](completed/2026-11-05-provider-error-handling.complete.md).
 - **Unified traces follow-ons** (2026-11-04) -- context trace rows named by their server, a
   "Called from" index of cross-trace calls, newest-first log paging (`traces.logs`), verified
   counting of lost summary deltas, an `events` type filter, and `context:message` removed from
@@ -234,8 +239,11 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
   already hono-based, so `@mokei/hono` is nearly free.
 - **Tree-shakeable provider exports** — `@mokei/openai-provider/chat`,
   `/embed`, etc.
-- **Enhanced error handling** — retry strategies, circuit breaker for
-  failing tools, provider failover.
+- **Enhanced error handling** — typed provider errors and chat retry shipped
+  (`completed/2026-11-05-provider-error-handling.complete.md`). Later slices: opt-in reconnect for lost
+  contexts, then provider failover on retryable errors. A tool circuit breaker was dropped
+  (tool errors already return to the model); a per-run consecutive-failure limit replaces it if
+  needed.
 
 ## Planned — P3
 

@@ -76,6 +76,7 @@ const agent = new AgentSession({
   toolApproval: 'auto',         // Tool approval strategy (default: 'auto')
   maxIterations: 10,            // Max iterations before stopping (default: 10)
   timeout: 300000,              // Timeout in ms (default: 5 minutes)
+  retry: { retries: 2 },        // Model request retry policy (default: the session's; false disables)
   onEvent: (event) => {         // Callback for each event
     console.log(event.type)
   }
@@ -226,6 +227,10 @@ for await (const event of agent.stream({ prompt: 'Create a users table' })) {
       console.log('Hit max iterations limit')
       break
 
+    case 'retry':
+      console.log(`Model request failed, retry ${event.attempt}/${event.maxRetries} in ${event.retryInMs}ms`)
+      break
+
     case 'timeout':
       console.log('Execution timed out')
       break
@@ -261,6 +266,7 @@ All events include a `timestamp` field (Unix ms).
 | `tool-call-complete` | Tool executed successfully | `toolCall`, `result` |
 | `tool-call-error` | Tool execution failed | `toolCall`, `error` |
 | `iteration-complete` | Iteration finished | `iteration`, `hasToolCalls` |
+| `retry` | Model request failed before output and is retried; the run continues | `iteration`, `attempt`, `maxRetries`, `error`, `retryInMs` |
 | `max-iterations` | Hit iteration limit | `iteration` |
 | `timeout` | Execution timed out | - |
 | `complete` | Agent finished | `result` |

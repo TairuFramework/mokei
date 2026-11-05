@@ -4,10 +4,12 @@ import type {
   SingleReplyRequest,
   StreamReplyRequest,
 } from '@mokei/model-provider'
+import { mapStreamErrors } from '@mokei/model-provider'
 import { type EventSourceMessage, EventSourceParserStream } from 'eventsource-parser/stream'
-import ky, { type KyInstance, type ResponsePromise } from 'ky'
+import ky, { type KyInstance, type ResponsePromise, type RetryOptions } from 'ky'
 
 import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT, type OpenAIConfiguration } from './config.js'
+import { toOpenAIError } from './errors.js'
 import type {
   ChatCompletionChunk,
   ChatCompletionResponse,
@@ -31,12 +33,27 @@ export function parseEventData(data: string): unknown | undefined {
   }
 }
 
+/** Retry for idempotent requests (embeddings, model listing); chat is retried by the caller. */
+export const IDEMPOTENT_RETRY: RetryOptions = {
+  limit: 2,
+  methods: ['get', 'post'],
+  statusCodes: [408, 429, 500, 502, 503, 504, 529],
+  afterStatusCodes: [429, 503, 529],
+  maxRetryAfter: 30_000,
+  backoffLimit: 30_000,
+  jitter: true,
+}
+
+function rethrow(error: unknown): never {
+  throw toOpenAIError(error)
+}
+
 function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStream<T>> {
   return response.then((res) => {
     if (res.body == null) {
       throw new Error('No response body')
     }
-    return res.body
+    return mapStreamErrors(res.body, toOpenAIError)
       .pipeThrough(new TextDecoderStream())
       .pipeThrough(new EventSourceParserStream())
       .pipeThrough(
@@ -49,7 +66,7 @@ function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStre
           },
         }),
       )
-  })
+  }, rethrow)
 }
 
 export type ListModelParams = RequestParams
@@ -119,16 +136,22 @@ export class OpenAIClient {
 
   async listModels(params: ListModelParams = {}): Promise<Array<Model>> {
     const res = await this.#api
-      .get<{ data: Array<Model> }>('models', { signal: params.signal })
+      .get<{ data: Array<Model> }>('models', { signal: params.signal, retry: IDEMPOTENT_RETRY })
       .json()
+      .catch(rethrow)
     return res.data
   }
 
   async embeddings(params: EmbeddingsParams): Promise<Array<Embedding>> {
     const { signal, ...request } = params
     const res = await this.#api
-      .post<{ data: Array<Embedding> }>('embeddings', { json: request, signal })
+      .post<{ data: Array<Embedding> }>('embeddings', {
+        json: request,
+        signal,
+        retry: IDEMPOTENT_RETRY,
+      })
       .json()
+      .catch(rethrow)
     return res.data
   }
 
@@ -161,7 +184,7 @@ export class OpenAIClient {
           : controller.signal,
       },
     )
-    const response = params.stream ? toResponseStream(request) : request.json()
+    const response = params.stream ? toResponseStream(request) : request.json().catch(rethrow)
     return Object.assign(response, { abort: () => controller.abort(), signal: controller.signal })
   }
 }

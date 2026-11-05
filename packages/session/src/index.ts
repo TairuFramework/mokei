@@ -17,5 +17,9 @@ export * from './agent-session.js'
 export * from './agent-types.js'
 export * from './errors.js'
 export * from './gen-ai-content.js'
-export { type TraceStreamChatParams, traceStreamChat } from './inference-tracing.js'
+export {
+  type TraceStreamChatHooks,
+  type TraceStreamChatParams,
+  traceStreamChat,
+} from './inference-tracing.js'
 export * from './session.js'

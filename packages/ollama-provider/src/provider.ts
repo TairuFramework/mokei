@@ -15,6 +15,7 @@ import { assertType } from '@sozai/schema'
 import type { ChatResponse, ListModelParams, OllamaClientParams } from './client.js'
 import { OllamaClient } from './client.js'
 import { type OllamaConfiguration, validateConfiguration } from './config.js'
+import { streamLineError } from './errors.js'
 import type { Message, Model, Tool, ToolCall } from './types.js'
 
 export type OllamaTypes = {
@@ -100,6 +101,11 @@ export class OllamaProvider implements ModelProvider<OllamaTypes> {
       return stream.pipeThrough(
         new TransformStream<ChatResponse, MessagePart<ChatResponse, ToolCall>>({
           transform(part, controller) {
+            const error = streamLineError(part)
+            if (error != null) {
+              controller.enqueue({ type: 'error', error, raw: part })
+              return
+            }
             if (part.message.content != null && part.message.content !== '') {
               controller.enqueue({ type: 'text-delta', text: part.message.content, raw: part })
             }

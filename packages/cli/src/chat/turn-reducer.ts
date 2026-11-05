@@ -89,6 +89,9 @@ export function turnReducer<T extends ProviderTypes = ProviderTypes>(
     case 'tool-call-complete':
     case 'tool-call-error':
       return { ...state, state: 'streaming', pendingCall: null, activeToolCall: null }
+    case 'retry':
+      // The request starts over: restart the wait-for-first-token display.
+      return { ...state, currentReasoning: '', streamStartedAt: event.timestamp }
     case 'iteration-complete':
     // The CLI does not enable elicitation, so these events never reach the chat turn.
     case 'elicitation-request':

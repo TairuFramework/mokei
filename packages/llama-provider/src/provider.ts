@@ -15,7 +15,7 @@ import type {
   StreamChatParams,
   StreamChatRequest,
 } from '@mokei/model-provider'
-import { resolveSamplingParams } from '@mokei/model-provider'
+import { ProviderError, resolveSamplingParams } from '@mokei/model-provider'
 import { Disposer, lazy } from '@sozai/async'
 import { assertType } from '@sozai/schema'
 import type {
@@ -64,6 +64,16 @@ export type DownloadModelParams = {
   onProgress?: (progress: DownloadProgress) => void
 }
 
+const PROVIDER_NAME = 'llama.cpp'
+
+function notRegistered(model: string): ProviderError {
+  return new ProviderError({
+    message: `Model "${model}" is not registered`,
+    kind: 'invalid_request',
+    provider: PROVIDER_NAME,
+  })
+}
+
 export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes> {
   static fromConfig(config: LlamaConfiguration): LlamaProvider {
     assertType(validateConfiguration, config)
@@ -72,7 +82,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
 
   #registry: Map<string, LlamaModelConfig>
   #telemetry: ProviderTelemetry = {
-    providerName: 'llama.cpp',
+    providerName: PROVIDER_NAME,
     local: true,
     syntheticToolCallIDs: true,
   }
@@ -117,7 +127,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     }
     const config = this.#registry.get(name)
     if (config == null) {
-      throw new Error(`Model "${name}" is not registered`)
+      throw notRegistered(name)
     }
     const promise = this.#doLoadModel(name, config)
     this.#loadingModels.set(name, promise)
@@ -167,7 +177,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
     }
     const config = this.#registry.get(model)
     if (config == null) {
-      throw new Error(`Model "${model}" is not registered`)
+      throw notRegistered(model)
     }
     const loadedModel = await this.#loadModel(model)
     const context = await loadedModel.createContext({
@@ -233,7 +243,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
   async deleteModel(name: string): Promise<void> {
     const config = this.#registry.get(name)
     if (config == null) {
-      throw new Error(`Model "${name}" is not registered`)
+      throw notRegistered(name)
     }
 
     const defaultCtx = this.#defaultContexts.get(name)
@@ -269,7 +279,7 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
   async embed(params: EmbedParams): Promise<EmbedResponse> {
     const config = this.#registry.get(params.model)
     if (config == null) {
-      throw new Error(`Model "${params.model}" is not registered`)
+      throw notRegistered(params.model)
     }
 
     let embeddingContext = this.#embeddingContexts.get(params.model)
@@ -307,9 +317,12 @@ export class LlamaProvider extends Disposer implements ModelProvider<LlamaTypes>
 
     const response = (async () => {
       if (params.output != null && params.tools != null && params.tools.length > 0) {
-        throw new Error(
-          'Structured output (grammar) and tool calling (functions) cannot be used together with node-llama-cpp. Provide either output or tools, but not both.',
-        )
+        throw new ProviderError({
+          message:
+            'Structured output (grammar) and tool calling (functions) cannot be used together with node-llama-cpp. Provide either output or tools, but not both.',
+          kind: 'invalid_request',
+          provider: PROVIDER_NAME,
+        })
       }
 
       const context =

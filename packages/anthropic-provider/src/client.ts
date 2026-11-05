@@ -1,6 +1,6 @@
-import type { RequestParams, StreamReplyRequest } from '@mokei/model-provider'
+import { mapStreamErrors, type RequestParams, type StreamReplyRequest } from '@mokei/model-provider'
 import { type EventSourceMessage, EventSourceParserStream } from 'eventsource-parser/stream'
-import ky, { type KyInstance, type ResponsePromise } from 'ky'
+import ky, { type KyInstance, type ResponsePromise, type RetryOptions } from 'ky'
 
 import {
   type AnthropicConfiguration,
@@ -8,14 +8,30 @@ import {
   DEFAULT_BASE_URL,
   DEFAULT_TIMEOUT,
 } from './config.js'
+import { toAnthropicError } from './errors.js'
 import type { Message, Model, StreamEvent, Tool } from './types.js'
+
+/** Retry for idempotent requests (model listing); messages are retried by the caller. */
+export const IDEMPOTENT_RETRY: RetryOptions = {
+  limit: 2,
+  methods: ['get'],
+  statusCodes: [408, 429, 500, 502, 503, 504, 529],
+  afterStatusCodes: [429, 503, 529],
+  maxRetryAfter: 30_000,
+  backoffLimit: 30_000,
+  jitter: true,
+}
+
+function rethrow(error: unknown): never {
+  throw toAnthropicError(error)
+}
 
 function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStream<T>> {
   return response.then((res) => {
     if (res.body == null) {
       throw new Error('No response body')
     }
-    return res.body
+    return mapStreamErrors(res.body, toAnthropicError)
       .pipeThrough(new TextDecoderStream())
       .pipeThrough(new EventSourceParserStream())
       .pipeThrough(
@@ -31,7 +47,7 @@ function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStre
           },
         }),
       )
-  })
+  }, rethrow)
 }
 
 export type ListModelParams = RequestParams
@@ -96,8 +112,11 @@ export class AnthropicClient {
   /**
    * List available models via the Anthropic `GET /v1/models` endpoint
    */
-  async listModels(_params: ListModelParams = {}): Promise<ListModelResult> {
-    return await this.#api.get('models').json<ListModelResult>()
+  async listModels(params: ListModelParams = {}): Promise<ListModelResult> {
+    return await this.#api
+      .get('models', { signal: params.signal, retry: IDEMPOTENT_RETRY })
+      .json<ListModelResult>()
+      .catch(rethrow)
   }
 
   /**

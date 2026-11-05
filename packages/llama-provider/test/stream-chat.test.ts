@@ -281,6 +281,11 @@ describe('LlamaProvider streamChat', () => {
     await expect(request).rejects.toThrow(
       'Structured output (grammar) and tool calling (functions) cannot be used together',
     )
+    await expect(request).rejects.toMatchObject({
+      name: 'ProviderError',
+      kind: 'invalid_request',
+      retryable: false,
+    })
   })
 
   test('passes grammar to promptWithMeta when output schema is provided', async () => {

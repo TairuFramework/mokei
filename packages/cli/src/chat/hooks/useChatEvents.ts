@@ -1,7 +1,8 @@
-import type { ProviderTypes } from '@mokei/model-provider'
+import { ProviderError, type ProviderTypes } from '@mokei/model-provider'
 import type { AgentEvent } from '@mokei/session'
 import { useCallback, useRef, useState } from 'react'
 
+import { describeProviderError, retryNotice } from '../provider-error.js'
 import type { PushEntry } from '../transcript.js'
 
 export type UseChatEventsParams = {
@@ -113,10 +114,17 @@ export function useChatEvents<T extends ProviderTypes>({
             text: `tool denied: ${event.toolCall.name}${event.reason ? ` — ${event.reason}` : ''}`,
           })
           break
+        case 'retry':
+          pushEntry({ kind: 'notice', variant: 'warning', text: retryNotice(event) })
+          break
         case 'error': {
           const err = event.error
           lastReasoningRef.current = reasoningBufRef.current
           lastErrorDetailRef.current = err.stack ?? err.message
+          if (err instanceof ProviderError) {
+            pushEntry({ kind: 'notice', variant: 'error', text: describeProviderError(err) })
+            break
+          }
           const cause =
             err.cause instanceof Error ? ` (cause: ${err.cause.name}: ${err.cause.message})` : ''
           pushEntry({

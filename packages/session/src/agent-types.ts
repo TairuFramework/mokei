@@ -1,6 +1,12 @@
 import type { CallToolResult, ElicitResult } from '@mokei/context-protocol'
 import type { ContextTool, HostElicitRequest } from '@mokei/host'
-import type { FunctionToolCall, Message, ModelProvider, ProviderTypes } from '@mokei/model-provider'
+import type {
+  FunctionToolCall,
+  Message,
+  ModelProvider,
+  ProviderTypes,
+  RetryPolicy,
+} from '@mokei/model-provider'
 
 import type { Session } from './session.js'
 
@@ -118,6 +124,11 @@ export type AgentParams<T extends ProviderTypes = ProviderTypes> = {
   onEvent?: (event: AgentEvent) => void
   /** Optional callback to answer MCP elicitation requests */
   onElicitation?: ElicitationFn
+  /**
+   * Retry policy for model requests that fail before producing output; defaults to the
+   * session's (`SessionParams.retry`). `false` disables retries.
+   */
+  retry?: RetryPolicy | false
 }
 
 /**
@@ -136,6 +147,7 @@ export type ResolvedAgentParams<T extends ProviderTypes = ProviderTypes> = {
   toolTimeout: number
   onEvent: ((event: AgentEvent) => void) | undefined
   onElicitation?: ElicitationFn
+  retry?: RetryPolicy | false
 }
 
 /**
@@ -160,6 +172,7 @@ export type AgentEvent<T extends ProviderTypes = ProviderTypes> =
   | AgentElicitationCompleteEvent
   | AgentIterationCompleteEvent
   | AgentCompleteEvent<T>
+  | AgentRetryEvent
   | AgentErrorEvent
   | AgentTimeoutEvent
   | AgentMaxIterationsEvent
@@ -336,6 +349,25 @@ export type AgentIterationCompleteEvent = {
 export type AgentCompleteEvent<T extends ProviderTypes = ProviderTypes> = {
   type: 'complete'
   result: AgentResult<T>
+  timestamp: number
+}
+
+/**
+ * Emitted when a model request failed before producing output and is about to be sent again,
+ * such as after a rate limit or an overloaded provider. The run continues.
+ */
+export type AgentRetryEvent = {
+  type: 'retry'
+  /** Iteration whose model request is being retried */
+  iteration: number
+  /** The retry about to run: 1 for the first retry */
+  attempt: number
+  /** Retries the policy allows in all */
+  maxRetries: number
+  /** The failure of the previous attempt, usually a `ProviderError` */
+  error: unknown
+  /** How long until the retry starts, in milliseconds */
+  retryInMs: number
   timestamp: number
 }
 

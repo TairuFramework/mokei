@@ -19,6 +19,35 @@ import {
   type Validator,
 } from '@sozai/schema'
 
+export {
+  type ErrorBodyFields,
+  type HeaderSource,
+  isAbortError,
+  isContextLengthMessage,
+  isRetryableKind,
+  isRetryableProviderError,
+  kindFromStatus,
+  mapStreamErrors,
+  ProviderError,
+  type ProviderErrorFromResponseParams,
+  type ProviderErrorKind,
+  type ProviderErrorParams,
+  parseRetryAfter,
+  providerErrorFromResponse,
+  providerErrorFromTransport,
+  type ToProviderErrorParams,
+  toProviderError,
+} from './errors.js'
+export {
+  DEFAULT_RETRY_POLICY,
+  type RetryDelayParams,
+  type RetryInfo,
+  type RetryPolicy,
+  type RetryStreamChatParams,
+  retryDelay,
+  retryStreamChat,
+} from './retry.js'
+
 const objectValidator = createValidator({ type: 'object' })
 
 export function tryParseJSON<T = Record<string, unknown>>(
