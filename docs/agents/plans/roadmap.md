@@ -53,12 +53,7 @@ published package in one `versioning.fixed` lockstep group.
 
 ## Now (next/)
 
-- **Provider error handling** (`next/2026-11-05-provider-error-handling.md`) -- typed
-  `ProviderError` across all providers, in-stream error payloads surfaced, and chat retry with
-  backoff before the first output part, so a `429` or overload no longer ends an agent run. First
-  slice of P2 "Enhanced error handling".
-
-Before that, nothing was scheduled. The backlog was trimmed on 2026-11-04
+Nothing scheduled. The backlog was trimmed on 2026-11-04
 ([backlog trim](completed/2026-11-04-backlog-trim.complete.md)), with a second pass the same day
 that dropped work for deprecated or `2025-11-25`-only surfaces. The first pass: flow service startup errors keep
 their cause, versions report `MOKEI_VERSION`, the monitor bounds its trace list and splits its
@@ -69,6 +64,11 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **Provider error handling** (2026-11-05) -- typed `ProviderError` across all providers
+  (in-stream errors included), retry for embeddings and model listing, and chat retry with
+  backoff before the first output part in `Session` and `AgentSession`, so a `429` or overload no
+  longer ends an agent run. See
+  [provider error handling](completed/2026-11-05-provider-error-handling.complete.md).
 - **Unified traces follow-ons** (2026-11-04) -- context trace rows named by their server, a
   "Called from" index of cross-trace calls, newest-first log paging (`traces.logs`), verified
   counting of lost summary deltas, an `events` type filter, and `context:message` removed from
@@ -239,8 +239,8 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
   already hono-based, so `@mokei/hono` is nearly free.
 - **Tree-shakeable provider exports** — `@mokei/openai-provider/chat`,
   `/embed`, etc.
-- **Enhanced error handling** — typed provider errors and retry are planned in
-  `next/2026-11-05-provider-error-handling.md`. Later slices: opt-in reconnect for lost
+- **Enhanced error handling** — typed provider errors and chat retry shipped
+  (`completed/2026-11-05-provider-error-handling.complete.md`). Later slices: opt-in reconnect for lost
   contexts, then provider failover on retryable errors. A tool circuit breaker was dropped
   (tool errors already return to the model); a per-run consecutive-failure limit replaces it if
   needed.

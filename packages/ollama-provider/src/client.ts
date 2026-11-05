@@ -1,22 +1,42 @@
-import type {
-  AnyReplyRequest,
-  RequestParams,
-  SingleReplyRequest,
-  StreamReplyRequest,
+import {
+  type AnyReplyRequest,
+  mapStreamErrors,
+  type RequestParams,
+  type SingleReplyRequest,
+  type StreamReplyRequest,
 } from '@mokei/model-provider'
 import { fromJSONLines } from '@sozai/stream'
 import ky, { type KyInstance, type ResponsePromise, type RetryOptions } from 'ky'
 
 import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT, type OllamaConfiguration } from './config.js'
+import { toOllamaError } from './errors.js'
 import type { Message, Model, Tool } from './types.js'
+
+/**
+ * Retry for idempotent requests (embeddings, model listing); chat and generate are retried by
+ * the caller. `request.retry` overrides it.
+ */
+export const IDEMPOTENT_RETRY: RetryOptions = {
+  limit: 2,
+  methods: ['get', 'post'],
+  statusCodes: [408, 429, 500, 502, 503, 504],
+  afterStatusCodes: [429, 503],
+  maxRetryAfter: 30_000,
+  backoffLimit: 30_000,
+  jitter: true,
+}
+
+function rethrow(error: unknown): never {
+  throw toOllamaError(error)
+}
 
 function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStream<T>> {
   return response.then((res) => {
     if (res.body == null) {
       throw new Error('No response body')
     }
-    return res.body.pipeThrough(fromJSONLines<T>())
-  })
+    return mapStreamErrors(res.body, toOllamaError).pipeThrough(fromJSONLines<T>())
+  }, rethrow)
 }
 
 export type RequestOptions = {
@@ -114,16 +134,17 @@ export class OllamaClient {
   }
 
   async listModels(params: ListModelParams = {}): Promise<Array<Model>> {
-    const options = params.request
-      ? { ...params.request, signal: params.signal }
-      : { signal: params.signal }
-    const res = await this.#api.get<{ models: Array<Model> }>('tags', options).json()
+    const options = { retry: IDEMPOTENT_RETRY, ...params.request, signal: params.signal }
+    const res = await this.#api.get<{ models: Array<Model> }>('tags', options).json().catch(rethrow)
     return res.models
   }
 
   async embed(params: EmbedParams): Promise<EmbedResponse> {
     const { signal, ...request } = params
-    return await this.#api.post<EmbedResponse>('embed', { json: request, signal }).json()
+    return await this.#api
+      .post<EmbedResponse>('embed', { json: request, signal, retry: IDEMPOTENT_RETRY })
+      .json()
+      .catch(rethrow)
   }
 
   generate(params: GenerateParams & { stream?: false }): SingleReplyRequest<GenerateResponse>
@@ -138,7 +159,7 @@ export class OllamaClient {
         ? AbortSignal.any([params.signal, controller.signal])
         : controller.signal,
     })
-    const response = params.stream ? toResponseStream(request) : request.json()
+    const response = params.stream ? toResponseStream(request) : request.json().catch(rethrow)
     return Object.assign(response, { abort: () => controller.abort(), signal: controller.signal })
   }
 
@@ -154,7 +175,7 @@ export class OllamaClient {
         ? AbortSignal.any([params.signal, controller.signal])
         : controller.signal,
     })
-    const response = params.stream ? toResponseStream(request) : request.json()
+    const response = params.stream ? toResponseStream(request) : request.json().catch(rethrow)
     return Object.assign(response, { abort: () => controller.abort(), signal: controller.signal })
   }
 }

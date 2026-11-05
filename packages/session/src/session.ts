@@ -20,11 +20,14 @@ import type {
   MessagePart,
   ModelProvider,
   ProviderTypes,
+  RetryInfo,
+  RetryPolicy,
   SamplingParams,
   ServerMessage,
   StreamChatParams,
   StreamChatRequest,
 } from '@mokei/model-provider'
+import { retryStreamChat } from '@mokei/model-provider'
 import { Disposer, raceSignal } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 import { fromStream } from '@sozai/generator'
@@ -56,24 +59,34 @@ export type AddHTTPContextParams = HTTPContextParams & {
   enableTools?: EnableToolsArg
 }
 
-export type ChatParams<T extends ProviderTypes = ProviderTypes> = SamplingParams & {
-  provider: string | ModelProvider<T>
-  model: string
-  messages: Array<Message<T['MessagePart'], T['ToolCall']>>
-  tools?: Array<T['Tool']>
-  signal?: AbortSignal
-  abortActiveRequest?: boolean
+/** Retry options for one chat request; see {@link SessionParams.retry}. */
+export type ChatRetryParams = {
+  /** Overrides the session's retry policy for this request; `false` disables retries */
+  retry?: RetryPolicy | false
+  /** Called before each retry, after the session's `provider-retry` event */
+  onRetry?: (info: RetryInfo) => void
 }
 
-export type StreamChatTurnParams<T extends ProviderTypes = ProviderTypes> = SamplingParams & {
-  provider: string | ModelProvider<T>
-  model: string
-  messages: Array<Message<T['MessagePart'], T['ToolCall']>>
-  tools?: Array<T['Tool']>
-  /** MCP definitions of `tools`, recorded as `gen_ai.tool.definitions` when content is captured */
-  toolDefinitions?: Array<Tool>
-  signal?: AbortSignal
-}
+export type ChatParams<T extends ProviderTypes = ProviderTypes> = SamplingParams &
+  ChatRetryParams & {
+    provider: string | ModelProvider<T>
+    model: string
+    messages: Array<Message<T['MessagePart'], T['ToolCall']>>
+    tools?: Array<T['Tool']>
+    signal?: AbortSignal
+    abortActiveRequest?: boolean
+  }
+
+export type StreamChatTurnParams<T extends ProviderTypes = ProviderTypes> = SamplingParams &
+  ChatRetryParams & {
+    provider: string | ModelProvider<T>
+    model: string
+    messages: Array<Message<T['MessagePart'], T['ToolCall']>>
+    tools?: Array<T['Tool']>
+    /** MCP definitions of `tools`, recorded as `gen_ai.tool.definitions` when content is captured */
+    toolDefinitions?: Array<Tool>
+    signal?: AbortSignal
+  }
 
 export type SessionTracing = {
   /** Content capture for GenAI and MCP spans; also forwarded to a host this session creates */
@@ -98,10 +111,18 @@ export type ContextRemovedEvent = {
   key: string
 }
 
+/** A chat request failed before producing output and is about to be sent again. */
+export type ProviderRetryEvent = RetryInfo & {
+  /** Provider name, from its telemetry, when it reports one */
+  provider?: string
+  model: string
+}
+
 export type SessionEvents<T extends ProviderTypes = ProviderTypes> = {
   'context-added': ContextAddedEvent
   'context-removed': ContextRemovedEvent
   'message-part': MessagePart<T['MessagePart'], T['ToolCall']>
+  'provider-retry': ProviderRetryEvent
 }
 
 export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
@@ -137,6 +158,12 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   localTools?: Array<LocalToolDefinition>
   /** Telemetry options; a supplied `contextHost` keeps its own configuration. */
   tracing?: SessionTracing
+  /**
+   * Retry policy for chat requests that fail before producing output, such as a rate limit or
+   * an overloaded provider. Defaults to `DEFAULT_RETRY_POLICY` (2 retries with backoff, honouring
+   * `Retry-After`); `false` disables retries. Requests can override it.
+   */
+  retry?: RetryPolicy | false
 }
 
 /**
@@ -186,6 +213,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #events: EventEmitter<SessionEvents<T>>
   #contextHost: ContextHost
   #providers: Map<string, ModelProvider<T>>
+  #retry: RetryPolicy | false | undefined
   #tracing: SessionTracing | undefined
 
   constructor(params: SessionParams<T> = {}) {
@@ -202,6 +230,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       params.contextHost ??
       new DefaultContextHost({ elicit: params.elicit, tracing: params.tracing })
     this.#tracing = params.tracing
+    this.#retry = params.retry
     this.#providers = new Map(Object.entries(params.providers ?? {}))
 
     // Register local tools if provided
@@ -341,7 +370,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     provider: ModelProvider<P>,
     params: StreamChatTurnParams<P>,
   ): StreamChatRequest<P['MessagePart'], P['ToolCall']> {
-    const { provider: _provider, toolDefinitions, ...rest } = params
+    const { provider: _provider, toolDefinitions, retry = this.#retry, onRetry, ...rest } = params
     let tools = params.tools
     let definitions = toolDefinitions
     if (tools == null) {
@@ -354,7 +383,21 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       request,
       tools: definitions,
       capture: resolveContentCapture(this.#tracing?.payloads),
-      start: () => provider.streamChat(request),
+      start: ({ recordRetry }) =>
+        retryStreamChat({
+          start: () => provider.streamChat(request),
+          policy: retry,
+          signal: request.signal,
+          onRetry: (info) => {
+            recordRetry(info)
+            this.#events.emit('provider-retry', {
+              ...info,
+              provider: provider.telemetry?.providerName,
+              model: request.model,
+            })
+            onRetry?.(info)
+          },
+        }),
     })
   }
 

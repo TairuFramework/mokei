@@ -15,6 +15,7 @@ import { assertType } from '@sozai/schema'
 
 import { AnthropicClient, type AnthropicClientParams } from './client.js'
 import { type AnthropicConfiguration, validateConfiguration } from './config.js'
+import { streamEventError } from './errors.js'
 import type {
   ContentBlock,
   Message,
@@ -308,7 +309,7 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
               case 'error':
                 controller.enqueue({
                   type: 'error',
-                  error: new Error(`${event.error.type}: ${event.error.message}`),
+                  error: streamEventError(event.error, event),
                   raw: event,
                 })
                 break

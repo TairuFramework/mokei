@@ -12,7 +12,9 @@ import type {
   FunctionToolCall,
   Message,
   ProviderTypes,
+  RetryInfo,
 } from '@mokei/model-provider'
+import { ProviderError } from '@mokei/model-provider'
 import { type Attributes, context, SpanKind, trace } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
@@ -141,6 +143,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       toolTimeout: params.toolTimeout ?? AGENT_DEFAULTS.toolTimeout,
       onEvent: params.onEvent,
       onElicitation: params.onElicitation,
+      retry: params.retry,
     }
 
     if (session.contextHost.elicitationEnabled) {
@@ -310,6 +313,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       toolApproval,
       maxIterations,
       timeout,
+      retry,
     } = this.#params
 
     // The span cannot stay active across yields; inner operations run in `agentContext` instead.
@@ -430,6 +434,10 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         let iterationText = ''
         let iterationReasoning = ''
         inferenceCalls++
+        // Retries happen while a pull is pending; queue them so the loop can yield each one
+        // as it happens, without giving up the pull it is waiting on.
+        const retries: Array<RetryInfo> = []
+        let wakeForRetry: (() => void) | undefined
         const chatTurn = session.streamChatTurn({
           provider,
           model,
@@ -437,6 +445,11 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           tools,
           toolDefinitions,
           signal: combinedSignal,
+          retry,
+          onRetry: (info) => {
+            retries.push(info)
+            wakeForRetry?.()
+          },
         })
         activeChatTurn = chatTurn
 
@@ -450,14 +463,27 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
         // the turn is aborted or times out. On abort we close the provider
         // stream (releases the reader / HTTP connection) and throw; the catch
         // below emits the timeout/error event.
-        const pull = (): ReturnType<typeof chatTurn.next> => {
+        type Pulled = Awaited<ReturnType<typeof chatTurn.next>>
+        // The pull in flight, kept across retry wake-ups so no chunk is requested twice.
+        let pending: Promise<Pulled> | undefined
+        const pull = (): Promise<Pulled | { retry: RetryInfo }> => {
           if (combinedSignal.aborted) {
             return Promise.reject(
               combinedSignal.reason instanceof Error ? combinedSignal.reason : new Error('Aborted'),
             )
           }
+          const queued = retries.shift()
+          if (queued !== undefined) return Promise.resolve({ retry: queued })
+          // The inference span starts on the first pull; parent it on the agent span.
+          pending ??= context.with(agentContext, () => chatTurn.next())
+          const next = pending
           return new Promise((resolve, reject) => {
+            const cleanup = () => {
+              combinedSignal.removeEventListener('abort', onAbort)
+              wakeForRetry = undefined
+            }
             const onAbort = () => {
+              cleanup()
               reject(
                 combinedSignal.reason instanceof Error
                   ? combinedSignal.reason
@@ -465,25 +491,48 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
               )
             }
             combinedSignal.addEventListener('abort', onAbort, { once: true })
-            // The inference span starts on the first pull; parent it on the agent span.
-            context
-              .with(agentContext, () => chatTurn.next())
-              .then(
-                (value) => {
-                  combinedSignal.removeEventListener('abort', onAbort)
-                  resolve(value)
-                },
-                (error) => {
-                  combinedSignal.removeEventListener('abort', onAbort)
-                  reject(error)
-                },
-              )
+            wakeForRetry = () => {
+              const info = retries.shift()
+              if (info === undefined) return
+              cleanup()
+              resolve({ retry: info })
+            }
+            next.then(
+              (value) => {
+                cleanup()
+                pending = undefined
+                resolve(value)
+              },
+              (error: unknown) => {
+                cleanup()
+                pending = undefined
+                reject(error)
+              },
+            )
           })
         }
+        // Pull the next chunk, yielding a `retry` event for each retry that happens meanwhile.
+        async function* pullChunk(): AsyncGenerator<AgentEvent<T>, Pulled> {
+          while (true) {
+            const pulled = await pull()
+            if (!('retry' in pulled)) return pulled
+            const retryEvent = emitEvent({
+              type: 'retry',
+              iteration,
+              attempt: pulled.retry.attempt,
+              maxRetries: pulled.retry.maxRetries,
+              error: pulled.retry.error,
+              retryInMs: pulled.retry.retryInMs,
+              timestamp: Date.now(),
+            })
+            yield retryEvent
+            eventHistory.push(retryEvent)
+          }
+        }
 
-        let result: Awaited<ReturnType<typeof chatTurn.next>>
+        let result: Pulled
         try {
-          result = await pull()
+          result = yield* pullChunk()
           while (!result.done) {
             const chunk = result.value
             if (chunk.type === 'text-delta') {
@@ -515,7 +564,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
                   : 0)
               spanOutputTokens += chunk.outputTokens
             }
-            result = await pull()
+            result = yield* pullChunk()
           }
           activeChatTurn = null
         } catch (streamError) {
@@ -742,7 +791,9 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
           ? 'timeout'
           : combinedSignal.aborted
             ? 'cancelled'
-            : errorTypeOf(err),
+            : err instanceof ProviderError
+              ? err.kind
+              : errorTypeOf(err),
         message: err.message,
       }
       if (timeoutController.signal.aborted) {

@@ -10,7 +10,9 @@ import type { Tool } from '@mokei/context-protocol'
 import {
   type MessagePart,
   normalizeFinishReason,
+  ProviderError,
   type ProviderTelemetry,
+  type RetryInfo,
   type StreamChatParams,
   type StreamChatRequest,
 } from '@mokei/model-provider'
@@ -36,7 +38,13 @@ export type TraceStreamChatParams<TPart, TCall> = {
   /** MCP definitions of the tools offered to the model, for `gen_ai.tool.definitions` */
   tools?: Array<Tool>
   capture: PayloadCapture
-  start: () => StreamChatRequest<TPart, TCall>
+  /** Starts the request; `recordRetry` records a failed attempt that is being retried */
+  start: (hooks: TraceStreamChatHooks) => StreamChatRequest<TPart, TCall>
+}
+
+export type TraceStreamChatHooks = {
+  /** Record a failed attempt as a span event; the span's status reflects only the final outcome */
+  recordRetry: (info: RetryInfo) => void
 }
 
 // Ends the span of a stream that was dropped without being read to the end or cancelled. The
@@ -49,7 +57,10 @@ const abandonedStreams =
 type DonePart = Extract<MessagePart<unknown, unknown>, { type: 'done' }>
 
 function errorType(error: unknown, aborted: boolean): string {
-  return aborted ? 'cancelled' : errorTypeOf(error)
+  if (aborted) return 'cancelled'
+  // A classified provider failure: its kind is more useful, and as low-cardinality, as a class name.
+  if (error instanceof ProviderError) return error.kind
+  return errorTypeOf(error)
 }
 
 function errorMessage(error: unknown): string | undefined {
@@ -228,9 +239,17 @@ export function traceStreamChat<TPart, TCall>(
     }
   }
 
+  function recordRetry(info: RetryInfo): void {
+    span.addEvent('mokei.retry', {
+      'mokei.retry.attempt': info.attempt,
+      'mokei.retry.delay_ms': info.retryInMs,
+      'error.type': errorType(info.error, false),
+    })
+  }
+
   let inner: StreamChatRequest<TPart, TCall>
   try {
-    inner = params.start()
+    inner = params.start({ recordRetry })
   } catch (error) {
     finish({ type: errorType(error, false), message: errorMessage(error) })
     throw error

@@ -386,7 +386,8 @@ with `error.type`.
 
 Providers describe themselves through `ModelProvider.telemetry` (`openai`, `anthropic`, `ollama`,
 `llama.cpp`) and `Session` creates the inference span, so `@mokei/model-provider` stays free of
-OpenTelemetry. Flow runs carry `mokei.run.id`, `mokei.flow.id`, `mokei.run.label` and `mokei.run.state`
+OpenTelemetry. A chat retry is a `mokei.retry` event on the inference span, and a final
+`ProviderError` sets `error.type` to its kind. Flow runs carry `mokei.run.id`, `mokei.flow.id`, `mokei.run.label` and `mokei.run.state`
 (renamed from `run.*`/`flow.id`; stored traces are not migrated). MCP spans use `network.transport`
 (`pipe` or `tcp`), `server.address`/`server.port` and `rpc.response.status_code`; contexts record
 `mokei.server.name`; the `mcp.response` event attribute is `mokei.mcp.response`.
@@ -629,3 +630,9 @@ Mokei supports multiple LLM providers through a unified provider interface:
 - **Llama** (`packages/llama-provider/`) -- Local GGUF inference via node-llama-cpp
 
 Each provider implements the `ModelProvider` interface defined in `packages/model-provider/`, enabling consistent usage across different LLM backends.
+
+Providers report failures as `ProviderError` (`packages/model-provider/src/errors.ts`), classified
+by `kind` with a `retryable` flag; each HTTP provider's `src/errors.ts` reads its own error body
+and in-stream error payloads. Chat is not retried in the providers: `Session` wraps every request
+in `retryStreamChat` (`packages/model-provider/src/retry.ts`), which retries only before the first
+output part, inside the one inference span. Embeddings and model listing retry in ky.

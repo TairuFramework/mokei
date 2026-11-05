@@ -17,6 +17,7 @@ import { assertType } from '@sozai/schema'
 import type { ChatCompletionChunk, OpenAIClientParams } from './client.js'
 import { OpenAIClient } from './client.js'
 import { type OpenAIConfiguration, validateConfiguration } from './config.js'
+import { streamPayloadError } from './errors.js'
 import type { ChatCompletionUsage, Message, Model, Tool, ToolCall } from './types.js'
 
 export type OpenAITypes = {
@@ -168,7 +169,12 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
       return stream.pipeThrough(
         new TransformStream<ChatCompletionChunk, MessagePart<ChatCompletionChunk, ToolCall>>({
           transform(part, controller) {
-            const delta = part.choices[0]?.delta
+            const error = streamPayloadError(part)
+            if (error != null) {
+              controller.enqueue({ type: 'error', error, raw: part })
+              return
+            }
+            const delta = part.choices?.[0]?.delta
             if (delta?.content) {
               controller.enqueue({ type: 'text-delta', text: delta.content, raw: part })
             }
@@ -192,7 +198,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
             }
             if (part.id) responseID = part.id
             if (part.model) responseModel = part.model
-            if (part.choices[0]?.finish_reason) {
+            if (part.choices?.[0]?.finish_reason) {
               finishReason = part.choices[0].finish_reason
             }
             if (part.usage != null) {

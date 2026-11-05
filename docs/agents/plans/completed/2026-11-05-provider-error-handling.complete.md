@@ -1,8 +1,46 @@
 # Provider error handling: typed errors and retry
 
-**Status:** planned
+**Status:** complete
 **Date:** 2026-11-05
 **Roadmap:** first slice of P2 "Enhanced error handling"
+**Completed:** 2026-11-05
+
+## Shipped
+
+- **`ProviderError`** (`@mokei/model-provider`, `src/errors.ts`) with `kind`, `retryable`,
+  `status`, `code`, `retryAfterMs` and `cause`, plus `toProviderError` (duck-typed over ky's
+  `HTTPError` / `NetworkError` / `TimeoutError` and `fetch` failures, so model-provider takes no
+  ky dependency), `providerErrorFromResponse`, `parseRetryAfter` and `mapStreamErrors`.
+- **Provider mapping.** Each HTTP provider has an `errors.ts` that reads its own error body:
+  OpenAI `{ error: { message, type, code } }` (a spent `insufficient_quota` is not retryable),
+  Anthropic `{ error: { type, message } }` by type, Ollama `{ error }`. In-stream errors become
+  `error` parts for all three; a mid-stream read failure is a `network` error. Embeddings and
+  `listModels` retry in ky (POST allowed for embeddings). Anthropic `listModels` now passes its
+  `signal`. Llama's request errors are `invalid_request`.
+- **`retryStreamChat`** (`src/retry.ts`), used by `Session.#streamChat` inside the existing
+  inference span. `SessionParams.retry`, per-request `retry` / `onRetry` on `chat()` and
+  `streamChatTurn()`, the `provider-retry` session event, `mokei.retry` span events.
+- **`AgentSession`**: `retry` option and a `retry` event yielded while the model request waits,
+  without dropping the pull in flight.
+- **CLI**: retry notices (`rate limited (429) — retrying in 4s (1/2)`) and per-kind messages
+  for a final provider failure.
+- Docs: providers guide "Errors and Retry", session guide "Retrying Chat Requests", agent guide
+  `retry` option and event. Changeset `steady-chats-retry` (minor).
+
+## Deviations from the plan
+
+- **A stream that ends without its terminal event is not treated as an error.** Only a read
+  failure (connection reset) maps to `network`. Providers do not all mark the end of a stream
+  reliably, so flagging a missing terminal event risked turning normal short streams into
+  errors.
+- **`413` is `invalid_request`, not `context_length`.** Anthropic uses `413 request_too_large`
+  for byte limits; context overflow is recognised from the provider's code or message instead.
+- **Ollama in-stream errors are `unknown`** (not retried) unless the message says the context
+  length was exceeded: Ollama gives no code to tell a transient failure apart.
+- The agent span's `error.type` also uses the `ProviderError` kind, matching the inference span.
+- Pre-existing environment note: in this container `turbo` could not spawn tasks, so builds ran
+  through `pnpm -r`, and `node-pty` needed a manual `node-gyp rebuild` before the integration
+  suite would load.
 
 ## Goal
 

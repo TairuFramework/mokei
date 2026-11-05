@@ -402,6 +402,64 @@ if (result.success) {
 }
 ```
 
+## Errors and Retry
+
+Every provider reports a failed request as a `ProviderError` from `@mokei/model-provider`: thrown
+by its request methods, and carried in a stream's `error` part when the failure arrives
+mid-stream (an Anthropic `overloaded_error` event, an OpenAI `{ "error": … }` payload, an Ollama
+`{ "error": "…" }` line). The original HTTP or stream error stays available as `cause`. A caller
+abort is never a `ProviderError`: the request rejects with the abort reason.
+
+```typescript
+import { ProviderError, isRetryableProviderError } from '@mokei/model-provider'
+
+try {
+  const stream = await provider.streamChat({ model, messages })
+  // ...
+} catch (error) {
+  if (error instanceof ProviderError) {
+    error.kind          // 'rate_limit' | 'overloaded' | 'server' | 'network' | 'timeout'
+                        // | 'auth' | 'invalid_request' | 'context_length' | 'unknown'
+    error.retryable     // true for rate_limit, overloaded, server, network and timeout
+    error.status        // HTTP status, when there was one
+    error.code          // provider code, such as 'rate_limit_error' or 'context_length_exceeded'
+    error.retryAfterMs  // from Retry-After / retry-after-ms, when the provider sent one
+  }
+}
+```
+
+A spent OpenAI quota (`insufficient_quota`) is a `rate_limit` that is not retryable. Llama
+reports its own request errors (an unregistered model, output schema combined with tools) as
+`invalid_request`.
+
+### What is retried
+
+- **Embeddings and model listing** retry in the HTTP client: up to 2 retries on `408`, `429`,
+  `5xx` and `529` and on network errors, honouring `Retry-After`. These requests are idempotent.
+- **Chat** is not retried by the providers. `Session` retries it (see the
+  [session guide](./session.md#retrying-chat-requests)), and code that calls a provider directly
+  can use `retryStreamChat`:
+
+```typescript
+import { retryStreamChat } from '@mokei/model-provider'
+
+const request = retryStreamChat({
+  start: () => provider.streamChat({ model, messages, signal }),
+  policy: { retries: 2, baseDelayMs: 500, maxDelayMs: 30_000 }, // the defaults; false disables
+  signal,
+  onRetry: ({ attempt, maxRetries, error, retryInMs }) => {
+    console.log(`retry ${attempt}/${maxRetries} in ${retryInMs}ms`, error)
+  },
+})
+const stream = await request
+```
+
+A chat request is retried only while it has produced no output: when the request is rejected,
+or its stream fails or yields an `error` part before the first text, reasoning or tool-call
+part. After that the stream is committed, since replaying it would duplicate output. Waits use
+the provider's `retryAfterMs` when given, otherwise exponential backoff with full jitter, and are
+capped at `maxDelayMs`. Aborting `signal`, or calling `request.abort()`, ends a wait at once.
+
 ## Common Interface
 
 All providers implement `ModelProvider<T>`:
