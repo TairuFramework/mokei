@@ -20,10 +20,12 @@ describe('serveHTTP with DID verifier', () => {
 
   async function mintToken(claims: Record<string, unknown> = {}): Promise<string> {
     const signed = await identity.signToken({
-      aud: RESOURCE,
-      scope: 'read write',
-      exp: Math.floor(Date.now() / 1000) + 300,
-      ...claims,
+      payload: {
+        aud: RESOURCE,
+        scope: 'read write',
+        exp: Math.floor(Date.now() / 1000) + 300,
+        ...claims,
+      },
     })
     return stringifyToken(signed)
   }

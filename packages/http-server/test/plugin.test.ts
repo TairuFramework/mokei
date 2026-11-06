@@ -78,9 +78,11 @@ async function mintToken(scope = 'read write') {
   const identity = randomIdentity()
   const token = stringifyToken(
     await identity.signToken({
-      aud: RESOURCE,
-      scope,
-      exp: Math.floor(Date.now() / 1000) + 300,
+      payload: {
+        aud: RESOURCE,
+        scope,
+        exp: Math.floor(Date.now() / 1000) + 300,
+      },
     }),
   )
   return { identity, token }
