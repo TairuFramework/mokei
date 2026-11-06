@@ -1,5 +1,23 @@
 # @mokei/decision-flow-server
 
+## 0.16.0
+
+### Patch Changes
+
+- `MOKEI_VERSION` (exported from `@mokei/context-protocol` and `@mokei/context-server`) replaces stale hard-coded versions: the default MCP `clientInfo`, the decision-flow, fetch, sqlite and system-one `serverInfo`, and the `mokei` tracer and meter scopes now report the package version.
+
+- Flow service startup failures keep their cause. `@mokei/decision-flow-server` throws `RegisteredFlowError` (flow ID and checker issues) for rejected registered flows, re-exported from `@mokei/flow-host`. `@mokei/flow-host-node` throws `FlowFileError` for unreadable or malformed flow files, logs the failing startup stage, flow file and full error, and reports `FlowFileError` and `FlowDefinitionError` statuses with the file path and sanitized issue codes. `mokei daemon start` and the monitor banner show the failing file and issues.
+
+- Updated dependencies:
+  - @mokei/context-client@0.16.0
+  - @mokei/context-protocol@0.16.0
+  - @mokei/context-rpc@0.16.0
+  - @mokei/context-server@0.16.0
+  - @mokei/decision-flow@0.16.0
+  - @mokei/host@0.16.0
+  - @mokei/session@0.16.0
+  - @mokei/system-one-client@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

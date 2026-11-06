@@ -1,5 +1,16 @@
 # @mokei/host-monitor
 
+## 0.16.0
+
+### Minor Changes
+
+- Move to enkaku 0.23, kokuin 0.7, `@teikyo/oauth` 0.3 and `@hozon/adapter` 0.3. A host must use the same lines. Kokuin 0.7 signing takes `identity.signToken({ payload })`.
+
+### Patch Changes
+
+- Updated dependencies:
+  - @mokei/host-protocol@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

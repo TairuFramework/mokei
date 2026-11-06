@@ -2,12 +2,21 @@
   dir: packages/anthropic-provider
   intents:
     - otel-genai
+"@mokei/anthropic-provider@0.16.0":
+  dir: packages/anthropic-provider
+  intents:
+    - steady-chats-retry
 "@mokei/app-node@0.15.0":
   dir: packages/app-node
   intents:
     - flows
     - otel-genai
     - stack-alignment
+"@mokei/app-node@0.16.0":
+  dir: packages/app-node
+  intents:
+    - sharp-trace-calls
+    - stack-enkaku-0-23
 "@mokei/context-client@0.11.0":
   dir: packages/context-client
   intents:
@@ -36,6 +45,11 @@
     - params-objects
     - session-split
     - stack-alignment
+"@mokei/context-client@0.16.0":
+  dir: packages/context-client
+  intents:
+    - ancient-boxes-invent
+    - stack-enkaku-0-23
 "@mokei/context-protocol@0.11.0":
   dir: packages/context-protocol
   intents:
@@ -61,6 +75,12 @@
   intents:
     - mcp-tasks
     - params-objects
+"@mokei/context-protocol@0.16.0":
+  dir: packages/context-protocol
+  intents:
+    - ancient-boxes-invent
+    - calm-heads-check
+    - quiet-params-match
 "@mokei/context-rpc@0.11.0":
   dir: packages/context-rpc
   intents:
@@ -84,10 +104,18 @@
     - otel-genai
     - params-objects
     - stack-alignment
+"@mokei/context-rpc@0.16.0":
+  dir: packages/context-rpc
+  intents:
+    - stack-enkaku-0-23
 "@mokei/context-server-node@0.15.0":
   dir: packages/context-server-node
   intents:
     - stack-alignment
+"@mokei/context-server-node@0.16.0":
+  dir: packages/context-server-node
+  intents:
+    - stack-enkaku-0-23
 "@mokei/context-server@0.11.0":
   dir: packages/context-server
   intents:
@@ -113,6 +141,15 @@
     - mcp-tasks
     - params-objects
     - stack-alignment
+"@mokei/context-server@0.16.0":
+  dir: packages/context-server
+  intents:
+    - ancient-boxes-invent
+    - brave-tools-step-up
+    - calm-heads-check
+    - good-cups-shop
+    - quiet-params-match
+    - stack-enkaku-0-23
 "@mokei/decision-flow-server@0.15.0":
   dir: packages/decision-flow-server
   intents:
@@ -120,6 +157,11 @@
     - flows
     - mcp-tasks
     - stack-alignment
+"@mokei/decision-flow-server@0.16.0":
+  dir: packages/decision-flow-server
+  intents:
+    - ancient-boxes-invent
+    - wise-rice-jump
 "@mokei/decision-flow@0.15.0":
   dir: packages/decision-flow
   intents:
@@ -127,12 +169,21 @@
     - flows
     - otel-genai
     - stack-alignment
+"@mokei/decision-flow@0.16.0":
+  dir: packages/decision-flow
+  intents:
+    - ancient-boxes-invent
 "@mokei/flow-client@0.15.0":
   dir: packages/flow-client
   intents:
     - flows
     - params-objects
     - stack-alignment
+"@mokei/flow-client@0.16.0":
+  dir: packages/flow-client
+  intents:
+    - sharp-trace-calls
+    - stack-enkaku-0-23
 "@mokei/flow-host-node@0.15.0":
   dir: packages/flow-host-node
   intents:
@@ -140,6 +191,12 @@
     - otel-genai
     - params-objects
     - stack-alignment
+"@mokei/flow-host-node@0.16.0":
+  dir: packages/flow-host-node
+  intents:
+    - sharp-trace-calls
+    - stack-enkaku-0-23
+    - wise-rice-jump
 "@mokei/flow-host@0.15.0":
   dir: packages/flow-host
   intents:
@@ -147,6 +204,10 @@
     - otel-genai
     - params-objects
     - stack-alignment
+"@mokei/flow-host@0.16.0":
+  dir: packages/flow-host
+  intents:
+    - wise-rice-jump
 "@mokei/host-desktop@0.15.0":
   dir: packages/host-desktop
   intents:
@@ -158,6 +219,10 @@
   intents:
     - flows
     - stack-alignment
+"@mokei/host-monitor@0.16.0":
+  dir: packages/host-monitor
+  intents:
+    - stack-enkaku-0-23
 "@mokei/host-node@0.14.0":
   dir: packages/host-node
   intents:
@@ -171,6 +236,13 @@
     - params-objects
     - session-split
     - stack-alignment
+"@mokei/host-node@0.16.0":
+  dir: packages/host-node
+  intents:
+    - good-cups-shop
+    - keen-keys-rest
+    - sharp-trace-calls
+    - stack-enkaku-0-23
 "@mokei/host-protocol@0.15.0":
   dir: packages/host-protocol
   intents:
@@ -178,6 +250,11 @@
     - otel-genai
     - params-objects
     - stack-alignment
+"@mokei/host-protocol@0.16.0":
+  dir: packages/host-protocol
+  intents:
+    - sharp-trace-calls
+    - stack-enkaku-0-23
 "@mokei/host@0.11.0":
   dir: packages/host
   intents:
@@ -204,6 +281,10 @@
     - params-objects
     - session-split
     - stack-alignment
+"@mokei/host@0.16.0":
+  dir: packages/host
+  intents:
+    - stack-enkaku-0-23
 "@mokei/http-client@0.11.0":
   dir: packages/http-client
   intents:
@@ -228,6 +309,15 @@
     - mcp-tasks
     - params-objects
     - stack-alignment
+"@mokei/http-client@0.16.0":
+  dir: packages/http-client
+  intents:
+    - brave-tools-step-up
+    - calm-heads-check
+    - good-cups-shop
+    - keen-keys-rest
+    - quiet-params-match
+    - stack-enkaku-0-23
 "@mokei/http-server@0.11.0":
   dir: packages/http-server
   intents:
@@ -252,16 +342,40 @@
     - mcp-tasks
     - params-objects
     - stack-alignment
+"@mokei/http-server@0.16.0":
+  dir: packages/http-server
+  intents:
+    - brave-tools-step-up
+    - calm-heads-check
+    - good-cups-shop
+    - quiet-params-match
+    - stack-enkaku-0-23
 "@mokei/llama-provider@0.15.0":
   dir: packages/llama-provider
   intents:
     - otel-genai
     - stack-alignment
+"@mokei/llama-provider@0.16.0":
+  dir: packages/llama-provider
+  intents:
+    - steady-chats-retry
+"@mokei/mcp-fetch@0.16.0":
+  dir: mcp-servers/fetch
+  intents:
+    - ancient-boxes-invent
+"@mokei/mcp-sqlite@0.16.0":
+  dir: mcp-servers/sqlite
+  intents:
+    - ancient-boxes-invent
 "@mokei/mcp-system-one@0.15.0":
   dir: mcp-servers/system-one
   intents:
     - decision-flow
     - system-one
+"@mokei/mcp-system-one@0.16.0":
+  dir: mcp-servers/system-one
+  intents:
+    - ancient-boxes-invent
 "@mokei/model-provider@0.14.0":
   dir: packages/model-provider
   intents:
@@ -271,10 +385,18 @@
   intents:
     - otel-genai
     - params-objects
+"@mokei/model-provider@0.16.0":
+  dir: packages/model-provider
+  intents:
+    - steady-chats-retry
 "@mokei/ollama-provider@0.15.0":
   dir: packages/ollama-provider
   intents:
     - otel-genai
+"@mokei/ollama-provider@0.16.0":
+  dir: packages/ollama-provider
+  intents:
+    - steady-chats-retry
 "@mokei/openai-provider@0.11.0":
   dir: packages/openai-provider
   intents:
@@ -283,6 +405,10 @@
   dir: packages/openai-provider
   intents:
     - otel-genai
+"@mokei/openai-provider@0.16.0":
+  dir: packages/openai-provider
+  intents:
+    - steady-chats-retry
 "@mokei/session-node@0.14.0":
   dir: packages/session-node
   intents:
@@ -311,6 +437,10 @@
     - params-objects
     - session-split
     - stack-alignment
+"@mokei/session@0.16.0":
+  dir: packages/session
+  intents:
+    - steady-chats-retry
 "@mokei/system-one-client@0.14.0":
   dir: packages/system-one-client
   intents:
@@ -338,3 +468,11 @@ mokei@0.15.0:
     - otel-genai
     - params-objects
     - stack-alignment
+mokei@0.16.0:
+  dir: packages/cli
+  intents:
+    - keen-keys-rest
+    - lucky-lions-learn
+    - stack-enkaku-0-23
+    - steady-chats-retry
+    - wise-rice-jump

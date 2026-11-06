@@ -1,5 +1,16 @@
 # @mokei/session-node
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - @mokei/context-protocol@0.16.0
+  - @mokei/host@0.16.0
+  - @mokei/host-node@0.16.0
+  - @mokei/model-provider@0.16.0
+  - @mokei/session@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

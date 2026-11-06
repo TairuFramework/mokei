@@ -1,5 +1,23 @@
 # @mokei/flow-host
 
+## 0.16.0
+
+### Patch Changes
+
+- Flow service startup failures keep their cause. `@mokei/decision-flow-server` throws `RegisteredFlowError` (flow ID and checker issues) for rejected registered flows, re-exported from `@mokei/flow-host`. `@mokei/flow-host-node` throws `FlowFileError` for unreadable or malformed flow files, logs the failing startup stage, flow file and full error, and reports `FlowFileError` and `FlowDefinitionError` statuses with the file path and sanitized issue codes. `mokei daemon start` and the monitor banner show the failing file and issues.
+
+- Updated dependencies:
+  - @mokei/context-client@0.16.0
+  - @mokei/context-protocol@0.16.0
+  - @mokei/context-server@0.16.0
+  - @mokei/decision-flow@0.16.0
+  - @mokei/decision-flow-server@0.16.0
+  - @mokei/flow-client@0.16.0
+  - @mokei/host@0.16.0
+  - @mokei/host-protocol@0.16.0
+  - @mokei/logger@0.16.0
+  - @mokei/session@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

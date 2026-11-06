@@ -1,5 +1,20 @@
 # @mokei/host
 
+## 0.16.0
+
+### Minor Changes
+
+- Move to enkaku 0.23, kokuin 0.7, `@teikyo/oauth` 0.3 and `@hozon/adapter` 0.3. A host must use the same lines. Kokuin 0.7 signing takes `identity.signToken({ payload })`.
+
+### Patch Changes
+
+- Updated dependencies:
+  - @mokei/context-client@0.16.0
+  - @mokei/context-protocol@0.16.0
+  - @mokei/context-rpc@0.16.0
+  - @mokei/context-server@0.16.0
+  - @mokei/http-client@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

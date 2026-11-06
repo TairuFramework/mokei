@@ -1,5 +1,26 @@
 # @mokei/flow-host-node
 
+## 0.16.0
+
+### Minor Changes
+
+- Move to enkaku 0.23, kokuin 0.7, `@teikyo/oauth` 0.3 and `@hozon/adapter` 0.3. A host must use the same lines. Kokuin 0.7 signing takes `identity.signToken({ payload })`.
+
+### Patch Changes
+
+- Unified traces follow-ons. Context traces are named by their server: the recorder reads open spans live, so `mokei.server.name` (now also set by the daemon proxy from `initialize` or `server/discover`) reaches trace summaries and open-span snapshots. It is a summary attribute and part of the search text. A new `trace_calls` index records spans that call into another trace (`mokei.context.trace_id`). `traces.get` returns them as `calls` with `callsTruncated`, and the monitor lists them under "Called from". A new `traces.logs` procedure pages a trace's logs newest first, by span, before a time or with a cursor, and the monitor uses it for "Load older logs". A child-only summary delta dropped at the hydration limit is now looked up and counted as lost when its trace is indexed, and one left after hydration fails for good is counted too. **Breaking:** `events` takes a `{ types? }` param, and the daemon subscribes only to those types (`flow-client` asks for its three flow events). Every caller must now send `param` (`{}` for all events), so restart the daemon after upgrading. **Breaking:** `context:message` is removed from the `events` stream and from `@mokei/host-protocol`; MCP traffic is carried by trace spans.
+
+- Flow service startup failures keep their cause. `@mokei/decision-flow-server` throws `RegisteredFlowError` (flow ID and checker issues) for rejected registered flows, re-exported from `@mokei/flow-host`. `@mokei/flow-host-node` throws `FlowFileError` for unreadable or malformed flow files, logs the failing startup stage, flow file and full error, and reports `FlowFileError` and `FlowDefinitionError` statuses with the file path and sanitized issue codes. `mokei daemon start` and the monitor banner show the failing file and issues.
+
+- Updated dependencies:
+  - @mokei/context-protocol@0.16.0
+  - @mokei/context-server@0.16.0
+  - @mokei/flow-host@0.16.0
+  - @mokei/host-desktop@0.16.0
+  - @mokei/host-node@0.16.0
+  - @mokei/host-protocol@0.16.0
+  - @mokei/session-node@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

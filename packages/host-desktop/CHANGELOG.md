@@ -1,5 +1,14 @@
 # @mokei/host-desktop
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - @mokei/context-client@0.16.0
+  - @mokei/context-protocol@0.16.0
+  - @mokei/host@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

@@ -1,5 +1,20 @@
 # @mokei/context-client
 
+## 0.16.0
+
+### Minor Changes
+
+- Move to enkaku 0.23, kokuin 0.7, `@teikyo/oauth` 0.3 and `@hozon/adapter` 0.3. A host must use the same lines. Kokuin 0.7 signing takes `identity.signToken({ payload })`.
+
+### Patch Changes
+
+- `MOKEI_VERSION` (exported from `@mokei/context-protocol` and `@mokei/context-server`) replaces stale hard-coded versions: the default MCP `clientInfo`, the decision-flow, fetch, sqlite and system-one `serverInfo`, and the `mokei` tracer and meter scopes now report the package version.
+
+- Updated dependencies:
+  - @mokei/context-protocol@0.16.0
+  - @mokei/context-rpc@0.16.0
+  - @mokei/logger@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes
