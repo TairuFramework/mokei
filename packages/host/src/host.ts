@@ -114,21 +114,33 @@ export type ContextToolNamesParams = {
 }
 
 /** Parameters for getting a prompt from a context, keyed by context. */
+/**
+ * A per-call elicitation handler. On `2026-07-28` it answers the call's `elicitation/create` input
+ * requests (MRTR, SEP-2322) ahead of any {@link ContextHost.handleElicitation} override; `fallback`
+ * hands the request to the host-wide path. It never enables elicitation for a context added with
+ * `elicit: false` or a host without elicitation. On `2025-11-25` it is ignored: a server-initiated
+ * `elicitation/create` has no link to its call, so the host-wide path answers.
+ */
+export type PerCallElicit = { elicit?: HostElicitOverride }
+
 export type ContextPromptParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
   PromptParams<T>
-> & { key: string }
+> &
+  PerCallElicit & { key: string }
 
 /** Parameters for calling a tool on a context, keyed by context. */
 export type ContextToolParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
   ToolParams<T>
-> & { key: string }
+> &
+  PerCallElicit & { key: string }
 
 /** Parameters for calling a tool by its namespaced ID (`contextKey:toolName` or `local:toolName`). */
 export type NamespacedToolParams = WithRequestOptions<{
   id: string
   arguments?: Record<string, unknown>
   _meta?: Metadata
-}>
+}> &
+  PerCallElicit
 
 /** Parameters for calling a local tool. Local tools run in-process, so they take no `timeout`. */
 export type LocalToolParams = {
@@ -354,19 +366,33 @@ export class ContextHost extends Disposer {
     if (!this.elicitationEnabled || params.elicit === false) {
       return undefined
     }
-    return ({ params: requestParams, signal }) => {
-      const request = { key: params.key, params: requestParams, signal }
-      const override = this.#elicitOverride
-      if (override != null) {
-        return override.handler(request, (options) =>
+    return ({ params: requestParams, signal }) =>
+      this.#hostElicit({ key: params.key, params: requestParams, signal })
+  }
+
+  /** The host-wide elicitation path: the `handleElicitation` override, then the base handler. */
+  #hostElicit(request: HostElicitRequest): Promise<ElicitResult> {
+    const override = this.#elicitOverride
+    if (override != null) {
+      return Promise.resolve(
+        override.handler(request, (options) =>
           this.#dispatchElicitation({
             ...request,
             signal: options?.signal ?? request.signal,
           }),
-        )
-      }
-      return this.#dispatchElicitation(request)
+        ),
+      )
     }
+    return this.#dispatchElicitation(request)
+  }
+
+  /** Adapts a per-call handler to the client's per-request handler for one context. */
+  #perCallElicit(key: string, elicit?: HostElicitOverride): ElicitHandler | undefined {
+    if (elicit == null) return undefined
+    return ({ params, signal }) =>
+      elicit({ key, params, signal }, (options) =>
+        this.#hostElicit({ key, params, signal: options?.signal ?? signal }),
+      )
   }
 
   async #dispatchElicitation(request: HostElicitRequest): Promise<ElicitResult> {
@@ -863,19 +889,25 @@ export class ContextHost extends Disposer {
   getPrompt<T extends ContextTypes = UnknownContextTypes>(
     params: ContextPromptParams<T>,
   ): Promise<GetPromptResult> {
-    const { key, ...promptParams } = params
-    return this.getContext<T>(key).client.getPrompt(promptParams as PromptParams<T>)
+    const { key, elicit, ...promptParams } = params
+    return this.getContext<T>(key).client.getPrompt({
+      ...(promptParams as PromptParams<T>),
+      elicit: this.#perCallElicit(key, elicit),
+    })
   }
 
   callTool<T extends ContextTypes = UnknownContextTypes>(
     params: ContextToolParams<T>,
   ): Promise<CallToolResult> {
-    const { key, ...toolParams } = params
-    return this.getContext<T>(key).client.callTool(toolParams as ToolParams<T>)
+    const { key, elicit, ...toolParams } = params
+    return this.getContext<T>(key).client.callTool({
+      ...(toolParams as ToolParams<T>),
+      elicit: this.#perCallElicit(key, elicit),
+    })
   }
 
   callNamespacedTool(params: NamespacedToolParams): Promise<CallToolResult> {
-    const { id, arguments: args = {}, _meta, signal, timeout, traceAttributes } = params
+    const { id, arguments: args = {}, _meta, signal, timeout, traceAttributes, elicit } = params
 
     // Check if this is a local tool
     if (isLocalToolID(id)) {
@@ -889,7 +921,16 @@ export class ContextHost extends Disposer {
     }
 
     const [key, name] = getContextToolInfo(id)
-    return this.callTool({ key, name, arguments: args, _meta, signal, timeout, traceAttributes })
+    return this.callTool({
+      key,
+      name,
+      arguments: args,
+      _meta,
+      signal,
+      timeout,
+      traceAttributes,
+      elicit,
+    })
   }
 
   /** Call a local tool by name. Local tools run in-process, so there is no request to time out. */
