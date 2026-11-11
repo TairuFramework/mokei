@@ -53,3 +53,45 @@ before the wrapped fetch, and the OAuth middleware awaits the `AuthorizationHand
 - **Errors.** Token and discovery failures now surface as kokuin's `OAuthTokenError`
   (`status`, `code`); `invalid_grant` handling checks its `code`. `OAuthResponseError` was never
   exported, so no public API changes.
+- **OAuth's own network calls keep a deadline.** Discovery, token and refresh calls the middleware
+  makes through `next` carry the triggering request's timeout tag, so a hung authorization server
+  still fails at `timeout` (today the outer POST timer covers them). Untagged requests (GET stream,
+  DELETE) keep today's timing.
+
+## Additions (Yosura design review, user-approved 2026-11-11)
+
+### Setup deadline and sign-in
+
+`ContextClient`'s setup deadline (`setupTimeout`, 30s) arms only after the setup request's
+`write` resolves, and `HTTPTransport.write` resolves only when the POST (including a sign-in)
+completes. A sign-in therefore never runs under the setup deadline, on `2025-11-25`, `2026-07-28` or
+`'auto'`. Verified by a probe; no `@mokei/context-client` change. A regression test pins it: a
+sign-in longer than `setupTimeout` completes setup on all three.
+
+### Credential redirect safety
+
+Default fetch redirect following can carry a credential to another origin: the Fetch standard strips
+`Authorization` on cross-origin redirects, but not custom headers (`auth` with a custom header name,
+`headers`), and React Native's behaviour is unspecified.
+
+- The transport's base fetch treats a request as credentialed when it carries `Authorization` or any
+  header name from the transport's `headers` / `auth`. A credentialed request is sent with
+  `redirect: 'manual'` (an explicit `'error'` from the caller is kept).
+- A `3xx` or `opaqueredirect` response to a credentialed request is not followed: it fails with
+  `Request failed: refused to follow a redirect with credentials (status <n>)`.
+- Uncredentialed requests keep the default (follow). No same-origin re-follow: MCP endpoints have no
+  reason to redirect, and a manual follow would have to handle method changes on `301/302/303`.
+
+### No-content telemetry
+
+`PayloadCapture` gains `'never'`: the host, session and daemon `tracing.payloads` option accepts it.
+
+- `resolveContentCapture('never')` returns `'never'`; `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`
+  cannot override it (it still overrides an unset or `'off'` value, as today).
+- Under `'never'` no request/response/tool content is captured (same as `'off'`), and no error
+  message text reaches span status, span attributes or host observation events: only `error.type`,
+  the JSON-RPC error code and the status code.
+- Enforced at the sinks: `endSpanError` takes the capture and drops the message under `'never'`;
+  `sanitizeMessage` and `responseOutcome` drop `error.message`. Every caller in `context-client`,
+  `host`, `host-node` and `session` passes the resolved capture.
+- Host-level, not per-context: Yosura runs one host per device. Per-context capture is not added.
