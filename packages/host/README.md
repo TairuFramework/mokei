@@ -52,6 +52,11 @@ been constructed with `elicit`. Its returned function removes that override. Wit
 requests are declined whenever no override is installed. Without an override, a handler passed at
 construction answers requests directly.
 
+URL-mode requests are forwarded to the handler with their `mode`, `elicitationId` and `url` intact.
+When a `2025-11-25` server sends `notifications/elicitation/complete`, the host emits
+`elicitation:complete` with the context `key` and `elicitationId`, so an application can close the
+matching URL prompt.
+
 ### Per-call elicitation
 
 On a `2026-07-28` context, pass `elicit` with a call to answer that call's elicitations, for
@@ -64,7 +69,8 @@ const result = await host.callTool({
   arguments: { date: '2026-12-01' },
   elicit: async (request, fallback) => {
     // Show the form on the screen that started this call, or defer to the host-wide handler.
-    return await showFormOnThisScreen(request.params, request.signal)
+    if (!screen.isOpen) return await fallback()
+    return await screen.showForm(request.params, request.signal)
   },
 })
 ```
@@ -74,11 +80,6 @@ const result = await host.callTool({
 enables elicitation for a context added with `elicit: false`. On `2025-11-25` it is ignored: a
 server-initiated `elicitation/create` has no link to the call that caused it, so the host-wide
 path answers.
-
-URL-mode requests are forwarded to the handler with their `mode`, `elicitationId` and `url` intact.
-When a `2025-11-25` server sends `notifications/elicitation/complete`, the host emits
-`elicitation:complete` with the context `key` and `elicitationId`, so an application can close the
-matching URL prompt.
 
 ## Security
 

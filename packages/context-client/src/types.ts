@@ -67,8 +67,13 @@ export type ElicitHandler = (
 
 /**
  * A per-request elicitation handler. On `2026-07-28` it answers the `elicitation/create` input
- * requests (MRTR, SEP-2322) of that one request, including a task-backed call's task input, in
- * place of the client-wide `elicit` handler. Never sent on the wire.
+ * requests (MRTR, SEP-2322) of that one request in place of the client-wide `elicit` handler. Never
+ * sent on the wire.
+ *
+ * A task-backed `callTool` that waits for its task itself also routes the task's input through
+ * it. With `task: 'handle'` it covers only the rounds before the task exists: pass it again to
+ * `waitForTask`. With `allowInputRequired: true` it is unused, since the suspension is returned to
+ * the caller.
  *
  * It never enables elicitation: a client created without an `elicit` handler does not declare the
  * capability, and ignores it. On `2025-11-25` it is ignored too, because a server-initiated

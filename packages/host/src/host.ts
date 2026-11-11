@@ -113,7 +113,6 @@ export type ContextToolNamesParams = {
   toolNames: Array<string>
 }
 
-/** Parameters for getting a prompt from a context, keyed by context. */
 /**
  * A per-call elicitation handler. On `2026-07-28` it answers the call's `elicitation/create` input
  * requests (MRTR, SEP-2322) ahead of any {@link ContextHost.handleElicitation} override; `fallback`
@@ -123,6 +122,7 @@ export type ContextToolNamesParams = {
  */
 export type PerCallElicit = { elicit?: HostElicitOverride }
 
+/** Parameters for getting a prompt from a context, keyed by context. */
 export type ContextPromptParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
   PromptParams<T>
 > &

@@ -161,12 +161,23 @@ describe('ContextHost per-call elicit', () => {
   })
 
   test('elicit: false context ignores it', async () => {
+    const outcome = (call: Promise<unknown>) =>
+      call.then(
+        () => 'resolved',
+        (error: unknown) => `rejected: ${(error as Error).name}`,
+      )
+    const baseline = setup({ elicit: false })
+    const expected = await outcome(
+      baseline.host.callTool({ key: KEY, name: 'ask', arguments: { who: 'a' } }),
+    )
+
     const { host } = setup({ elicit: false })
     const elicit = vi.fn<HostElicitOverride>(() => accept('a'))
-    await host
-      .callTool({ key: KEY, name: 'ask', arguments: { who: 'a' }, elicit })
-      .catch(() => undefined)
+    const actual = await outcome(
+      host.callTool({ key: KEY, name: 'ask', arguments: { who: 'a' }, elicit }),
+    )
     expect(elicit).not.toHaveBeenCalled()
+    expect(actual).toBe(expected)
   })
 
   test('concurrent calls each get their own elicitation', async () => {
