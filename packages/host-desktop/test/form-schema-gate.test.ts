@@ -3,23 +3,25 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { type FieldPlan, type FormParams, planForm } from '../src/form.js'
 import { createInputInbox, InboxAnswerInvalidError } from '../src/inbox.js'
 
-// Counts compiles made on any validator factory
+// Counts compiles made by any validator cache
 const createValidator = vi.hoisted(() => vi.fn())
 
 vi.mock('@sozai/schema', async (importOriginal) => {
   const original = await importOriginal<typeof import('@sozai/schema')>()
   return {
     ...original,
-    createValidatorFactory: (
-      factoryOptions?: Parameters<typeof original.createValidatorFactory>[0],
-    ) => {
-      const factory = original.createValidatorFactory(factoryOptions)
-      const inner = factory.createValidator.bind(factory)
-      factory.createValidator = ((schema: never) => {
-        createValidator(schema)
-        return inner(schema)
-      }) as typeof factory.createValidator
-      return factory
+    createValidatorCache: (cacheOptions?: Parameters<typeof original.createValidatorCache>[0]) => {
+      const cache = original.createValidatorCache(cacheOptions)
+      const get = cache.get
+      cache.get = ((schema: never) => {
+        const before = cache.stats().compiles
+        try {
+          return get(schema)
+        } finally {
+          if (cache.stats().compiles !== before) createValidator(schema)
+        }
+      }) as typeof cache.get
+      return cache
     },
   }
 })

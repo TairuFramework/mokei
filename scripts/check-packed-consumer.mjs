@@ -148,8 +148,6 @@ function writeConsumer(consumer, packed) {
     // from `@enkaku/transport`; `@inkjs/ui` imports `react` without declaring a peer. Drop each
     // entry once the upstream package declares the dependency.
     packageExtensions: {
-      '@enkaku/client': { dependencies: { '@enkaku/protocol': '*' } },
-      '@enkaku/protocol': { dependencies: { '@enkaku/transport': '*' } },
       '@inkjs/ui': { peerDependencies: { react: '*' } },
     },
     nodeLinker: 'isolated',

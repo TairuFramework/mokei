@@ -1,9 +1,4 @@
-import {
-  type CreateServerParams,
-  createServer,
-  definePlugin,
-  type HTTPServer,
-} from '@sozai/http-server'
+import { type CreateServerParams, createServer, type HTTPServer } from '@sozai/http-server'
 import { type OAuthTokenVerifier, oauthResourcePlugin } from '@teikyo/oauth'
 
 import type { HTTPHandler, HTTPHandlerParams } from './handler.js'
@@ -46,7 +41,6 @@ export async function serveHTTP(params: ServeHTTPParams): Promise<ServeHTTPResul
     signal,
     ...handlerParams
   } = params
-  let handler!: HTTPHandler
   const server = await createServer({
     port,
     hostname,
@@ -56,15 +50,8 @@ export async function serveHTTP(params: ServeHTTPParams): Promise<ServeHTTPResul
     plugins: [
       ...(auth == null ? [] : [oauthResourcePlugin(auth)]),
       mcpPlugin({ ...handlerParams, path, auth: auth && { scopes: auth.requiredScopes } }),
-      definePlugin({
-        name: 'mokei:serve',
-        dependsOn: [MOKEI_MCP],
-        setup(ctx) {
-          handler = ctx.use(MOKEI_MCP).handler
-        },
-      }),
     ],
   })
   await server.listen()
-  return { handler, server, dispose: () => server.dispose() }
+  return { handler: server.use(MOKEI_MCP).handler, server, dispose: () => server.dispose() }
 }

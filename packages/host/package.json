@@ -49,7 +49,6 @@
     "@opentelemetry/api": "catalog:",
     "@sozai/async": "catalog:",
     "@sozai/event": "catalog:",
-    "@sozai/json": "catalog:",
     "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:"
   },

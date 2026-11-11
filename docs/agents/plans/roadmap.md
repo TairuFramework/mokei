@@ -1,6 +1,6 @@
 # Mokei Roadmap
 
-**Last updated:** 2026-11-05
+**Last updated:** 2026-11-11
 
 ## Vision
 
@@ -64,6 +64,10 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **Upstream dependency gaps** (2026-11-11) -- validator caches, the monitor bridge `dispose()`,
+  `HTTPServer.use` and the enkaku manifest fixes adopted from upstream releases. Only the
+  third-party `@inkjs/ui` workaround remains. See
+  [upstream gaps](completed/2026-11-11-upstream-dependency-gaps.complete.md).
 - **Provider error handling** (2026-11-05) -- typed `ProviderError` across all providers
   (in-stream errors included), retry for embeddings and model listing, and chat retry with
   backoff before the first output part in `Session` and `AgentSession`, so a `429` or overload no
@@ -227,8 +231,6 @@ llama wiring, the U1 `PendingExchange` refactor and the stack migration — is r
 
 - **Daemon-held OAuth tokens** (`backlog/2026-09-04-oauth-hardening-followups.md`) -- deferred until
   a daemon connects HTTP contexts.
-- **Upstream dependency gaps** (`backlog/2026-11-04-upstream-dependency-gaps.md`) -- workarounds
-  to drop once enkaku, inkjs and sozai releases land.
 
 ## Planned — P2
 
