@@ -17,7 +17,9 @@ export {
 } from './keychain-store.js'
 export {
   type AddLocalContextParams,
+  type LocalReconnectOptions,
   NodeContextHost,
+  type RespawnContextServer,
   type SpawnHostedContextParams,
   spawnHostedContext,
 } from './node-host.js'
