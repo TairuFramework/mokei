@@ -13,11 +13,13 @@ import { afterEach, expect, expectTypeOf, test, vi } from 'vitest'
 
 import { ContextServer, createTaskManager, createTool } from '../../context-server/lib/index.js'
 import {
+  brandTransportFailure,
   ContextClient,
   MethodNotInRevisionError,
   StructuredContentValidationError,
   TaskInputUnavailableError,
   TaskInterruptedError,
+  transportFailureOf,
 } from '../src/index.js'
 
 const created = {
@@ -421,4 +423,81 @@ test('a loss after the server returned a task rejects with TaskInterruptedError'
   expect(error).toBeInstanceOf(TaskInterruptedError)
   expect((error as TaskInterruptedError).taskID).toBe('task-1')
   expect((error as TaskInterruptedError).cause).toBeInstanceOf(TransportClosedError)
+})
+
+test.each(['network', 'session-expired'] as const)(
+  'a %s transport failure after the server returned a task rejects with TaskInterruptedError',
+  async (kind) => {
+    // A local transport failing a `tasks/*` request with a branded error frame (as HTTP does).
+    const pair = new DirectTransports<ServerMessage, ClientMessage>()
+    transports.push(pair)
+    const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+    void (async () => {
+      for (;;) {
+        const next = await pair.server.read()
+        if (next.done) return
+        const request = next.value as ClientRequest
+        if (request.id == null) continue
+        if (request.method.startsWith('tasks/')) {
+          pair.server.write({
+            jsonrpc: '2.0',
+            id: request.id,
+            error: {
+              code: -32603,
+              message: 'Request failed',
+              data: brandTransportFailure({}, { kind }),
+            },
+          } as ServerMessage)
+          continue
+        }
+        if (request.method === 'subscriptions/listen') {
+          pair.server.write({
+            jsonrpc: '2.0',
+            id: request.id,
+            error: { code: METHOD_NOT_FOUND, message: 'unavailable' },
+          } as ServerMessage)
+          continue
+        }
+        const result = request.method === 'tools/call' ? created : discovery
+        pair.server.write({ jsonrpc: '2.0', id: request.id, result } as ServerMessage)
+      }
+    })()
+    const error = await client.callTool({ name: 'echo', arguments: {} }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(TaskInterruptedError)
+    expect((error as TaskInterruptedError).taskID).toBe('task-1')
+    expect(transportFailureOf((error as TaskInterruptedError).cause)).toEqual({ kind })
+  },
+)
+
+test('a timeout transport failure after the server returned a task is not a TaskInterruptedError', async () => {
+  const pair = new DirectTransports<ServerMessage, ClientMessage>()
+  transports.push(pair)
+  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  void (async () => {
+    for (;;) {
+      const next = await pair.server.read()
+      if (next.done) return
+      const request = next.value as ClientRequest
+      if (request.id == null) continue
+      if (request.method.startsWith('tasks/') || request.method === 'subscriptions/listen') {
+        pair.server.write({
+          jsonrpc: '2.0',
+          id: request.id,
+          error: request.method.startsWith('tasks/')
+            ? {
+                code: -32603,
+                message: 'Request timed out',
+                data: brandTransportFailure({}, { kind: 'timeout' }),
+              }
+            : { code: METHOD_NOT_FOUND, message: 'unavailable' },
+        } as ServerMessage)
+        continue
+      }
+      const result = request.method === 'tools/call' ? created : discovery
+      pair.server.write({ jsonrpc: '2.0', id: request.id, result } as ServerMessage)
+    }
+  })()
+  const error = await client.callTool({ name: 'echo', arguments: {} }).catch((e: unknown) => e)
+  expect(error).not.toBeInstanceOf(TaskInterruptedError)
+  expect(transportFailureOf(error)).toEqual({ kind: 'timeout' })
 })

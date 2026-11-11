@@ -113,6 +113,7 @@ import {
 } from './subscriptions.js'
 import { TaskWaiter, type WaitForTaskParams } from './task-waiter.js'
 import { currentTraceMeta } from './trace.js'
+import { transportFailureOf } from './transport-failure.js'
 import {
   type ClientParams,
   type ContextTypes,
@@ -1996,7 +1997,13 @@ export class ContextClient<
             elicit,
           })
         } catch (error) {
-          if (error instanceof TransportClosedError) {
+          // The connection went away after the server accepted the task: never replay it.
+          const failure = transportFailureOf(error)?.kind
+          if (
+            error instanceof TransportClosedError ||
+            failure === 'network' ||
+            failure === 'session-expired'
+          ) {
             // biome-ignore lint/style/useErrorCause: the cause is passed through the params object
             throw new TaskInterruptedError({ taskID: result.taskId, cause: error })
           }
