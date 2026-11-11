@@ -168,14 +168,13 @@ test('proceeds normally for a loopback http transport URL', async () => {
 // `init.signal` is threaded through discovery and into `config.handler.authorize` so an
 // aborted outbound request cancels the whole interactive recovery flow instead of leaving it to
 // run to completion in the background.
-test('init.signal is threaded through to config.handler.authorize', async () => {
+test('an already-aborted init.signal ends authorisation without opening the handler', async () => {
   const store = createMemoryTokenStore()
-  let receivedSignal: AbortSignal | undefined
+  let called = false
   const handler: AuthorizationHandler = {
-    async authorize({ buildAuthorizationURL, signal }): Promise<never> {
-      receivedSignal = signal
-      buildAuthorizationURL('http://127.0.0.1:5555/cb')
-      throw new Error('abort observed by handler')
+    async authorize(): Promise<never> {
+      called = true
+      throw new Error('handler must not run')
     },
   }
   const next = async (url: string): Promise<Response> => {
@@ -197,12 +196,12 @@ test('init.signal is threaded through to config.handler.authorize', async () => 
   }
   const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store })
   const controller = new AbortController()
-  controller.abort()
+  const reason = new Error('caller gave up')
+  controller.abort(reason)
   await expect(
     mw(next)(resource, { method: 'POST', body: '{}', signal: controller.signal }),
-  ).rejects.toThrow(/abort observed/)
-  expect(receivedSignal).toBe(controller.signal)
-  expect(receivedSignal?.aborted).toBe(true)
+  ).rejects.toBe(reason)
+  expect(called).toBe(false)
 })
 
 test('rejects a state mismatch from the handler', async () => {

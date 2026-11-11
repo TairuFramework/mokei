@@ -1,6 +1,12 @@
 import { toB64U } from '@sozai/codec'
 import { createRuntime, type Runtime } from '@sozai/runtime'
 
+import {
+  linkSignals,
+  REQUEST_TIMEOUT,
+  requestTimeoutOf,
+  type TimedRequestInit,
+} from '../request-timeout.js'
 import type { FetchLike, FetchMiddleware } from '../transport.js'
 import { parseBearerChallenge, splitScopes } from './challenge.js'
 import { discover, parseResourceMetadataURL } from './discovery.js'
@@ -49,6 +55,27 @@ export type OAuthClientConfig = {
    * the transport's `runtime` for `fetch`.
    */
   runtime?: Runtime
+  /**
+   * Budget in milliseconds for `handler.authorize` (default `600_000`). The wait is outside the
+   * transport's request timeout, so a sign-in may take minutes; the caller's `AbortSignal` still
+   * ends it early. The handler's `signal` aborts when either fires.
+   */
+  authorizationTimeout?: number
+}
+
+/** Default budget for an interactive `handler.authorize`, in milliseconds. */
+export const DEFAULT_AUTHORIZATION_TIMEOUT = 600_000
+
+/** Waits for `run`, rejecting with `signal.reason` as soon as `signal` aborts. */
+function untilAborted<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason)
+    signal.addEventListener('abort', onAbort, { once: true })
+    run()
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort))
+  })
 }
 
 function unionScopes(...lists: Array<ReadonlyArray<string> | undefined>): Array<string> {
@@ -400,7 +427,21 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       return authURL.toString()
     }
 
-    const result = await config.handler.authorize({ buildAuthorizationURL, state, signal })
+    const budget = config.authorizationTimeout ?? DEFAULT_AUTHORIZATION_TIMEOUT
+    const linked = linkSignals(
+      [signal],
+      budget,
+      new Error(`OAuth authorize: no authorization within ${budget}ms`),
+    )
+    let result: { code: string; state: string; redirectURI: string }
+    try {
+      result = await untilAborted(
+        () => config.handler.authorize({ buildAuthorizationURL, state, signal: linked.signal }),
+        linked.signal,
+      )
+    } finally {
+      linked.clearTimer()
+    }
     if (result.state !== state) {
       throw new Error('OAuth authorize: state mismatch')
     }
@@ -431,6 +472,14 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       // Threaded through every OAuth subrequest below so aborting the caller's request cancels the
       // whole recovery flow instead of leaving it running in the background.
       const signal = init?.signal ?? undefined
+      // OAuth's own discovery, token and refresh calls inherit the triggering request's timeout
+      // tag, so a hung authorisation server still fails at the transport's `timeout`.
+      const timeout = requestTimeoutOf(init)
+      const oauthNext: FetchLike =
+        timeout == null
+          ? next
+          : (oauthURL, oauthInit) =>
+              next(oauthURL, { ...oauthInit, [REQUEST_TIMEOUT]: timeout } as TimedRequestInit)
       const u = new URL(url)
       const loopback = isLoopbackHost(u.hostname)
       if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) {
@@ -448,7 +497,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         // not fail the outbound request outright -- it proceeds on the current, possibly-stale
         // token, and the 401 path below recovers.
         try {
-          tokens = await refreshAndStore(next, key, resource, tokens.accessToken, signal)
+          tokens = await refreshAndStore(oauthNext, key, resource, tokens.accessToken, signal)
         } catch (error) {
           // A dead refresh token was cleared: send no stale token, so the 401 goes straight to
           // authorisation instead of redeeming it again.
@@ -476,7 +525,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       // when there is no refresh token/endpoint, or the refresh itself fails.
       if (isRefreshable(tokens)) {
         try {
-          tokens = await refreshAndStore(next, key, resource, tokens.accessToken, signal)
+          tokens = await refreshAndStore(oauthNext, key, resource, tokens.accessToken, signal)
           return next(url, attach(init))
         } catch {
           // Fall through to full authorisation below.
@@ -494,7 +543,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       const authorized = await withSingleFlight(key, stale, () => {
         return serialiseAuthorize(config.handler, () => {
           return authorize({
-            next,
+            next: oauthNext,
             key,
             resource,
             staleAccessToken: stale,
@@ -528,7 +577,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         const run = (staleAccessToken: string) => () =>
           serialiseAuthorize(config.handler, () => {
             return authorize({
-              next,
+              next: oauthNext,
               key,
               resource,
               staleAccessToken,

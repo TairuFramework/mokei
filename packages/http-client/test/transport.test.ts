@@ -1116,7 +1116,10 @@ describe('HTTPTransport', () => {
         method: 'notifications/cancelled',
         params: { requestId: 7, _meta: { ...requestMeta20260728 } },
       } as ClientMessage)
-      expect(abortSpy).toHaveBeenCalledTimes(1)
+      // The base fetch links its own timeout signal to the exchange's, so one cancellation
+      // aborts two controllers; what matters is that the fetch saw it.
+      expect(abortSpy).toHaveBeenCalled()
+      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
 
       // A real server closes the connection once it reads the disconnect. Simulate that so the
       // backgrounded SSE consumption settles and reclaims its tracking entry via the same path

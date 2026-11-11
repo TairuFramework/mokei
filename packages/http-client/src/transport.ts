@@ -24,6 +24,12 @@ import { parseServerSentEvents } from 'parse-sse'
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 import { SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE } from './errors.js'
 import {
+  REQUEST_TIMEOUT,
+  RequestTimeoutError,
+  type TimedRequestInit,
+  withRequestTimeout,
+} from './request-timeout.js'
+import {
   buildParamHeaders,
   collectHeaderAnnotations,
   encodeHeaderValue,
@@ -167,7 +173,11 @@ export type HTTPTransportParams = {
    * revision the client speaks.
    */
   protocolVersionHeader?: string
-  /** Wraps the transport's fetch (e.g. OAuth). Composed once over `runtime.fetch`. */
+  /**
+   * Wraps the transport's fetch (e.g. OAuth). Composed once over `runtime.fetch`. The request
+   * timeout travels in an internal `init` field: spread `init` (`{ ...init, headers }`) when
+   * rebuilding it, or the request runs without its time-to-headers timeout.
+   */
   fetchMiddleware?: FetchMiddleware
   /**
    * Platform services: `fetch` for every request. Defaults to `createRuntime()` from
@@ -327,7 +337,6 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const params: Record<string, unknown> = Object.keys(meta).length > 0 ? { _meta: meta } : {}
 
     const controller = new AbortController()
-    const timeoutID = setTimeout(() => controller.abort(), this.#refreshTimeout)
     this.#untrackedControllers.add(controller)
     const refreshID = `mokei-internal:tools/list:${++this.#internalRequestCount}`
     try {
@@ -343,7 +352,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           params,
         }),
         signal: controller.signal,
-      })
+        [REQUEST_TIMEOUT]: this.#refreshTimeout,
+      } as TimedRequestInit)
       if (!response.ok) {
         return false
       }
@@ -358,7 +368,6 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // A failed refresh is never the caller's error: the peer's own `-32020` is what surfaces.
       return false
     } finally {
-      clearTimeout(timeoutID)
       this.#untrackedControllers.delete(controller)
     }
   }
@@ -454,7 +463,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#protocolVersion = params.protocolVersionHeader ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
     const runtime = params.runtime ?? createRuntime()
-    const baseFetch: FetchLike = (url, init) => runtime.fetch(url, init)
+    const baseFetch = withRequestTimeout((url, init) => runtime.fetch(url, init))
     this.#fetch = params.fetchMiddleware ? params.fetchMiddleware(baseFetch) : baseFetch
   }
 
@@ -642,11 +651,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       }
     }
 
-    // The timer guards time-to-headers only. The controller outlives it: once a response
-    // begins, a long streamed tool call must not be cut off by a timeout -- but it must still
-    // be cuttable by an explicit cancellation.
+    // The `REQUEST_TIMEOUT` tag guards time-to-headers of each network call the base fetch makes,
+    // so a `fetchMiddleware` waiting on an interactive sign-in is not under it. The controller
+    // outlives it: once a response begins, a long streamed tool call must not be cut off by a
+    // timeout -- but it must still be cuttable by an explicit cancellation.
     const controller = new AbortController()
-    const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
     if (trackedID != null) {
       this.#exchangeControllers.set(trackedID, {
         cancelled: false,
@@ -664,9 +673,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         headers,
         body: JSON.stringify(message),
         signal: controller.signal,
-      })
+        [REQUEST_TIMEOUT]: this.#timeout,
+      } as TimedRequestInit)
     } catch (error) {
-      clearTimeout(timeoutID)
       const entry = trackedID == null ? undefined : this.#exchangeControllers.get(trackedID)
       this.#releaseController(trackedID, controller)
       if (entry?.cancelled) {
@@ -674,13 +683,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         // settled id is noise.
         return
       }
-      const reason = controller.signal.aborted
-        ? `Request timed out after ${this.#timeout}ms`
-        : `Request failed: ${error instanceof Error ? error.message : String(error)}`
+      const reason =
+        error instanceof RequestTimeoutError || controller.signal.aborted
+          ? `Request timed out after ${this.#timeout}ms`
+          : `Request failed: ${error instanceof Error ? error.message : String(error)}`
       this.#failRequest(trackedID, INTERNAL_ERROR_CODE, reason)
       return
     }
-    clearTimeout(timeoutID)
 
     // Capture session ID from response
     const newSessionID = response.headers.get('Mcp-Session-Id')
