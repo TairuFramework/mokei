@@ -66,8 +66,9 @@ function provider(toolCalls: Array<FunctionToolCall<ToolCall>>): ModelProvider<T
   }
 }
 
-function createSession(): Session<TestTypes> {
+function createSession(tracing?: { payloads: 'never' }): Session<TestTypes> {
   const session = new Session<TestTypes>({
+    tracing,
     localTools: [
       {
         name: 'add',
@@ -306,6 +307,26 @@ describe('invoke_agent spans', () => {
     await expect(agent.run({ prompt: 'go' })).rejects.toThrow('boom')
 
     expect(agentSpan().attributes['error.type']).toBe('BoomError')
+    await agent.dispose()
+    await session.dispose()
+  })
+
+  test("provider error text never reaches a span under payloads 'never'", async () => {
+    const session = createSession({ payloads: 'never' })
+    const failing = provider([])
+    failing.streamChat = () => {
+      throw new Error('secret detail')
+    }
+    const agent = new AgentSession<TestTypes>({ session, provider: failing, model: 'm' })
+
+    await expect(agent.run({ prompt: 'go' })).rejects.toThrow('secret detail')
+
+    const finished = exporter.getFinishedSpans()
+    expect(finished.length).toBeGreaterThan(0)
+    for (const span of finished) {
+      expect(span.status.message ?? '').not.toContain('secret detail')
+      expect(JSON.stringify(span.attributes)).not.toContain('secret detail')
+    }
     await agent.dispose()
     await session.dispose()
   })

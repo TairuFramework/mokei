@@ -814,7 +814,7 @@ describe('callLocalTool cancellation', () => {
 })
 
 describe('local tool execute_tool spans', () => {
-  function hostWith(execute: LocalToolDefinition['execute'], payloads?: 'on') {
+  function hostWith(execute: LocalToolDefinition['execute'], payloads?: 'on' | 'never') {
     const host = new ContextHost({ tracing: payloads === undefined ? undefined : { payloads } })
     host.addLocalTool({
       name: 'notify',
@@ -876,6 +876,17 @@ describe('local tool execute_tool spans', () => {
     const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
     expect(span.status.code).toBe(SpanStatusCode.ERROR)
     expect(span.attributes['error.type']).toBe('tool_error')
+  })
+
+  test("a thrown message never reaches the span under payloads 'never'", async () => {
+    const host = hostWith(async () => {
+      throw new Error('secret detail')
+    }, 'never')
+    await host.callLocalTool({ name: 'notify' })
+    const span = spans()[0] as NonNullable<ReturnType<typeof spans>[number]>
+    expect(span.attributes['error.type']).toBe('_OTHER')
+    expect(span.status.message).toBeFalsy()
+    expect(JSON.stringify(span.attributes)).not.toContain('secret detail')
   })
 
   test('a plain Error maps to _OTHER', async () => {

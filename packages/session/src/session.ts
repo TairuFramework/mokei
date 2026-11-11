@@ -247,6 +247,11 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return this.#contextHost
   }
 
+  /** Content capture this session's spans use, resolved against the environment. */
+  get payloadCapture(): PayloadCapture {
+    return resolveContentCapture(this.#tracing?.payloads)
+  }
+
   get events(): EventEmitter<SessionEvents<T>> {
     return this.#events
   }

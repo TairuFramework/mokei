@@ -120,7 +120,7 @@ export function createProxyTracing(params: {
     entry.span.setAttributes(settleAttributes({ method: entry.method, inputRequired }))
     if (statusCode !== undefined) entry.span.setAttribute('rpc.response.status_code', statusCode)
     if (errorType === undefined) entry.span.end()
-    else endSpanError(entry.span, errorType, message)
+    else endSpanError(entry.span, errorType, message, capture)
   }
   return {
     observe(from, message) {
@@ -238,7 +238,7 @@ export function createProxyTracing(params: {
                 },
           )
         }
-        const outcome = responseOutcome({ result: message.result, error: rpcError }, side)
+        const outcome = responseOutcome({ result: message.result, error: rpcError }, side, capture)
         if (outcome.error) finish(key, outcome.errorType, outcome.message, outcome.statusCode)
         else
           finish(

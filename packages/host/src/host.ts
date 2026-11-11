@@ -989,7 +989,7 @@ export class ContextHost extends Disposer {
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      endSpanError(span, errorTypeOf(error), errorMessage)
+      endSpanError(span, errorTypeOf(error), errorMessage, capture)
       return {
         content: [{ type: 'text' as const, text: errorMessage }],
         isError: true,
