@@ -47,9 +47,8 @@ before the wrapped fetch, and the OAuth middleware awaits the `AuthorizationHand
   `Request timed out after <ms>ms` message as today.
 - **Authorization budget.** `OAuthClientConfig.authorizationTimeout` (milliseconds, default
   `600_000`): the handler gets `AbortSignal.any([callerSignal, timeout])`.
-- **Kept in mokei, not kokuin:** the authorization URL (kokuin's `buildAuthorizationURL` always
-  sends `scope`, empty when no scopes are configured, which strict servers reject); filed as a
-  kokuin backlog ask. Revocation moves to kokuin's `fetchOAuthJSON`, which accepts an empty `200`
+- **Authorization URL** from kokuin `buildAuthorizationURL`, which omits an empty `scope` from
+  `@kokuin/oauth` 0.7.4 (follow-up PR #52; before it sent `scope=`). Revocation moves to kokuin's `fetchOAuthJSON`, which accepts an empty `200`
   body (RFC 7009) by default from `@kokuin/oauth` 0.7.3 (user decision); mokei's `fetch.ts` goes.
 - **Errors.** Token and discovery failures now surface as kokuin's `OAuthTokenError`
   (`status`, `code`); `invalid_grant` handling checks its `code`. `OAuthResponseError` was never

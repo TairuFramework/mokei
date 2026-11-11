@@ -1,6 +1,6 @@
 # React Native Runtime, kokuin OAuth Reuse and Sign-in Deadline Implementation Plan
 
-**Stage:** planning
+**Stage:** executing
 **Mode:** tasks
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -9,7 +9,7 @@
 
 **Architecture:** `HTTPTransport` takes `runtime?: Runtime` and builds a timed base fetch from `runtime.fetch`; the request timeout is applied there, per network call, only when the transport tags the request with a timeout. The OAuth middleware takes `runtime` and `authorizationTimeout`, uses `@kokuin/oauth` for PKCE, `state`, code exchange, refresh and metadata GETs, and waits for the `AuthorizationHandler` under the caller's signal plus its own budget.
 
-**Tech Stack:** TypeScript, vitest, `@sozai/runtime`, `@kokuin/oauth` `^0.7.3` (0.7.3 adds empty success bodies, kokuin PR #51).
+**Tech Stack:** TypeScript, vitest, `@sozai/runtime`, `@kokuin/oauth` `^0.7.4` (0.7.3 adds empty success bodies, kokuin PR #51; 0.7.4 omits an empty `scope`, kokuin PR #52).
 
 **Spec:** `docs/superpowers/specs/2026-11-11-rn-runtime-oauth-reuse-design.md`
 
@@ -19,7 +19,7 @@
 - `authorizationTimeout` is milliseconds, default `600_000`.
 - Timeout message stays `Request timed out after <ms>ms`.
 - GET stream and DELETE keep today's timing (no new time-to-headers timer): only requests the transport tags get the timeout.
-- Kept in mokei: the authorization URL builder (no empty `scope`). Revocation's POST moves to kokuin `fetchOAuthJSON` (empty `200` accepted by default from 0.7.3). `requireHTTPS` / `allowLoopback` checks in discovery stay as they are (stricter than kokuin's).
+- The authorization URL comes from kokuin `buildAuthorizationURL` with `authorizationParams: { resource }` (empty `scope` omitted from 0.7.4). Revocation's POST moves to kokuin `fetchOAuthJSON` (empty `200` accepted by default from 0.7.3). `requireHTTPS` / `allowLoopback` checks in discovery stay as they are (stricter than kokuin's).
 - `OAuthResponseError` is internal; token and discovery failures become kokuin `OAuthTokenError`.
 - Conventions: `kigu:conventions`; lint as `rtk proxy pnpm run lint`; rebuild a package before testing its dependants.
 - Release: one patch changeset for `@mokei/http-client`, `@mokei/host`, `@mokei/session`.
@@ -78,14 +78,14 @@
 ### Task 3: OAuth on `@kokuin/oauth`
 
 **Files:**
-- Modify: `pnpm-workspace.yaml` (catalog `'@kokuin/oauth': ^0.7.3`), `packages/http-client/package.json`
+- Modify: `pnpm-workspace.yaml` (catalog `'@kokuin/oauth': ^0.7.4`), `packages/http-client/package.json`
 - Modify: `packages/http-client/src/oauth/middleware.ts` (`exchangeRefresh`, `exchangeAuthorizationCode`, `isInvalidGrant`, PKCE/`state`), `packages/http-client/src/oauth/discovery.ts` (metadata GETs), `packages/http-client/src/oauth/revoke.ts` (POST through kokuin `fetchOAuthJSON`; `unsupported_token_type` check on `OAuthTokenError.code`)
 - Delete: `packages/http-client/src/oauth/pkce.ts` (and `test/oauth-pkce.test.ts` once its cases move)
 - Delete: `packages/http-client/src/oauth/fetch.ts` (no remaining users)
 - Test: existing `oauth-*.test.ts` suites; add cases to `oauth-middleware-refresh.test.ts` and `oauth-middleware-authorize.test.ts`
 
 **Interfaces:**
-- Consumes: `runtime` (Task 1), `@kokuin/oauth` `generateCodeVerifier`, `deriveCodeChallenge`, `generateState`, `exchangeCode`, `refreshToken`, `fetchOAuthJSON`, `OAuthTokenError`. Definition passed to kokuin: `{ name: issuer, mode: 'native', clientID, authorizationEndpoint, tokenEndpoint }`; runtime passed as `{ ...runtime, fetch: next }` so token calls stay unwrapped.
+- Consumes: `runtime` (Task 1), `@kokuin/oauth` `generateCodeVerifier`, `deriveCodeChallenge`, `generateState`, `exchangeCode`, `refreshToken`, `fetchOAuthJSON`, `buildAuthorizationURL`, `OAuthTokenError`. Definition passed to kokuin: `{ name: issuer, mode: 'native', clientID, authorizationEndpoint, tokenEndpoint }`; runtime passed as `{ ...runtime, fetch: next }` so token calls stay unwrapped.
 
 - [ ] **Step 1: Failing tests:**
   - `PKCE challenge matches RFC 7636 Appendix B` — verifier `dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk` → challenge `E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM` (through the authorize flow's URL).
@@ -97,12 +97,11 @@
 - [ ] **Step 4: PASS:** full `packages/http-client` suite, types, `pnpm test:packed`.
 - [ ] **Step 5: Commit** `refactor(http-client): run the OAuth client flow on @kokuin/oauth`.
 
-### Task 4: Docs, upstream asks, changeset
+### Task 4: Docs and changeset
 
 **Files:**
 - Modify: `packages/http-client/README.md` (runtime / React Native, `authorizationTimeout`), `docs/agents/architecture.md` (one line each)
 - Create: `.changeset/rn-runtime-oauth-reuse.md` (patch: `@mokei/http-client`, `@mokei/host`, `@mokei/session`)
-- Create (sibling repo): kokuin backlog ask -- omit empty `scope` in `buildAuthorizationURL`
 
 - [ ] **Step 1:** Write docs and changeset; `pnpm change status`.
 - [ ] **Step 2:** Full check: `rtk proxy pnpm run build && pnpm -r --no-bail run test && rtk proxy pnpm run lint` (known flakes: host-node SIGKILL timing, integration daemon start under load -- rerun alone).
