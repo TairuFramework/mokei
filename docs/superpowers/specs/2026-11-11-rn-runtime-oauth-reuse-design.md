@@ -34,3 +34,24 @@ before the wrapped fetch, and the OAuth middleware awaits the `AuthorizationHand
   `getRandomValues` drives verifier and `state`; RFC 7636 challenge vector; a sign-in slower than
   the request timeout succeeds while one past its own budget or aborted fails; defaults unchanged.
 - Release: patch changeset.
+
+## Implementation calls (builder, 2026-11-11)
+
+- **Deadline mechanism.** The per-request timer moves from around the whole middleware chain into
+  the transport's base fetch (`runtime.fetch` wrapped with a time-to-headers timeout). Every
+  network call -- the MCP POST, GET stream, DELETE, and the OAuth discovery and token calls made
+  through `next` -- gets its own timeout, and the `AuthorizationHandler` wait, which makes no
+  network call, is outside every one. The internal `tools/list` refresh keeps its shorter
+  `refreshTimeout` through a symbol-keyed `RequestInit` field the base fetch reads (spread by
+  `attach`, so it survives the OAuth middleware). A timeout surfaces with the same
+  `Request timed out after <ms>ms` message as today.
+- **Authorization budget.** `OAuthClientConfig.authorizationTimeout` (milliseconds, default
+  `600_000`): the handler gets `AbortSignal.any([callerSignal, timeout])`.
+- **Kept in mokei, not kokuin:** the authorization URL (kokuin's `buildAuthorizationURL` always
+  sends `scope`, empty when no scopes are configured, which strict servers reject) and revocation's
+  POST (RFC 7009 allows an empty `200` body, which kokuin's `fetchOAuthJSON` rejects as invalid
+  JSON). Both are filed as kokuin backlog asks; mokei's `fetch.ts` keeps only what revocation
+  needs.
+- **Errors.** Token and discovery failures now surface as kokuin's `OAuthTokenError`
+  (`status`, `code`); `invalid_grant` handling checks its `code`. `OAuthResponseError` was never
+  exported, so no public API changes.
