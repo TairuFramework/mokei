@@ -241,6 +241,12 @@ export const MAX_GET_RECONNECT_MS = 30_000
 /** Timeout for the session-termination DELETE issued on dispose. */
 export const DEFAULT_DISPOSE_TIMEOUT = 5_000
 
+/** {@link HTTPTransport.dispose} parameters. */
+export type DisposeHTTPTransportParams = {
+  /** Send the session-terminating `DELETE` (default `true`). */
+  terminateSession?: boolean
+}
+
 /** Loss of the connection to the server, as seen by the transport. */
 export type ConnectionEvent = { type: 'failed'; error: NetworkError } | { type: 'session-expired' }
 
@@ -1128,10 +1134,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Dispose of the transport.
+   * Dispose of the transport. Terminates the session with a `DELETE` unless `terminateSession`
+   * is `false` (for a session the server already reported gone).
    */
-  async dispose(): Promise<void> {
+  async dispose(params?: DisposeHTTPTransportParams): Promise<void> {
     if (this.#disposed) return
+    // `Disposer` may pass an arbitrary abort reason here: only an explicit `false` skips it.
+    const terminateSession =
+      (params as DisposeHTTPTransportParams | null | undefined)?.terminateSession !== false
     this.#disposed = true
 
     // Cancel the GET stream
@@ -1154,7 +1164,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     }
 
     // Terminate session with DELETE, bounded so a hung server can't stall shutdown.
-    if (this.#sessionID) {
+    if (this.#sessionID && terminateSession) {
       try {
         const headers: Record<string, string> = {
           ...this.#headers,

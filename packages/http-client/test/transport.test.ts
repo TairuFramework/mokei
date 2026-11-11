@@ -791,6 +791,21 @@ describe('HTTPTransport', () => {
       expect(deleteCall?.[1]?.headers?.['Mcp-Session-Id']).toBe('session-del')
     })
 
+    test('does not send DELETE when terminateSession is false', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(initializeResult, { 'Mcp-Session-Id': 'session-keep' }),
+      )
+
+      const transport = new HTTPTransport({ url: TEST_URL })
+      await transport.write(initializeRequest)
+      await transport.read()
+      expect(transport.sessionID).toBe('session-keep')
+
+      await transport.dispose({ terminateSession: false })
+
+      expect(findCallByMethod(fetchMock.mock.calls, 'DELETE')).toBeUndefined()
+    })
+
     test('does not send DELETE when no session ID exists', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(initializeResult))
 
