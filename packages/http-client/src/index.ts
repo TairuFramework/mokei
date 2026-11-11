@@ -10,11 +10,14 @@
  * @module http-client
  */
 
+export { TRANSPORT_FAILURE, transportFailureOf } from '@mokei/context-client'
 export type { Runtime } from '@sozai/runtime'
 
 export { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 export {
+  AuthRequiredError,
   isSessionExpiredCode,
+  NetworkError,
   SESSION_EXPIRED_CODE,
   SESSION_EXPIRED_MESSAGE,
   SessionExpiredError,
@@ -41,6 +44,7 @@ export {
 } from './oauth/store.js'
 export { createMemoryStore, type KeyValueStore } from './store.js'
 export {
+  type ConnectionEvent,
   type CreateHTTPClientParams,
   createHTTPClient,
   DEFAULT_HTTP_REFRESH_TIMEOUT,

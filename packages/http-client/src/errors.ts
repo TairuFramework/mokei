@@ -39,3 +39,32 @@ export type SessionExpiredErrorParams = { cause?: unknown }
 export function isSessionExpiredCode(code: unknown): boolean {
   return code === SESSION_EXPIRED_CODE
 }
+
+/** Thrown by a fetch middleware when a request needs a sign-in it may not start. */
+export class AuthRequiredError extends Error {
+  constructor(message = 'Authorization required', options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'AuthRequiredError'
+  }
+}
+
+/**
+ * Raised by the raw fetch when the network call to the MCP URL itself fails: no response, not
+ * an abort, not a timeout. Requests a middleware makes elsewhere (an OAuth server) never raise it.
+ */
+export class NetworkError extends Error {
+  #url: string
+
+  constructor(url: string, options?: { cause?: unknown }) {
+    super(
+      `Network request to ${url} failed${options?.cause instanceof Error ? `: ${options.cause.message}` : ''}`,
+      options,
+    )
+    this.name = 'NetworkError'
+    this.#url = url
+  }
+
+  get url(): string {
+    return this.#url
+  }
+}
