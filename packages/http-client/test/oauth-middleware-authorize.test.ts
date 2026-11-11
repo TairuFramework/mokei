@@ -1,4 +1,6 @@
-import { expect, test } from 'vitest'
+import { fromB64U } from '@sozai/codec'
+import { createRuntime, type GetRandomValues } from '@sozai/runtime'
+import { describe, expect, test } from 'vitest'
 
 import { type AuthorizationHandler, createOAuthMiddleware } from '../src/oauth/middleware.js'
 import { createMemoryTokenStore, tokenStoreKey } from '../src/oauth/store.js'
@@ -231,4 +233,78 @@ test('rejects a state mismatch from the handler', async () => {
   }
   const mw = createOAuthMiddleware({ clientID: 'c', resource, handler, store })
   await expect(mw(next)(resource, { method: 'POST', body: '{}' })).rejects.toThrow(/state/i)
+})
+
+describe('authorization request on @kokuin/oauth', () => {
+  const Verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'
+  const Challenge = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'
+
+  function signIn(runtime?: ReturnType<typeof createRuntime>) {
+    let authorizationURL: URL | undefined
+    let tokenBody: URLSearchParams | undefined
+    const handler: AuthorizationHandler = {
+      async authorize({ buildAuthorizationURL, state }) {
+        authorizationURL = new URL(buildAuthorizationURL('http://127.0.0.1:5555/cb'))
+        return { code: 'auth-code', state, redirectURI: 'http://127.0.0.1:5555/cb' }
+      },
+    }
+    const next = async (url: string, init?: RequestInit): Promise<Response> => {
+      if (url.includes('oauth-protected-resource'))
+        return json({ resource, authorization_servers: ['https://as.example.com'] })
+      if (url.endsWith('/.well-known/oauth-authorization-server'))
+        return json({
+          issuer: 'https://as.example.com',
+          authorization_endpoint: 'https://as.example.com/authorize',
+          token_endpoint: 'https://as.example.com/token',
+          code_challenge_methods_supported: ['S256'],
+        })
+      if (url.endsWith('/token')) {
+        tokenBody = new URLSearchParams(String(init?.body))
+        return json({ access_token: 'fresh', token_type: 'Bearer' })
+      }
+      if (new Headers(init?.headers).get('Authorization') === 'Bearer fresh') return json({})
+      return new Response('unauth', { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } })
+    }
+    const mw = createOAuthMiddleware({
+      clientID: 'c',
+      resource,
+      handler,
+      store: createMemoryTokenStore(),
+      runtime,
+    })
+    return {
+      run: () => mw(next)(resource, { method: 'POST', body: '{}' }),
+      authorizationURL: () => authorizationURL,
+      tokenBody: () => tokenBody,
+    }
+  }
+
+  test('PKCE challenge matches RFC 7636 Appendix B', async () => {
+    let first = true
+    const getRandomValues: GetRandomValues = (array) => {
+      const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength)
+      if (first) bytes.set(fromB64U(Verifier))
+      else bytes.fill(7)
+      first = false
+      return array
+    }
+    const flow = signIn(createRuntime({ getRandomValues }))
+    expect((await flow.run()).status).toBe(200)
+    expect(flow.authorizationURL()?.searchParams.get('code_challenge')).toBe(Challenge)
+    expect(flow.tokenBody()?.get('code_verifier')).toBe(Verifier)
+  })
+
+  test('code exchange sends resource', async () => {
+    const flow = signIn()
+    await flow.run()
+    expect(flow.tokenBody()?.get('grant_type')).toBe('authorization_code')
+    expect(flow.tokenBody()?.get('resource')).toBe(resource)
+  })
+
+  test('no scope parameter when none is requested', async () => {
+    const flow = signIn()
+    await flow.run()
+    expect(flow.authorizationURL()?.searchParams.has('scope')).toBe(false)
+    expect(flow.authorizationURL()?.searchParams.get('resource')).toBe(resource)
+  })
 })

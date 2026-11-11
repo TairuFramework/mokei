@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@enkaku/transport": "catalog:",
+    "@kokuin/oauth": "catalog:",
     "@mokei/context-client": "workspace:^",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/logger": "workspace:^",

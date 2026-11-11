@@ -206,6 +206,9 @@ catalogs:
     '@inkjs/ui':
       specifier: ^2.0.0
       version: 2.0.0
+    '@kokuin/oauth':
+      specifier: ^0.7.4
+      version: 0.7.4
     '@kokuin/token':
       specifier: ^0.7.0
       version: 0.7.0
@@ -1611,6 +1614,9 @@ importers:
       '@enkaku/transport':
         specifier: 'catalog:'
         version: 0.23.2(@logtape/logtape@2.4.2)
+      '@kokuin/oauth':
+        specifier: 'catalog:'
+        version: 0.7.4
       '@mokei/context-client':
         specifier: workspace:^
         version: link:../context-client
@@ -3752,6 +3758,9 @@ packages:
 
   '@kokuin/crypto@0.7.1':
     resolution: {integrity: sha512-t13lUijnQiqEdLCVhOuaThKWD5zSRUg/BOpLQMg1EQZkr1qNIX/VYD26GD7Wh5EsNno3dcmaFqQySVd11v8KDA==}
+
+  '@kokuin/oauth@0.7.4':
+    resolution: {integrity: sha512-MaYwKceYVaYvtBssQDLfHbLIQaAGdth2/XqZEJm8fffrdfew2F5oAs5jrNBddiL+WBAdRbIwkaOqDX3Mjcbq9Q==}
 
   '@kokuin/otel@0.7.0':
     resolution: {integrity: sha512-fscJEhELRZOxjKACEbTCUiv9TZKMxjz3lOpRJr3v+oSL1yBXmmG962cB85XtxmSgt+L6IyyynnxQtHcn65sEdg==}
@@ -14116,6 +14125,12 @@ snapshots:
     dependencies:
       '@noble/curves': 2.4.0
       '@noble/hashes': 2.4.0
+
+  '@kokuin/oauth@0.7.4':
+    dependencies:
+      '@noble/hashes': 2.4.0
+      '@sozai/codec': 0.4.4
+      '@sozai/runtime': 0.1.0
 
   '@kokuin/otel@0.7.0(@logtape/logtape@2.4.2)':
     dependencies:
