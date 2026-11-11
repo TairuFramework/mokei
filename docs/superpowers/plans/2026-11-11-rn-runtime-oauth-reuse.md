@@ -9,7 +9,7 @@
 
 **Architecture:** `HTTPTransport` takes `runtime?: Runtime` and builds a timed base fetch from `runtime.fetch`; the request timeout is applied there, per network call, only when the transport tags the request with a timeout. The OAuth middleware takes `runtime` and `authorizationTimeout`, uses `@kokuin/oauth` for PKCE, `state`, code exchange, refresh and metadata GETs, and waits for the `AuthorizationHandler` under the caller's signal plus its own budget.
 
-**Tech Stack:** TypeScript, vitest, `@sozai/runtime`, `@kokuin/oauth` `^0.7.2`.
+**Tech Stack:** TypeScript, vitest, `@sozai/runtime`, `@kokuin/oauth` `^0.7.3` (0.7.3 adds empty success bodies, kokuin PR #51).
 
 **Spec:** `docs/superpowers/specs/2026-11-11-rn-runtime-oauth-reuse-design.md`
 
@@ -19,7 +19,7 @@
 - `authorizationTimeout` is milliseconds, default `600_000`.
 - Timeout message stays `Request timed out after <ms>ms`.
 - GET stream and DELETE keep today's timing (no new time-to-headers timer): only requests the transport tags get the timeout.
-- Kept in mokei: the authorization URL builder (no empty `scope`) and revocation's POST (empty `200` allowed). `requireHTTPS` / `allowLoopback` checks in discovery stay as they are (stricter than kokuin's).
+- Kept in mokei: the authorization URL builder (no empty `scope`). Revocation's POST moves to kokuin `fetchOAuthJSON` (empty `200` accepted by default from 0.7.3). `requireHTTPS` / `allowLoopback` checks in discovery stay as they are (stricter than kokuin's).
 - `OAuthResponseError` is internal; token and discovery failures become kokuin `OAuthTokenError`.
 - Conventions: `kigu:conventions`; lint as `rtk proxy pnpm run lint`; rebuild a package before testing its dependants.
 - Release: one patch changeset for `@mokei/http-client`, `@mokei/host`, `@mokei/session`.
@@ -78,10 +78,10 @@
 ### Task 3: OAuth on `@kokuin/oauth`
 
 **Files:**
-- Modify: `pnpm-workspace.yaml` (catalog `'@kokuin/oauth': ^0.7.2`), `packages/http-client/package.json`
-- Modify: `packages/http-client/src/oauth/middleware.ts` (`exchangeRefresh`, `exchangeAuthorizationCode`, `isInvalidGrant`, PKCE/`state`), `packages/http-client/src/oauth/discovery.ts` (metadata GETs), `packages/http-client/src/oauth/revoke.ts` (unchanged POST; error check accepts both classes only if needed)
+- Modify: `pnpm-workspace.yaml` (catalog `'@kokuin/oauth': ^0.7.3`), `packages/http-client/package.json`
+- Modify: `packages/http-client/src/oauth/middleware.ts` (`exchangeRefresh`, `exchangeAuthorizationCode`, `isInvalidGrant`, PKCE/`state`), `packages/http-client/src/oauth/discovery.ts` (metadata GETs), `packages/http-client/src/oauth/revoke.ts` (POST through kokuin `fetchOAuthJSON`; `unsupported_token_type` check on `OAuthTokenError.code`)
 - Delete: `packages/http-client/src/oauth/pkce.ts` (and `test/oauth-pkce.test.ts` once its cases move)
-- Trim: `packages/http-client/src/oauth/fetch.ts` to what revocation needs
+- Delete: `packages/http-client/src/oauth/fetch.ts` (no remaining users)
 - Test: existing `oauth-*.test.ts` suites; add cases to `oauth-middleware-refresh.test.ts` and `oauth-middleware-authorize.test.ts`
 
 **Interfaces:**
@@ -91,6 +91,7 @@
   - `PKCE challenge matches RFC 7636 Appendix B` — verifier `dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk` → challenge `E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM` (through the authorize flow's URL).
   - `code exchange sends resource` and `refresh sends resource and scope` — form bodies carry `resource` and, for refresh with configured scopes, `scope`.
   - `invalid_grant on refresh clears the stored token` — stays green after the switch (existing test; confirm it exercises the kokuin error).
+  - `revocation accepts an empty 200` — revocation endpoint answers `200` with no body: result `status: 'revoked'`; `unsupported_token_type` still skipped.
 - [ ] **Step 2: Run, expect FAIL** where behaviour is new; existing suites must still pass before the swap.
 - [ ] **Step 3: Implement** the swap; keep the `token_type` bearer check and `StoredTokens` mapping; `isInvalidGrant` checks `OAuthTokenError.code`; discovery uses `fetchOAuthJSON({ runtime: { fetch }, url, method: 'GET', signal })`.
 - [ ] **Step 4: PASS:** full `packages/http-client` suite, types, `pnpm test:packed`.
@@ -101,7 +102,7 @@
 **Files:**
 - Modify: `packages/http-client/README.md` (runtime / React Native, `authorizationTimeout`), `docs/agents/architecture.md` (one line each)
 - Create: `.changeset/rn-runtime-oauth-reuse.md` (patch: `@mokei/http-client`, `@mokei/host`, `@mokei/session`)
-- Create (sibling repo): kokuin backlog ask -- omit empty `scope` in `buildAuthorizationURL`; accept an empty success body in `fetchOAuthJSON` (RFC 7009)
+- Create (sibling repo): kokuin backlog ask -- omit empty `scope` in `buildAuthorizationURL`
 
 - [ ] **Step 1:** Write docs and changeset; `pnpm change status`.
 - [ ] **Step 2:** Full check: `rtk proxy pnpm run build && pnpm -r --no-bail run test && rtk proxy pnpm run lint` (known flakes: host-node SIGKILL timing, integration daemon start under load -- rerun alone).
