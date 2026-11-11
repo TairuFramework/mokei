@@ -16,9 +16,11 @@ import {
   type PromptParams,
   recordMCPSession,
   resolveContentCapture,
+  TaskInterruptedError,
   type TerminationReason,
   type ToolParams,
   type TraceParentFrom,
+  transportFailureOf,
   type UnknownContextTypes,
 } from '@mokei/context-client'
 import type {
@@ -44,6 +46,7 @@ import { ROOT_CONTEXT, type SpanContext, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 
+import { ContextUnavailableError } from './errors.js'
 import {
   createLocalToolID,
   createToolFromDefinition,
@@ -317,6 +320,16 @@ type RegisterParams = {
   httpTransport?: HTTPTransport
   url?: string
   reconnect?: { options: ReconnectOptions; factory: ContextFactory }
+}
+
+/** Sends one gated request on `client`, with the time left (`undefined`: no deadline). */
+type GatedSend<R> = (client: ContextClient, timeout: number | undefined) => Promise<R>
+
+/** The request failed with the loss of its connection, not with anything the server said. */
+function isLossError(error: unknown): boolean {
+  if (error instanceof TransportClosedError) return true
+  const kind = transportFailureOf(error)?.kind
+  return kind === 'network' || kind === 'session-expired'
 }
 
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
@@ -1176,9 +1189,19 @@ export class ContextHost extends Disposer {
     params: ContextPromptParams<T>,
   ): Promise<GetPromptResult> {
     const { key, elicit, ...promptParams } = params
-    return this.getContext<T>(key).client.getPrompt({
-      ...(promptParams as PromptParams<T>),
-      elicit: this.#perCallElicit(key, elicit),
+    const registration = this.getContext<T>(key)
+    const send = (client: ContextClient<T>, timeout: number | undefined) =>
+      client.getPrompt({
+        ...(promptParams as PromptParams<T>),
+        ...(timeout === undefined ? {} : { timeout }),
+        elicit: this.#perCallElicit(key, elicit),
+      })
+    const controller = this.#registrations.get(registration as unknown as HostedContext)?.controller
+    if (controller == null) {
+      return send(registration.client, promptParams.timeout)
+    }
+    return this.#gated(key, registration as unknown as HostedContext, controller, promptParams, {
+      send: send as unknown as GatedSend<GetPromptResult>,
     })
   }
 
@@ -1186,10 +1209,78 @@ export class ContextHost extends Disposer {
     params: ContextToolParams<T>,
   ): Promise<CallToolResult> {
     const { key, elicit, ...toolParams } = params
-    return this.getContext<T>(key).client.callTool({
-      ...(toolParams as ToolParams<T>),
-      elicit: this.#perCallElicit(key, elicit),
+    const registration = this.getContext<T>(key)
+    const send = (client: ContextClient<T>, timeout: number | undefined) =>
+      client.callTool({
+        ...(toolParams as ToolParams<T>),
+        ...(timeout === undefined ? {} : { timeout }),
+        elicit: this.#perCallElicit(key, elicit),
+      })
+    const controller = this.#registrations.get(registration as unknown as HostedContext)?.controller
+    if (controller == null) {
+      return send(registration.client, toolParams.timeout)
+    }
+    return this.#gated(key, registration as unknown as HostedContext, controller, toolParams, {
+      send: send as unknown as GatedSend<CallToolResult>,
+      toolName: toolParams.name as string,
     })
+  }
+
+  /**
+   * Runs a request on a context that can reconnect. One deadline is taken at entry (from
+   * `timeout`; none without one): a reconnect is waited out at the gate within it, and the request
+   * then runs with what is left. The registration is re-read before dispatch and must still be the
+   * one the call started on. A read-only tool call (`toolName`) lost in flight with its
+   * generation is retried once on the new client.
+   */
+  async #gated<R>(
+    key: string,
+    registration: HostedContext,
+    controller: ReconnectController,
+    options: { signal?: AbortSignal; timeout?: number },
+    request: { send: GatedSend<R>; toolName?: string },
+  ): Promise<R> {
+    const { signal, timeout } = options
+    const deadline = timeout == null ? Number.POSITIVE_INFINITY : Date.now() + timeout
+    for (let retried = false; ; retried = true) {
+      if (signal?.aborted) throw signal.reason
+      // Aborts are checked again on wake inside `waitForGate`, where an abort wins the race.
+      await controller.waitForGate({ signal, deadline })
+      if (signal?.aborted) throw signal.reason
+      if (this.#contexts[key] !== registration) {
+        throw new ContextUnavailableError({
+          key,
+          cause: new Error(`Context ${key} was removed while the request waited`),
+        })
+      }
+      const client = registration.client
+      const generation = controller.generation
+      // Read from the generation the call is sent on: a retry trusts the lost one's listing.
+      const readOnly =
+        request.toolName != null &&
+        registration.tools.find((ct) => ct.tool.name === request.toolName)?.tool.annotations
+          ?.readOnlyHint === true
+      const remaining = timeout == null ? undefined : Math.max(0, deadline - Date.now())
+      try {
+        return await request.send(client, remaining)
+      } catch (error) {
+        if (
+          retried ||
+          !readOnly ||
+          signal?.aborted ||
+          error instanceof TaskInterruptedError ||
+          !isLossError(error)
+        ) {
+          throw error
+        }
+        // The loss may surface on the call before the client reports it. Ignored when it was
+        // already reported or the context is not armed (never removes an unarmed context).
+        controller.lose(generation, error as Error)
+        if (controller.generation === generation || deadline - Date.now() <= 0) {
+          throw error
+        }
+      }
+    }
   }
 
   callNamespacedTool(params: NamespacedToolParams): Promise<CallToolResult> {
@@ -1216,6 +1307,12 @@ export class ContextHost extends Disposer {
       timeout,
       traceAttributes,
       elicit,
+    }).catch((error: unknown) => {
+      // The agent path sees an unavailable context as a tool error, like a failing local tool.
+      if (error instanceof ContextUnavailableError) {
+        return { isError: true, content: [{ type: 'text' as const, text: error.message }] }
+      }
+      throw error
     })
   }
 
