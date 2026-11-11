@@ -518,12 +518,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     try {
       return await fetch(url, init)
     } catch (error) {
-      if (
-        !this.#disposed &&
-        init?.signal?.aborted !== true &&
-        (error as Error | undefined)?.name !== 'AbortError' &&
-        isSameURL(url, this.#url)
-      ) {
+      if (!this.#disposed && init?.signal?.aborted !== true && isSameURL(url, this.#url)) {
         throw new NetworkError(this.#url, { cause: error })
       }
       throw error

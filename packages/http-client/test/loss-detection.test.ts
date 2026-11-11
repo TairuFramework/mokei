@@ -106,11 +106,18 @@ describe('connection loss detection', () => {
       })
 
     test('abort', async () => {
-      const { transport, events, send, frame } = setup(() =>
-        Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
-      )
+      // write() serializes sends, so a cancellation cannot overtake a pending POST. The abort is
+      // driven where a caller's signal really reaches the raw fetch: a middleware that swaps in
+      // its own controller and aborts it while the request is pending.
+      const callerAbort = new AbortController()
+      const middleware: FetchMiddleware = (next) => (url, init) => {
+        setTimeout(() => callerAbort.abort(), 5)
+        return next(url, { ...init, signal: callerAbort.signal })
+      }
+      const { transport, events, send, frame } = setup(hang, { fetchMiddleware: middleware })
       await send(1)
       const value = await frame()
+      expect(callerAbort.signal.aborted).toBe(true)
       expect(transportFailureOf(value.error)).toBeUndefined()
       expect(events).toEqual([])
       await transport.dispose()
