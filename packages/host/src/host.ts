@@ -37,10 +37,12 @@ import type {
 import { TransportClosedError, type WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
 import {
+  type ConnectionEvent,
   type FetchMiddleware,
   type HTTPAuthOptions,
   HTTPTransport,
   type Runtime,
+  SessionExpiredError,
 } from '@mokei/http-client'
 import { ROOT_CONTEXT, type SpanContext, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
@@ -332,6 +334,18 @@ function isLossError(error: unknown): boolean {
   return kind === 'network' || kind === 'session-expired'
 }
 
+/** The loss was the server dropping the session: there is no session left to terminate. */
+function isSessionExpiry(error: unknown): boolean {
+  return (
+    error instanceof SessionExpiredError || transportFailureOf(error)?.kind === 'session-expired'
+  )
+}
+
+/** The error a transport connection event reports to the host. */
+function connectionLossError(event: ConnectionEvent): Error {
+  return event.type === 'failed' ? event.error : new SessionExpiredError()
+}
+
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHostedContextParams,
 ): HostedContext<T> {
@@ -397,6 +411,16 @@ export type HTTPContextParams = {
    * from `@sozai/runtime`). React Native passes `@sozai/runtime-expo`'s `createRuntime({ fetch })`.
    */
   runtime?: Runtime
+  /**
+   * Rebuild the context when its connection is lost, instead of removing it (`true` = defaults):
+   * a network failure, an expired session, or a GET stream that fails twice in a row. Each
+   * attempt uses a new transport from these params, and never opens a sign-in: a server that
+   * wants one ends the reconnect with `context:failed` (an `AuthRequiredError`).
+   * Applies once `setup()` has committed the context's tools. Clients returned by `add*Context`
+   * or read from `getContext(key).client` earlier are not gated and go stale after a reconnect;
+   * `getContext(key).client` always returns the current one.
+   */
+  reconnect?: boolean | ReconnectOptions
 }
 
 export class ContextHost extends Disposer {
@@ -563,12 +587,18 @@ export class ContextHost extends Disposer {
       factory: reconnect.factory,
       connectivity: this.#connectivity,
       hooks: {
-        quiesce: () => {
+        quiesce: (error) => {
           lostSpanContext = state.spanContext
           state.spanContext = undefined
           this.#detachClient(key, 'lost')
+          const transport = state.httpTransport
           // Teardown of a lost generation never opens a sign-in.
-          state.httpTransport?.setInteractive(false)
+          transport?.setInteractive(false)
+          if (transport != null && isSessionExpiry(error)) {
+            // The server already dropped the session: no `DELETE` for it. Disposed ahead of the
+            // client so the client's own transport dispose below finds it done.
+            void transport.dispose({ terminateSession: false }).catch(() => {})
+          }
           // In the background: disposal never waits on, or depends on, a replacement.
           void registration.disposer.dispose().catch(() => {})
         },
@@ -665,6 +695,20 @@ export class ContextHost extends Disposer {
       const failure = cause instanceof Error ? cause : new Error(String(cause))
       void this.#events.emit('context:failed', { key, error: failure }).catch(() => {})
     })
+  }
+
+  /**
+   * A transport reported its connection lost. Only a context armed for reconnect acts on it;
+   * any other keeps today's behaviour (the next request fails on its own).
+   */
+  #reportConnectionLoss(key: string, client: ContextClient, error: Error): void {
+    const registration = this.#contexts[key]
+    if (registration == null || registration.client !== client) {
+      return
+    }
+    if (this.#registrations.get(registration)?.controller?.armed) {
+      this.reportLoss(key, client, error)
+    }
   }
 
   getContextKeys(): Array<string> {
@@ -896,24 +940,46 @@ export class ContextHost extends Disposer {
     // named in exactly one place. Spelling it a second time is the literal-as-capability
     // pattern this revision's work set out to remove, and a one-sided change to it would be a
     // behaviour difference between two entry points that read as siblings.
-    const transport = new HTTPTransport({
-      url,
-      headers,
-      auth,
-      timeout,
-      fetchMiddleware,
-      runtime,
-    })
-    const context = createHostedContext<T>({
-      transport: transport as ClientTransport,
-      protocolVersion,
-      elicit: this.createElicitHandler({ key, elicit }),
-    })
+    // One generation: a new transport and client from the same params (`'auto'` re-probes).
+    const build = (interactive?: boolean) => {
+      const transport = new HTTPTransport({
+        url,
+        headers,
+        auth,
+        timeout,
+        fetchMiddleware,
+        runtime,
+        interactive,
+      })
+      const context = createHostedContext<T>({
+        transport: transport as ClientTransport,
+        protocolVersion,
+        elicit: this.createElicitHandler({ key, elicit }),
+      })
+      return { transport, context }
+    }
+    const options = resolveReconnectOptions(params.reconnect)
+    const { transport, context } = build()
 
     this.#register(key, context as unknown as HostedContext, {
       transport: 'http',
       httpTransport: transport,
       url,
+      reconnect:
+        options == null
+          ? undefined
+          : {
+              options,
+              // Candidates never open a sign-in; the commit makes the winner interactive.
+              factory: async () => {
+                const candidate = build(false)
+                return {
+                  client: candidate.context.client as unknown as ContextClient,
+                  disposer: candidate.context.disposer,
+                  transport: candidate.transport,
+                }
+              },
+            },
     })
     void this.#events.emit('context:added', { key }).catch(() => {})
 
@@ -1036,6 +1102,13 @@ export class ContextHost extends Disposer {
         void this.#events.emit('elicitation:complete', { key, elicitationId }).catch(() => {})
       }),
     ]
+    if (httpTransport != null) {
+      unsubscribes.push(
+        httpTransport.connectionEvents.on('connection', (event) => {
+          this.#reportConnectionLoss(key, client, connectionLossError(event))
+        }),
+      )
+    }
     this.#subscriptionUnsubscribes.set(key, unsubscribes)
     return span.spanContext()
   }
@@ -1274,19 +1347,22 @@ export class ContextHost extends Disposer {
       try {
         return await request.send(client, timeout == null ? undefined : remaining)
       } catch (error) {
+        if (!isLossError(error)) {
+          throw error
+        }
+        // The loss may surface on the call before the transport or client reports it. Ignored
+        // when it was already reported or the context is not armed (never removes an unarmed
+        // context).
+        controller.lose(generation, error as Error)
         if (
           retried ||
           !readOnly ||
           signal?.aborted ||
+          // The server accepted a task: running the call again would run it twice.
           error instanceof TaskInterruptedError ||
-          !isLossError(error)
+          controller.generation === generation ||
+          deadline - Date.now() <= 0
         ) {
-          throw error
-        }
-        // The loss may surface on the call before the client reports it. Ignored when it was
-        // already reported or the context is not armed (never removes an unarmed context).
-        controller.lose(generation, error as Error)
-        if (controller.generation === generation || deadline - Date.now() <= 0) {
           throw error
         }
         retried = true

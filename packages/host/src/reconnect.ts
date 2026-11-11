@@ -323,7 +323,12 @@ export class ReconnectController {
         if (!this.#owns(generation)) return
         lastError = toError(cause)
         if (isAuthFailure(cause)) {
-          this.#giveUp(lastError)
+          // Consumers see why it ended as one type, whatever layer reported the 401.
+          this.#giveUp(
+            cause instanceof AuthRequiredError
+              ? cause
+              : new AuthRequiredError(`Context ${this.#key} requires authorization`, { cause }),
+          )
           return
         }
         if (attempt >= this.#options.maxAttempts) {
