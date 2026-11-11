@@ -1,3 +1,4 @@
+import { createRuntime } from '@sozai/runtime'
 import { describe, expect, test } from 'vitest'
 
 import { challengeFromVerifier, createPKCE } from '../src/oauth/pkce.js'
@@ -12,7 +13,7 @@ describe('PKCE', () => {
   })
 
   test('createPKCE returns S256 with a matching challenge', async () => {
-    const { verifier, challenge, method } = await createPKCE()
+    const { verifier, challenge, method } = await createPKCE(createRuntime().getRandomValues)
     expect(method).toBe('S256')
     expect(await challengeFromVerifier(verifier)).toBe(challenge)
   })

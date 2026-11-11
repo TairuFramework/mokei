@@ -266,6 +266,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       fetchMiddleware,
       enableTools,
       elicit,
+      runtime,
     } = params
     // `ContextHost.addHTTPContext` registers the context synchronously (unlike stdio's
     // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
@@ -280,6 +281,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       protocolVersion,
       fetchMiddleware,
       elicit,
+      runtime,
     })
     try {
       const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })

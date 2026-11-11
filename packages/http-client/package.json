@@ -46,6 +46,7 @@
     "@mokei/logger": "workspace:^",
     "@sozai/codec": "catalog:",
     "@sozai/event": "catalog:",
+    "@sozai/runtime": "catalog:",
     "@sozai/stream": "catalog:",
     "parse-sse": "catalog:"
   }

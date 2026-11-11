@@ -1,4 +1,5 @@
 import { toB64U } from '@sozai/codec'
+import { createRuntime, type Runtime } from '@sozai/runtime'
 
 import type { FetchLike, FetchMiddleware } from '../transport.js'
 import { parseBearerChallenge, splitScopes } from './challenge.js'
@@ -42,6 +43,12 @@ export type OAuthClientConfig = {
    * sign-in loop. Set `false` to pass every `403` through untouched.
    */
   stepUp?: boolean
+  /**
+   * Platform services: `getRandomValues` for the PKCE verifier and `state`. Defaults to
+   * `createRuntime()` from `@sozai/runtime`. Requests go through the transport's fetch, so set
+   * the transport's `runtime` for `fetch`.
+   */
+  runtime?: Runtime
 }
 
 function unionScopes(...lists: Array<ReadonlyArray<string> | undefined>): Array<string> {
@@ -253,6 +260,7 @@ function serialiseAuthorize<T>(handler: AuthorizationHandler, run: () => Promise
  */
 export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddleware {
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
+  const runtime = config.runtime ?? createRuntime()
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
   // A per-request default store would never retain a token.
   const store = config.store ?? createMemoryTokenStore()
@@ -374,8 +382,8 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       signal,
     })
 
-    const pkce = await createPKCE()
-    const state = toB64U(crypto.getRandomValues(new Uint8Array(16)))
+    const pkce = await createPKCE(runtime.getRandomValues)
+    const state = toB64U(runtime.getRandomValues(new Uint8Array(16)))
 
     function buildAuthorizationURL(redirectURI: string): string {
       const authURL = new URL(as.authorization_endpoint)

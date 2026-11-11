@@ -10,6 +10,8 @@
  * @module http-client
  */
 
+export type { Runtime } from '@sozai/runtime'
+
 export { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 export {
   isSessionExpiredCode,

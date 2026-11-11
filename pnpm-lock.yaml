@@ -1446,6 +1446,9 @@ importers:
       '@opentelemetry/sdk-trace':
         specifier: 'catalog:'
         version: 3.0.0(@opentelemetry/api@1.10.0)
+      '@sozai/runtime':
+        specifier: 'catalog:'
+        version: 0.1.0
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1623,6 +1626,9 @@ importers:
       '@sozai/event':
         specifier: 'catalog:'
         version: 0.1.6(@logtape/logtape@2.4.2)
+      '@sozai/runtime':
+        specifier: 'catalog:'
+        version: 0.1.0
       '@sozai/stream':
         specifier: 'catalog:'
         version: 0.2.2

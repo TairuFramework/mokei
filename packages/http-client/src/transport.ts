@@ -17,6 +17,7 @@ import {
 } from '@mokei/context-protocol'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { EventEmitter } from '@sozai/event'
+import { createRuntime, type Runtime } from '@sozai/runtime'
 import { createReadable, writeTo } from '@sozai/stream'
 import { parseServerSentEvents } from 'parse-sse'
 
@@ -166,8 +167,14 @@ export type HTTPTransportParams = {
    * revision the client speaks.
    */
   protocolVersionHeader?: string
-  /** Wraps the transport's fetch (e.g. OAuth). Composed once over globalThis.fetch. */
+  /** Wraps the transport's fetch (e.g. OAuth). Composed once over `runtime.fetch`. */
   fetchMiddleware?: FetchMiddleware
+  /**
+   * Platform services: `fetch` for every request. Defaults to `createRuntime()` from
+   * `@sozai/runtime` (the globals). React Native passes `@sozai/runtime-expo`'s
+   * `createRuntime({ fetch })`, for example with `expo/fetch` for streaming responses.
+   */
+  runtime?: Runtime
 }
 
 /**
@@ -446,7 +453,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#refreshTimeout = params.refreshTimeout ?? DEFAULT_HTTP_REFRESH_TIMEOUT
     this.#protocolVersion = params.protocolVersionHeader ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
-    const baseFetch: FetchLike = (url, init) => globalThis.fetch(url, init)
+    const runtime = params.runtime ?? createRuntime()
+    const baseFetch: FetchLike = (url, init) => runtime.fetch(url, init)
     this.#fetch = params.fetchMiddleware ? params.fetchMiddleware(baseFetch) : baseFetch
   }
 
@@ -1072,6 +1080,7 @@ const HTTP_TRANSPORT_PARAM_KEYS = {
   logger: true,
   protocolVersionHeader: true,
   fetchMiddleware: true,
+  runtime: true,
 } satisfies Record<keyof HTTPTransportParams, true>
 
 /**
