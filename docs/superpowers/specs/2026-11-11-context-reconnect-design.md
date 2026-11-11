@@ -1,6 +1,6 @@
 # Opt-in context reconnect
 
-**Status:** design for approval, 2026-11-11 (builder check done). Approach approved earlier the same day (host-owned
+**Status:** design for approval, 2026-11-11 (builder check and Codex review done; revision 1). Approach approved earlier the same day (host-owned
 reconnect); this document is the full design written from it.
 **Requested by:** Yosura (one `ContextHost` per device) and the roadmap's "Enhanced error
 handling" item.
@@ -15,15 +15,15 @@ without a session, so every later call fails until the context is removed by han
 
 Success: a context the user opted in comes back on its own. Its tools stay listed while it does,
 calls wait briefly instead of failing at once, and the user sees what happened. Anything that
-cannot be recovered fails exactly as it does today.
+cannot be recovered fails and is removed, with `context:failed`.
 
 ## Goals
 
 - `reconnect` option per context on `addLocalContext`, `addHTTPContext`, `addDirectContext`,
-  and their `Session` / `NodeSession` equivalents. Off by
-  default; off keeps today's behaviour exactly.
-- Detect loss: stdio exit or framing fault; HTTP connection-level failure; HTTP `2025-11-25`
-  session `404`; any client `closed` for the other kinds.
+  and their `Session` / `NodeSession` equivalents. Off by default; off keeps today's behaviour,
+  except that HTTP and direct contexts now emit `context:added`.
+- Detect loss: stdio exit or framing fault; HTTP network-level failure; HTTP `2025-11-25`
+  session `404`; idle HTTP stream failure; any client `closed`.
 - Reconnect with backoff, keeping the key's tools, `enabled`/`allow` state and subscriptions.
 - A call gate: calls during a reconnect wait up to a bound, then run or fail clearly.
 - Events and CLI notices.
@@ -46,8 +46,8 @@ cannot be recovered fails exactly as it does today.
 - A reconnecting context that silently runs a different server: stdio respawn re-checks with the
   consumer when asked to (`respawn` hook).
 - A reconnect loop that opens a sign-in window, or retries a `401` forever.
-- Hiding failure: after the attempts run out the context is removed with `context:failed`, as
-  today.
+- Hiding failure: after the attempts run out the context fails (`context:failed`) and is
+  removed.
 
 ## Approaches
 
@@ -88,147 +88,210 @@ both gain `reconnect` and pass it through.
 
 ### Per-context controller (host)
 
-The `#contexts` entry gains an optional controller holding: `state` (`connected` |
-`reconnecting`), a factory that builds a fresh `{ client, disposer }`, the gate, the attempt loop,
-and the reconnect options. Contexts without `reconnect` have no controller and run today's code
-paths unchanged.
+The `#contexts` entry (the *registration*: one object per `add*Context` call, kept across swaps)
+gains an optional controller holding: `state` (`connected` | `reconnecting`), a `generation`
+counter, a factory that builds a fresh `{ client, disposer }`, the gate, the attempt loop, and the
+reconnect options. Contexts without `reconnect` have no controller and keep today's code paths.
 
 Factories:
 - **HTTP:** a new `HTTPTransport` from the same params (same `fetchMiddleware`, `runtime`,
-  token store) plus a new client with the same `protocolVersion` (the negotiated revision is
-  re-probed when `'auto'`).
+  token store) plus a new client with the same `protocolVersion` (re-probed when `'auto'`).
 - **Direct:** a new `DirectTransports` pair and `ContextServer` from the same `config`.
-- **Stdio (`NodeContextHost`):** `spawnHostedContext` with the previous spawn params. When
-  `respawn` is given it is called once per loss, before the first attempt, and may be
-  interactive; the params it returns are reused for every attempt of that loss and become
-  `previous` for the next loss. Time spent in it counts toward callers' gate timeout like any
-  other reconnect time.
+- **Stdio (`NodeContextHost`):** `spawnHostedContext` with the previous spawn params, with fresh
+  per-candidate `isCurrent` / `framingError` / `onExit` callbacks. When `respawn` is given it is
+  called once per loss, before the first attempt, and may be interactive; the params it returns
+  are reused for every attempt of that loss and become `previous` for the next loss.
+
+### Ownership and generations
+
+Every asynchronous step of a reconnect, a refresh or a setup re-checks ownership after each
+await: the registration must still be `this.#contexts[key]`, and the client it captured must
+still be `registration.client` (for a reconnect step: the controller's `generation` must equal
+the attempt's). A step that lost ownership disposes what it built and publishes nothing:
+no swap, no tools, no events, no terminal removal. This covers the reconnect loop,
+`#refreshContextTools`, `#onListChanged`, `setup`, the stdio callbacks and subscription
+restoration. A key that is removed and re-added during a reconnect therefore never sees the old
+loop's results.
 
 ### When reconnect applies
 
-A controller is armed only after the context's first successful `setup()`. Until then a loss
-behaves as today (removal, `context:failed`), so a wrong URL or a bad command fails the add at
-once instead of after the backoff, and `Session`/`NodeSession` setup cleanup (`#removeIfOurs`)
-never meets a swapped client. A context that is never set up (tools passed directly) never arms.
-(Builder's call, 2026-11-11.)
+The controller arms when `setup()` commits its tool list and the registration is still current.
+Until then a loss behaves as today, so a wrong URL or a bad command fails the add at once instead
+of after the backoff. A context never set up (tools passed directly) never arms. (Builder's call,
+2026-11-11.)
+
+`setup()` on an armed registration: while `reconnecting` it waits at the gate; while `connected`
+it runs on the captured client and, if a swap happened meanwhile, discards its result and returns
+the current tools. `Session` / `NodeSession` setup cleanup (`#removeIfOurs`, `stillOurs`) compares
+the registration object (stable across swaps) instead of the client, so an abort that lands after
+a successful setup never removes a context it does not own and never leaves one it does.
 
 ### Loss detection
 
-- **Any kind:** the client `closed` event (today's trigger). With a controller it starts a
-  reconnect instead of `remove(key, 'lost')`.
+Loss is classified where the evidence is, never from messages:
+
+- **Raw fetch boundary.** The transport's innermost fetch (`runtime.fetch`, under the timeout and
+  redirect wrappers) marks a rejection as `NetworkError` (cause kept) unless the caller's signal
+  aborted, the transport is disposed, or the request timed out. Errors thrown by middleware
+  (OAuth storage, discovery, configuration) or by the redirect guard are not network errors.
+- **Typed failure channel.** When the transport fails a request it attaches
+  `data['dev.mokei/transport'] = { kind, status? }` to the error frame: `kind` is `network`,
+  `timeout`, `auth-required` (the middleware's `AuthRequiredError`), `http` (with the final
+  status, including a `401` the middleware returned after its own retry) or `session-expired`.
+  The host reads this from the `RPCError`, never the message text.
+- **Connection events.** `HTTPTransport` emits `connection` `{ type: 'failed', error }` on a
+  `NetworkError` and `{ type: 'session-expired' }` on the `2025-11-25` session `404` (POST, and
+  the GET stream when it held a session). `5xx`, other HTTP responses, timeouts, aborts and
+  middleware errors are not loss.
+- **Idle loss (user decision, 2026-11-11), method-aware.** The GET stream and
+  `subscriptions/listen` report loss after two consecutive `NetworkError`s on their own
+  re-opens; any other request reports on the first. The subscription driver treats an error
+  frame of kind `network` as retryable (it stops on non-retryable errors today), so its second
+  attempt can happen. Limits, documented: a server without a GET stream or a resource-subscription
+  capability (no auto-opened `listen`) is only checked lazily, on the next call; a GET `404`
+  without a session still stops that stream for good.
+- **Any kind:** the client `closed` event, as today.
 - **Stdio:** `onStreamError` and `onExit` route to the controller instead of emitting
-  `context:failed` and removing; `context:failed` is emitted only when the attempts run out.
-- **HTTP:** `HTTPTransport` gains a `connection` event (`{ type: 'failed', error }` for a fetch
-  that throws without a response, excluding the caller's own abort; `{ type: 'session-expired' }`
-  for the `2025-11-25` `404`). A `5xx`, any HTTP response, and a request timeout are not loss.
-  The host subscribes and starts a reconnect. A session `404` request still fails with `-32001`
-  as today; the transport is disposed and rebuilt, never reused without a session.
-- **HTTP idle loss (user decision, 2026-11-11):** the long-lived streams also report loss, so an
-  idle context reconnects without waiting for a call. The `2025-11-25` GET stream and the
-  `2026-07-28` `subscriptions/listen` stream emit `connection: failed` when their own re-open
-  fails at the network level (a fetch that throws, as above) twice in a row; a stream that ends
-  cleanly, a `404`/`405` on the GET stream, or an HTTP error response is not loss.
-- A loss reported while a reconnect is already running is ignored.
+  `context:failed` and removing.
+- A loss reported for a generation already lost, or while a reconnect runs, is ignored.
+
+### On loss: quiesce at once
+
+The lost generation is shut down immediately, not after a replacement succeeds:
+1. `generation += 1`, state `reconnecting`, gate closed.
+2. Detach the old client's host listeners and settle its context span as `lost`.
+3. Dispose the old client in the background (kills the child, stops streams, rejects pending
+   calls), with its transport set non-interactive first (see Authorisation); a `session-expired`
+   transport skips its `DELETE`.
+4. The registration keeps its tool metadata (`entry.tools`) while reconnecting.
+
+Disposal never waits on, or depends on, a successful replacement.
 
 ### Reconnect loop
 
 A hand-rolled loop over `getRetryDelay` from `@sozai/async` (full jitter), because `retry` has no
 pause and every failed attempt would count while offline.
 
-1. State `reconnecting`; emit `context:reconnecting { key, attempt, error }` before each attempt.
+1. Emit `context:reconnecting { key, attempt, error }` before each attempt.
 2. If `connectivity` says offline, wait for `subscribe` to report online (or poll `isOnline` at
    the delay when there is no `subscribe`) without spending an attempt. A missing or throwing hook
-   counts as online. The wait has no limit (user decision, 2026-11-11): the context stays
-   `reconnecting`, its tools stay listed, and calls fail after `gateTimeoutMs` with
-   `ContextUnavailableError` until it is back online or removed.
-3. Build a new `{ client, disposer }` from the factory and run `listTools`. Its result goes
-   through the same merge as `#refreshContextTools`: keep `enabled`/`allow` by name, new tools
-   enabled, vanished tools dropped.
-4. On success, swap (below), set `connected`, open the gate, emit
-   `context:reconnected { key, attempts }` and `tools:changed` when the tool list changed.
-5. On failure, dispose the new attempt's client and wait the backoff delay. A `401` that reaches
-   the host (below) ends the loop at once.
-6. After `maxAttempts`, or on an auth failure or `respawn` returning `false`: today's ending --
-   `remove(key, 'lost')` and `context:failed { key, error }`, with `error` an `AuthRequiredError`
-   for the auth case or a `ReconnectExhaustedError` (cause: last error) otherwise.
+   counts as online. The wait has no limit (user decision, 2026-11-11).
+3. Build a candidate from the factory (non-interactive) and run `listTools`; merge as
+   `#refreshContextTools` does (keep `enabled`/`allow` by name, new tools enabled, vanished
+   tools dropped).
+4. On success, if still the owner: commit the swap (below), state `connected`, open the gate, emit
+   `context:reconnected { key, attempts }`, then `tools:changed` when the list changed, then
+   start subscription restoration.
+5. On failure, dispose the candidate and wait the backoff delay. A failure of kind
+   `auth-required` or `http` `401` ends the loop at once.
+6. After `maxAttempts`, an auth failure, or `respawn` returning `false`: emit
+   `context:failed { key, error }` (an `AuthRequiredError`, or `ReconnectExhaustedError` with the
+   last error as cause), then `remove(key, 'lost')` (which emits `context:removed`).
 
-`remove(key)` or `dispose()` during a reconnect aborts the loop and closes the gate with the
-removal error.
+`remove(key)` or `dispose()` during a reconnect bumps the generation, aborts the loop, disposes any
+candidate, and fails gate waiters with a `ContextUnavailableError` whose cause is the removal.
 
-### Swap
+### Swap commit
 
-Ordering matters because client identity guards several paths:
-1. Unsubscribe the old client's listeners and settle its context span as `lost` (one context span
-   per client; the new client gets a new span, linked to the previous one).
-2. Replace `entry.client`, `entry.disposer` and `entry.tools` on the same entry object, so code
-   holding the entry sees the new client; then wire the new client's subscriptions.
-3. Dispose the old client last; its `closed` event no longer matches the entry and is ignored.
+Synchronous, after the ownership check: replace `entry.client`, `entry.disposer` and `entry.tools`
+on the registration; wire the new client's listeners with per-generation callbacks; set the
+transport interactive; start the new client's context span (linked to the lost one).
 
-`#refreshContextTools` gains the identity check it lacks (compare the entry's client after the
-await).
+### Call gate and deadlines
 
-### Call gate
+`callTool`, `callNamespacedTool` and `getPrompt` take one deadline at entry, from the call's
+`timeout` (or the client default). The gate wait uses `min(gateTimeoutMs, remaining)`; the call
+then runs with `timeout: remaining`, so waiting and a retry never grant a fresh budget.
 
-`callTool`, `callNamespacedTool` and `getPrompt` await the gate when the context is
-`reconnecting`: they resume when it reconnects, or fail after `gateTimeoutMs` with a
-`ContextUnavailableError`. `callNamespacedTool` (the agent path) returns it as an
-`isError: true` tool result, like `callLocalTool` does for local failures; `callTool` and
-`getPrompt` reject with it. The caller's `AbortSignal` aborts the wait with its reason.
+- The caller's `AbortSignal` is checked before waiting, on wake, and before dispatch; when the
+  abort and the gate opening race, the abort wins. Aborts reject with the signal's reason.
+- Before dispatch the registration and client are re-read (never a client captured before the
+  wait).
+- A gate timeout fails with `ContextUnavailableError`. `callNamespacedTool` (the agent path)
+  returns only that error as an `isError: true` tool result, like `callLocalTool`; every other
+  error, aborts included, keeps today's behaviour. `callTool` and `getPrompt` reject with it.
 
-The call in flight when the context was lost fails with its transport error. When that call is a
-`tools/call` whose tool has `annotations.readOnlyHint === true`, the host waits at the gate and
-retries it once on the new client; otherwise the error stands. Nothing else is replayed.
+### Read-only retry (kept, user decision 2026-11-11)
 
-Clients taken from `getContext(key).client` or returned by `add*Context` are not gated and go
-stale after a swap. Key-level APIs are the supported surface; documented on `reconnect`.
-`getContext(key).client` always returns the current client.
+The call in flight at loss fails with its transport error. The host retries it once, on the new
+client and within the remaining deadline, only when all hold:
+- the call is a `tools/call` whose tool (as listed on the lost generation) has
+  `annotations.readOnlyHint === true`;
+- it failed with the loss itself: a `TransportClosedError` from the lost generation's client, or an
+  error frame of kind `network` / `session-expired`, and the generation it was sent on is the one
+  that was lost;
+- no task was accepted: `ContextClient.callTool` rejects with `TaskInterruptedError` (cause: the
+  transport error) when the loss happens after the server returned a task, and that is never
+  retried;
+- the caller did not abort and the deadline has time left.
 
-### Subscriptions
+Timeouts, validation failures, RPC errors from the server, and anything else are never retried.
+
+### Subscriptions (kept, user decision 2026-11-11)
 
 `2026-07-28`: a new client re-opens the base `listChanged` subscription by itself. Resource
-subscriptions are re-applied: the host gains `subscribeResource(key, uri)` /
-`unsubscribeResource(key, uri)` that record URIs per key and call the client, and the swap
-re-subscribes the recorded URIs. Subscriptions made directly on a client are not carried over.
+subscriptions go through new host methods `subscribeResource(key, uri)` /
+`unsubscribeResource(key, uri)`, serialised per key in one queue:
+- subscribe calls the client and adds the URI to the key's desired set only after the server
+  acknowledges it; unsubscribe removes the URI first, then calls the client;
+- restoration after a swap runs in the same queue, one URI at a time from a snapshot, skipping URIs
+  no longer desired; it stops when ownership is lost;
+- the gate opens before restoration; calls do not wait for it;
+- if the new server lacks resource subscriptions, or a re-subscribe fails, the URI is dropped
+  from the desired set and `resource:subscription-lost { key, uri, error }` is emitted.
+
+Subscriptions made directly on a client are not carried over.
 
 ### Authorisation
 
-A reconnect must never open a sign-in window. Reconnect attempts tag their requests (an internal
-`RequestInit` field, like the timeout tag) as non-interactive; `createOAuthMiddleware` still
-attaches and refreshes tokens, but where it would call `handler.authorize` it throws
-`AuthRequiredError` instead. The host treats that error, or an HTTP `401` without middleware, as
-the auth ending of step 6. Once the context is removed, the consumer re-adds it, which may sign
-in normally.
+A reconnect never opens a sign-in window. `HTTPTransport` has an interaction mode it stamps on
+every request it sends (an internal `RequestInit` tag, like the timeout tag): candidates and lost
+generations being disposed are non-interactive; a committed swap switches the new transport to
+interactive. In non-interactive mode `createOAuthMiddleware`:
+- still attaches stored tokens and refreshes them;
+- may join a sign-in another request already started (it opens no window itself; bounded by
+  `authorizationTimeout`);
+- throws `AuthRequiredError` before entering the authorize queue on a `401`;
+- returns a `403 insufficient_scope` as-is instead of stepping up;
+- applies the same rules to the `DELETE` sent on dispose.
 
-### Events and consumers
+The host ends the loop on `auth-required` or a final `401`. Once removed, the consumer re-adds the
+context, which may sign in normally.
 
-- Host events: `context:reconnecting { key, attempt, error }`, `context:reconnected { key,
-  attempts }`; `context:failed` and `context:removed` unchanged.
-- `HTTPContextParams` and `addDirectContext` now also emit `context:added`, as stdio does, so
-  consumers see every kind.
-- CLI chat: enables `reconnect: true` for `/context add` and `/context add-http`, shows
-  reconnecting/reconnected notices next to the existing `context:failed` notice, and updates its
-  context list on host `context:removed` (today a lost context stays listed).
-- `Session`/`NodeSession` identity checks (`#removeIfOurs`) keep working: they run only during
-  setup, and the controller arms after setup succeeds.
+### Events
+
+- New: `context:reconnecting { key, attempt, error }` (each attempt), `context:reconnected { key,
+  attempts }` (once per recovery), `resource:subscription-lost { key, uri, error }`.
+- Terminal ending of a reconnect: `context:failed` once, then `context:removed` once.
+- Changes to existing behaviour, reconnect on or off: `addHTTPContext` and `addDirectContext` emit
+  `context:added`, as stdio does today. Nothing else changes when `reconnect` is off.
+
+### Consumers
+
+- CLI chat: `reconnect: true` for `/context add` and `/context add-http`; reconnecting /
+  reconnected / subscription-lost notices next to the existing `context:failed` one; its context
+  list follows host `context:removed` (today a lost context stays listed).
 - Flow host holds the decision-flow direct context's client; that context does not enable
   reconnect.
+- Clients from `getContext(key).client` or `add*Context` are not gated and go stale after a swap;
+  `getContext(key).client` always returns the current one. Documented on `reconnect`.
 
 ### Tracing
 
-One `mcp.context` span per client. The span of a lost client ends with `error.type=context.lost`
-as today; the new client's span links to it and carries `mokei.context.reconnect.attempt`.
+One `mcp.context` span per client. A lost client's span ends with `error.type=context.lost`; the
+new client's span links to it and carries `mokei.context.reconnect.attempt`.
 
 ## Constraints
 
 - Defaults: `maxAttempts` 5, `initialDelayMs` 250, `maxDelayMs` 5 000, `gateTimeoutMs` 10 000.
 - No new package. Changes in `@mokei/host`, `@mokei/host-node`, `@mokei/http-client`,
-  `@mokei/session`, `@mokei/session-node`, `@mokei/cli`.
+  `@mokei/context-client`, `@mokei/session`, `@mokei/session-node`, `@mokei/cli`.
 - Patch changeset.
 
 ## Left to the builder
 
 - Exact error class names and where they are exported (`@mokei/host` for
   `ContextUnavailableError`, `ReconnectExhaustedError`; `@mokei/http-client` for
-  `AuthRequiredError`).
+  `AuthRequiredError`, `NetworkError`; `@mokei/context-client` for `TaskInterruptedError`).
 - Whether the controller lives in a new `host/src/reconnect.ts` (likely) or inside `host.ts`.
 - Test fixtures for stdio respawn (a tiny server script that exits on demand).
