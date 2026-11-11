@@ -52,6 +52,29 @@ been constructed with `elicit`. Its returned function removes that override. Wit
 requests are declined whenever no override is installed. Without an override, a handler passed at
 construction answers requests directly.
 
+### Per-call elicitation
+
+On a `2026-07-28` context, pass `elicit` with a call to answer that call's elicitations, for
+example when concurrent calls on one context come from different screens:
+
+```typescript
+const result = await host.callTool({
+  key: 'tools',
+  name: 'book',
+  arguments: { date: '2026-12-01' },
+  elicit: async (request, fallback) => {
+    // Show the form on the screen that started this call, or defer to the host-wide handler.
+    return await showFormOnThisScreen(request.params, request.signal)
+  },
+})
+```
+
+`callNamespacedTool` and `getPrompt` accept it too. It takes precedence over a
+`handleElicitation` override, and `fallback()` hands the request to the host-wide path. It never
+enables elicitation for a context added with `elicit: false`. On `2025-11-25` it is ignored: a
+server-initiated `elicitation/create` has no link to the call that caused it, so the host-wide
+path answers.
+
 URL-mode requests are forwarded to the handler with their `mode`, `elicitationId` and `url` intact.
 When a `2025-11-25` server sends `notifications/elicitation/complete`, the host emits
 `elicitation:complete` with the context `key` and `elicitationId`, so an application can close the

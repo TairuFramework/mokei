@@ -168,4 +168,51 @@ describe('ContextHost per-call elicit', () => {
       .catch(() => undefined)
     expect(elicit).not.toHaveBeenCalled()
   })
+
+  test('concurrent calls each get their own elicitation', async () => {
+    const { host, hostElicit } = setup()
+    const bCalled = Promise.withResolvers<void>()
+    const ha = vi.fn<HostElicitOverride>(async () => {
+      await bCalled.promise
+      return accept('a')
+    })
+    const hb = vi.fn<HostElicitOverride>(() => {
+      bCalled.resolve()
+      return accept('b')
+    })
+    const [a, b] = await Promise.all([
+      host.callTool({ key: KEY, name: 'ask', arguments: { who: 'a' }, elicit: ha }),
+      host.callTool({ key: KEY, name: 'ask', arguments: { who: 'b' }, elicit: hb }),
+    ])
+    expect(textOf(a)).toBe(JSON.stringify(accept('a')))
+    expect(textOf(b)).toBe(JSON.stringify(accept('b')))
+    expect(ha.mock.calls.map(([request]) => request.params.message)).toEqual(['a'])
+    expect(hb.mock.calls.map(([request]) => request.params.message)).toEqual(['b'])
+    expect(hostElicit).not.toHaveBeenCalled()
+  })
+
+  test('a throwing handler fails only its call', async () => {
+    const baseline = setup()
+    baseline.hostElicit.mockImplementation(() => {
+      throw new Error('handler failed')
+    })
+    const baselineOutcome = await baseline.host
+      .callTool({ key: KEY, name: 'ask', arguments: { who: 'a' } })
+      .then(
+        () => 'resolved',
+        () => 'rejected',
+      )
+
+    const { host } = setup()
+    const ha = () => {
+      throw new Error('handler failed')
+    }
+    const [a, b] = await Promise.allSettled([
+      host.callTool({ key: KEY, name: 'ask', arguments: { who: 'a' }, elicit: ha }),
+      host.callTool({ key: KEY, name: 'ask', arguments: { who: 'b' }, elicit: () => accept('b') }),
+    ])
+    expect(a.status === 'fulfilled' ? 'resolved' : 'rejected').toBe(baselineOutcome)
+    expect(b.status).toBe('fulfilled')
+    if (b.status === 'fulfilled') expect(textOf(b.value)).toBe(JSON.stringify(accept('b')))
+  })
 })
