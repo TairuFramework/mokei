@@ -64,6 +64,10 @@ revisions at capability parity, nothing open.
 
 ## Recently shipped (completed/)
 
+- **Per-call elicitation routing** (2026-11-11) -- on `2026-07-28`, `callTool`, `getPrompt` and
+  task waits take a per-call `elicit` handler, so concurrent calls on one shared context each get
+  their own elicitations. See
+  [per-call elicitation](completed/2026-11-11-per-call-elicitation.complete.md).
 - **Upstream dependency gaps** (2026-11-11) -- validator caches, the monitor bridge `dispose()`,
   `HTTPServer.use` and the enkaku manifest fixes adopted from upstream releases. Only the
   third-party `@inkjs/ui` workaround remains. See
