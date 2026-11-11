@@ -23,6 +23,7 @@ import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 import { SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE } from './errors.js'
+import { withCredentialRedirectGuard } from './redirect-guard.js'
 import {
   REQUEST_TIMEOUT,
   RequestTimeoutError,
@@ -463,7 +464,12 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#protocolVersion = params.protocolVersionHeader ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
     const runtime = params.runtime ?? createRuntime()
-    const baseFetch = withRequestTimeout((url, init) => runtime.fetch(url, init))
+    const baseFetch = withRequestTimeout(
+      withCredentialRedirectGuard(
+        (url, init) => runtime.fetch(url, init),
+        Object.keys(this.#headers),
+      ),
+    )
     this.#fetch = params.fetchMiddleware ? params.fetchMiddleware(baseFetch) : baseFetch
   }
 
