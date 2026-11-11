@@ -179,7 +179,12 @@ When a waited request is withdrawn, the signal passed to the input handler abort
 
 `@mokei/http-client` provides OAuth 2.1 client middleware through `createOAuthMiddleware` and
 `TokenStore` (`createMemoryTokenStore`), including protected-resource metadata discovery, PKCE and
-token refresh, plus `revokeTokens` (RFC 7009). `@mokei/host-node` adds
+token refresh, plus `revokeTokens` (RFC 7009). PKCE, `state`, the authorisation URL, token
+requests and metadata GETs come from `@kokuin/oauth`. The interactive handler waits outside the
+request timeout, under `authorizationTimeout`; each network call keeps the timeout through an
+internal `RequestInit` tag. Credentialed requests never follow redirects. `HTTPTransport`,
+`addHTTPContext` and `createOAuthMiddleware` take a `@sozai/runtime` `Runtime` for `fetch` and
+random values (React Native). `@mokei/host-node` adds
 `createNodeOAuthMiddleware`, `createLoopbackAuthorizationHandler` and two persistent stores:
 `createFileTokenStore` (a JSON file) and `createKeychainTokenStore` (the OS keychain through
 `@napi-rs/keyring`, loaded only when used). The keychain store has no locking of its own, so
@@ -413,7 +418,8 @@ Hosted contexts have an `mcp.context` lifetime span, and a flow tool call is lin
 trace. Notifications are traced log records on the context span.
 
 Payload capture defaults to 65536 bytes and can be disabled or given another byte cap through
-`tracing.payloads`. Redaction runs before every observation sink: local storage, live events,
+`tracing.payloads`. `'never'` records no payloads and no error message text (only error codes
+and types), and the environment variable below cannot override it. Redaction runs before every observation sink: local storage, live events,
 and OTLP export. Secret-like object keys are replaced with
 `[redacted]`; `_meta` retains only `traceparent` and `dev.mokei/flow-run`. Capture limits mark
 truncated payloads, and the forwarded MCP traffic is not modified.

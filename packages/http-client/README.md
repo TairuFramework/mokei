@@ -31,6 +31,24 @@ const client = createHTTPClient({
 const { tools } = await client.listTools()
 ```
 
+`timeout` bounds each network call's time to response headers. A `fetchMiddleware` that rebuilds
+`init` must spread it (`{ ...init, headers }`) to keep that timeout. A request carrying credentials
+(`Authorization`, or any `headers` / `auth` header) never follows a redirect: a `3xx` answer fails it.
+
+On React Native, pass a `runtime` from `@sozai/runtime-expo` for `fetch` (for example `expo/fetch`,
+for streaming) and random values:
+
+```typescript
+import { createRuntime } from '@sozai/runtime-expo'
+import { fetch } from 'expo/fetch'
+
+const client = createHTTPClient({
+  url: 'https://mcp.example.com/mcp',
+  protocolVersion: '2026-07-28',
+  runtime: createRuntime({ fetch }),
+})
+```
+
 `protocolVersion` is required. Pass `'2025-11-25'` to speak the older revision, which does
 have a handshake:
 
@@ -92,6 +110,11 @@ The default store is in memory.
 - A refresh runs inside `store.update`. With the file store, processes that share a tokens file
   redeem a rotating refresh token once.
 - Sign-ins through one `AuthorizationHandler` run one at a time.
+- The handler's wait is outside the request `timeout`: it has its own budget,
+  `authorizationTimeout` (default `600_000` ms), and the caller's `AbortSignal` still ends it.
+  The handler's `signal` aborts when either fires.
+- PKCE, `state`, the authorisation URL and the token requests come from `@kokuin/oauth`;
+  `runtime` supplies the random values. Token failures are `OAuthTokenError`s with a `code`.
 
 `revokeTokens({ tokens, clientID, resource })` revokes stored tokens at their authorisation server
 (RFC 7009). It finds `revocation_endpoint` in the issuer's metadata and revokes the refresh token,
