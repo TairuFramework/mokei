@@ -34,6 +34,7 @@ import {
   SESSION_EXPIRED_CODE,
   SESSION_EXPIRED_MESSAGE,
 } from './errors.js'
+import { REQUEST_INTERACTION, type RequestInteraction } from './interaction.js'
 import { withCredentialRedirectGuard } from './redirect-guard.js'
 import {
   REQUEST_TIMEOUT,
@@ -191,6 +192,12 @@ export type HTTPTransportParams = {
    * rebuilding it, or the request runs without its time-to-headers timeout.
    */
   fetchMiddleware?: FetchMiddleware
+  /**
+   * Whether requests may open an interactive sign-in (default `true`). When `false`, a request
+   * that needs one fails with {@link AuthRequiredError} instead; change it later with
+   * {@link HTTPTransport.setInteractive}. The GET stream and `subscriptions/listen` never sign in.
+   */
+  interactive?: boolean
   /**
    * Platform services: `fetch` for every request. Defaults to `createRuntime()` from
    * `@sozai/runtime` (the globals). React Native passes `@sozai/runtime-expo`'s
@@ -372,7 +379,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#untrackedControllers.add(controller)
     const refreshID = `mokei-internal:tools/list:${++this.#internalRequestCount}`
     try {
-      const response = await this.#fetch(this.#url, {
+      const response = await this.#send({
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -463,6 +470,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #protocolVersion: string | null
   #logger: Logger
   #fetch: FetchLike
+  #interactive: boolean
 
   constructor(params: HTTPTransportParams) {
     // OAuth middleware and static `Authorization` must not compete. Check bearer/basic,
@@ -494,6 +502,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
     this.#refreshTimeout = params.refreshTimeout ?? DEFAULT_HTTP_REFRESH_TIMEOUT
     this.#protocolVersion = params.protocolVersionHeader ?? null
+    this.#interactive = params.interactive ?? true
     this.#logger = params.logger ?? getMokeiLogger('http-client')
     const runtime = params.runtime ?? createRuntime()
     const baseFetch = withRequestTimeout(
@@ -503,6 +512,18 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       ),
     )
     this.#fetch = params.fetchMiddleware ? params.fetchMiddleware(baseFetch) : baseFetch
+  }
+
+  /** Whether requests may open an interactive sign-in. Takes effect from the next request. */
+  setInteractive(value: boolean): void {
+    this.#interactive = value
+  }
+
+  /** Sends to the MCP URL, stamped with the interaction mode current now; `background` traffic
+   * is `'never'` whatever the mode. */
+  #send(init: RequestInit, background = false): Promise<Response> {
+    const interaction: RequestInteraction = background || !this.#interactive ? 'never' : 'allowed'
+    return this.#fetch(this.#url, { ...init, [REQUEST_INTERACTION]: interaction } as RequestInit)
   }
 
   /**
@@ -739,13 +760,17 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
     let response: Response
     try {
-      response = await this.#fetch(this.#url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(message),
-        signal: controller.signal,
-        [REQUEST_TIMEOUT]: this.#timeout,
-      } as TimedRequestInit)
+      response = await this.#send(
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(message),
+          signal: controller.signal,
+          [REQUEST_TIMEOUT]: this.#timeout,
+        } as TimedRequestInit,
+        // `subscriptions/listen` is background traffic: it never opens a sign-in.
+        'method' in message && message.method === 'subscriptions/listen',
+      )
     } catch (error) {
       const entry = trackedID == null ? undefined : this.#exchangeControllers.get(trackedID)
       this.#releaseController(trackedID, controller)
@@ -1034,7 +1059,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           headers['Last-Event-ID'] = this.#lastEventID
         }
 
-        const response = await this.#fetch(this.#url, { method: 'GET', headers, signal })
+        const response = await this.#send({ method: 'GET', headers, signal }, true)
         this.#getFailures = 0
 
         if (response.status === 405 || response.status === 404) {
@@ -1138,7 +1163,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         if (this.#protocolVersion != null) {
           headers['MCP-Protocol-Version'] = this.#protocolVersion
         }
-        await this.#fetch(this.#url, {
+        await this.#send({
           method: 'DELETE',
           headers,
           signal: AbortSignal.timeout(DEFAULT_DISPOSE_TIMEOUT),
@@ -1192,6 +1217,7 @@ const HTTP_TRANSPORT_PARAM_KEYS = {
   logger: true,
   protocolVersionHeader: true,
   fetchMiddleware: true,
+  interactive: true,
   runtime: true,
 } satisfies Record<keyof HTTPTransportParams, true>
 

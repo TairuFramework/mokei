@@ -23,6 +23,7 @@ export {
   SessionExpiredError,
   type SessionExpiredErrorParams,
 } from './errors.js'
+export { interactionOf, REQUEST_INTERACTION, type RequestInteraction } from './interaction.js'
 export { parseBearerChallenge } from './oauth/challenge.js'
 export {
   type AuthorizationHandler,

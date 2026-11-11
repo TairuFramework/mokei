@@ -11,6 +11,8 @@ import {
 } from '@kokuin/oauth'
 import { createRuntime, type Runtime } from '@sozai/runtime'
 
+import { AuthRequiredError } from '../errors.js'
+import { interactionOf } from '../interaction.js'
 import {
   linkSignals,
   REQUEST_TIMEOUT,
@@ -424,6 +426,9 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       // Threaded through every OAuth subrequest below so aborting the caller's request cancels the
       // whole recovery flow instead of leaving it running in the background.
       const signal = init?.signal ?? undefined
+      // A `'never'` request attaches and refreshes tokens and may join a sign-in already under
+      // way, but never starts one or steps up.
+      const interactive = interactionOf(init) === 'allowed'
       // OAuth's own discovery, token and refresh calls inherit the triggering request's timeout
       // tag, so a hung authorisation server still fails at the transport's `timeout`.
       const timeout = requestTimeoutOf(init)
@@ -484,6 +489,16 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         }
       }
 
+      if (!interactive) {
+        // Join a sign-in another request already started, but never begin one.
+        const joined = flights.get(key)
+        if (joined == null) throw new AuthRequiredError()
+        tokens = await joined.catch(() => {
+          throw new AuthRequiredError()
+        })
+        return next(url, attach(init))
+      }
+
       const stale = tokens?.accessToken
       const wwwAuthenticate = response.headers.get('WWW-Authenticate')
       // Signing in again keeps any scopes a step-up added, plus a `scope` the 401 names.
@@ -514,7 +529,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
        * returned as-is, body intact, so the transport can surface the server's error.
        */
       async function stepUp(forbidden: Response): Promise<Response> {
-        if (config.stepUp === false || tokens == null) return forbidden
+        if (config.stepUp === false || !interactive || tokens == null) return forbidden
         const wwwAuthenticate = forbidden.headers.get('WWW-Authenticate')
         const challenge = parseBearerChallenge(wwwAuthenticate)
         if (challenge?.error !== 'insufficient_scope') return forbidden
