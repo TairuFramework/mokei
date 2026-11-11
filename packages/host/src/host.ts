@@ -232,6 +232,15 @@ export type ContextHostParams = {
 }
 
 export type HasContextParams = { key: string }
+
+/** Parameters of {@link ContextHost.subscribeResource} and `unsubscribeResource`. */
+export type ContextResourceSubscriptionParams = {
+  key: string
+  uri: string
+  /** Aborts the change before the server acknowledges it. */
+  signal?: AbortSignal
+}
+
 export type RegisterHostedContextParams = {
   key: string
   context: HostedContext
@@ -306,9 +315,20 @@ function sameToolDefinitions(a: Array<ContextTool>, b: Array<ContextTool>): bool
   return JSON.stringify(a.map((ct) => ct.tool)) === JSON.stringify(b.map((ct) => ct.tool))
 }
 
+/**
+ * A registration's resource subscriptions made through the host: the URIs the consumer wants,
+ * and the one queue that serialises subscribe, unsubscribe and restoration.
+ */
+type ResourceSubscriptions = {
+  desired: Set<string>
+  /** Settles when the last queued change has; never rejects. */
+  tail: Promise<void>
+}
+
 /** Host-side state of one registration (one `add*Context` call), kept across reconnects. */
 type RegistrationState = {
   transport: ContextTransport
+  subscriptions: ResourceSubscriptions
   url?: string
   /** The current client's HTTP transport, set non-interactive when its generation is lost. */
   httpTransport?: HTTPTransport
@@ -557,6 +577,7 @@ export class ContextHost extends Disposer {
   #register(key: string, context: HostedContext, params: RegisterParams): void {
     const state: RegistrationState = {
       transport: params.transport,
+      subscriptions: { desired: new Set(), tail: Promise.resolve() },
       url: params.url,
       httpTransport: params.httpTransport,
     }
@@ -602,7 +623,7 @@ export class ContextHost extends Disposer {
           // In the background: disposal never waits on, or depends on, a replacement.
           void registration.disposer.dispose().catch(() => {})
         },
-        commit: (parts, tools, _generation, attempt) => {
+        commit: (parts, tools, generation, attempt) => {
           if (this.#contexts[key] !== registration) {
             return null
           }
@@ -622,6 +643,7 @@ export class ContextHost extends Disposer {
             { link: lostSpanContext, attempt },
           )
           lostSpanContext = undefined
+          this.#restoreSubscriptions(key, registration, state, parts.client, generation)
           return { toolsChanged }
         },
         fail: (error) => {
@@ -1256,6 +1278,129 @@ export class ContextHost extends Disposer {
 
     await ctx.disposer.dispose()
     void this.#events.emit('context:removed', { key }).catch(() => {})
+  }
+
+  /**
+   * Subscribes to a resource's updates (`2026-07-28`). Resolves once the server acknowledges it;
+   * only then is the URI recorded, so a context added with `reconnect` subscribes to it again on
+   * each new connection. Changes for one context run one at a time, in call order.
+   */
+  subscribeResource(params: ContextResourceSubscriptionParams): Promise<void> {
+    const { key, uri, signal } = params
+    const registration = this.getContext(key)
+    const { subscriptions } = this.#stateOf(registration)
+    return this.#enqueueSubscription(subscriptions, async () => {
+      await this.#sendSubscriptionChange(key, registration, signal, (client, timeout) =>
+        client.subscribeResource({ uri, signal, timeout }),
+      )
+      if (this.#contexts[key] === registration) {
+        subscriptions.desired.add(uri)
+      }
+    })
+  }
+
+  /**
+   * Unsubscribes from a resource's updates. The URI stops being restored at once, even while a
+   * restoration is running; if the server refuses the change the URI is kept, as the client keeps
+   * it, and the call rejects.
+   */
+  unsubscribeResource(params: ContextResourceSubscriptionParams): Promise<void> {
+    const { key, uri, signal } = params
+    const registration = this.getContext(key)
+    const { subscriptions } = this.#stateOf(registration)
+    // Removed now rather than when the queue reaches this change, so a restoration ahead of it
+    // in the queue skips the URI.
+    let wasDesired = subscriptions.desired.delete(uri)
+    return this.#enqueueSubscription(subscriptions, async () => {
+      // A subscribe queued ahead of this change may have recorded it since.
+      wasDesired = subscriptions.desired.delete(uri) || wasDesired
+      try {
+        await this.#sendSubscriptionChange(key, registration, signal, (client, timeout) =>
+          client.unsubscribeResource({ uri, signal, timeout }),
+        )
+      } catch (error) {
+        // The client commits only acknowledged filters, so it still has the URI: keep it here
+        // too, and a reconnect restores it.
+        if (wasDesired && this.#contexts[key] === registration) {
+          subscriptions.desired.add(uri)
+        }
+        throw error
+      }
+    })
+  }
+
+  #stateOf(registration: HostedContext): RegistrationState {
+    // Every registration gets its state in `#register`.
+    return this.#registrations.get(registration) as RegistrationState
+  }
+
+  #enqueueSubscription(
+    subscriptions: ResourceSubscriptions,
+    task: () => Promise<void>,
+  ): Promise<void> {
+    const run = subscriptions.tail.then(task)
+    subscriptions.tail = run.then(
+      () => {},
+      () => {},
+    )
+    return run
+  }
+
+  /** Sends a subscription change, through the gate when the context can reconnect. */
+  async #sendSubscriptionChange(
+    key: string,
+    registration: HostedContext,
+    signal: AbortSignal | undefined,
+    send: GatedSend<void>,
+  ): Promise<void> {
+    if (this.#contexts[key] !== registration) {
+      throw new ContextUnavailableError({
+        key,
+        cause: new Error(`Context ${key} was removed while the change waited`),
+      })
+    }
+    const controller = this.#stateOf(registration).controller
+    if (controller == null) {
+      await send(registration.client, undefined)
+      return
+    }
+    await this.#gated(key, registration, controller, { signal }, { send })
+  }
+
+  /**
+   * Subscribes the new client of a reconnected context to the desired URIs, one at a time, in the
+   * subscription queue. The gate is already open: calls never wait for this. URIs unsubscribed
+   * meanwhile are skipped, and it stops when the client stops being current. A URI the new server
+   * refuses (or cannot subscribe to) is dropped with `resource:subscription-lost`. Restoration
+   * never opens a sign-in: the HTTP transport always sends `subscriptions/listen` non-interactive.
+   */
+  #restoreSubscriptions(
+    key: string,
+    registration: HostedContext,
+    state: RegistrationState,
+    client: ContextClient,
+    generation: number,
+  ): void {
+    const { subscriptions } = state
+    void this.#enqueueSubscription(subscriptions, async () => {
+      for (const uri of Array.from(subscriptions.desired)) {
+        if (!this.#owns(key, registration, client, generation)) return
+        if (!subscriptions.desired.has(uri)) continue
+        try {
+          await client.subscribeResource({ uri })
+        } catch (cause) {
+          if (!this.#owns(key, registration, client, generation)) return
+          const error = cause instanceof Error ? cause : new Error(String(cause))
+          if (isLossError(cause)) {
+            // Lost again: the URI stays desired for the next connection.
+            state.controller?.lose(generation, error)
+            return
+          }
+          subscriptions.desired.delete(uri)
+          void this.#events.emit('resource:subscription-lost', { key, uri, error }).catch(() => {})
+        }
+      }
+    })
   }
 
   getPrompt<T extends ContextTypes = UnknownContextTypes>(

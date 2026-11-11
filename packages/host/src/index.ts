@@ -40,6 +40,7 @@ export {
   type AllowToolCalls,
   ContextHost,
   type ContextHostParams,
+  type ContextResourceSubscriptionParams,
   type ContextTool,
   type CreateContextParams,
   type CreateHostedContextParams,
