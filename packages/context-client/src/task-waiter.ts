@@ -16,6 +16,7 @@ import {
   TaskInputWithdrawnError,
 } from './errors.js'
 import type { ListenHandle, OpenListen } from './subscriptions.js'
+import type { ElicitHandler, PerRequestElicit } from './types.js'
 
 const TASK_LISTEN_ACK_TIMEOUT_MS = 3_000
 const MAX_TIMER_MS = 2_147_483_647
@@ -26,6 +27,12 @@ export type WaitForTaskParams = {
   onStatus?: (status: DetailedTask) => void
   toolName?: string
   cancelOnAbort?: boolean
+  /**
+   * Answers this task's `elicitation/create` input requests, as {@link PerRequestElicit}. With
+   * several waiters on one task, the oldest live waiter's handler answers; a waiter that leaves
+   * stops receiving input.
+   */
+  elicit?: ElicitHandler
 }
 
 export type TaskWaiterParams = {
@@ -34,7 +41,12 @@ export type TaskWaiterParams = {
     params: { taskId: string; inputResponses?: Record<string, InputResponse> },
   ) => Promise<unknown>
   openListen: OpenListen
-  fulfil: (key: string, request: InputRequest, signal: AbortSignal) => Promise<InputResponse>
+  fulfil: (
+    key: string,
+    request: InputRequest,
+    signal: AbortSignal,
+    elicit?: ElicitHandler,
+  ) => Promise<InputResponse>
   validate: (result: CallToolResult, toolName: string) => CallToolResult
   delay?: (ms: number, signal: AbortSignal) => Promise<void>
   /** Clock used to detect task expiry, defaults to `Date.now`. */
@@ -56,6 +68,8 @@ type TaskEntry = {
   inputs: Record<string, InputRequest>
   dispatched: Set<string>
   inFlight: Map<string, AbortController>
+  /** Live waiters' per-request handlers, oldest first; task input goes to the first. */
+  elicits: Array<ElicitHandler>
   deadline?: number
   inputError?: Error
   controller: AbortController
@@ -71,6 +85,7 @@ export class TaskWaiter {
 
   async wait(params: WaitForTaskParams): Promise<CallToolResult> {
     const entry = this.#acquire(params.taskID)
+    if (params.elicit != null) entry.elicits.push(params.elicit)
     let statusError: unknown
     // Server `lastUpdatedAt` is strictly monotonic, so a snapshot no newer than the last one
     // reported (a push followed by a read of the same revision) is a duplicate.
@@ -170,6 +185,10 @@ export class TaskWaiter {
       throw error
     } finally {
       if (params.onStatus != null) entry.statusListeners.delete(notifyStatus)
+      if (params.elicit != null) {
+        const index = entry.elicits.indexOf(params.elicit)
+        if (index !== -1) entry.elicits.splice(index, 1)
+      }
       this.#release(params.taskID, entry)
     }
   }
@@ -196,6 +215,7 @@ export class TaskWaiter {
       inputs: {},
       dispatched: new Set(),
       inFlight: new Map(),
+      elicits: [],
       controller: new AbortController(),
     }
     let acknowledgementPending = true
@@ -392,7 +412,7 @@ export class TaskWaiter {
       entry.inFlight.set(key, own)
       const signal = AbortSignal.any([entry.controller.signal, own.signal])
       void this.#params
-        .fulfil(key, request, signal)
+        .fulfil(key, request, signal, entry.elicits[0])
         .then(async (response) => {
           if (signal.aborted || !Object.hasOwn(entry.inputs, key)) return
           // The handler has answered: a snapshot that no longer lists the key (typically the

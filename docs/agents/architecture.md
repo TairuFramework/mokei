@@ -81,6 +81,10 @@ override, owned by an `AgentSession` when one is attached. The override can answ
 call `fallback()` to use the base handler. With `elicit: true` and no base handler, fallback
 declines, including before an agent attaches and after it is disposed. `Session` and
 `NodeSession` pass `elicit` to hosts they construct. A supplied host owns its configuration.
+A call on a `2026-07-28` context can carry its own `elicit` handler (`callTool`,
+`callNamespacedTool`, `getPrompt`; `ContextClient` also takes it on `readResource` and
+`waitForTask`). It answers that call's MRTR elicitations ahead of the override, with `fallback()`
+to the host-wide path. `2025-11-25` reverse RPCs carry no link to their call and stay host-wide.
 
 On `2025-11-25`, a server sends a reverse `elicitation/create` RPC during its tool call. On
 `2026-07-28`, it returns an MRTR `input_required` result. The client answers the embedded

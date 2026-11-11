@@ -50,6 +50,7 @@ export {
   type HostElicitRequest,
   type HostedContext,
   type HTTPContextParams,
+  type PerCallElicit,
   type RegisterHostedContextParams,
 } from './host.js'
 export {

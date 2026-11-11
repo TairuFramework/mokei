@@ -115,6 +115,7 @@ export type {
   ListOptions,
   ListParams,
   ListRootsHandler,
+  PerRequestElicit,
   PromptParams,
   ResourceSubscriptionParams,
   ToolParams,
