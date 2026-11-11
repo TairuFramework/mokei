@@ -313,7 +313,10 @@ export class ReconnectController {
         this.#gate = undefined
         gate?.resolve()
         this.#hooks.emit('context:reconnected', { key: this.#key, attempts: attempt })
-        if (committed.toolsChanged) this.#hooks.emit('tools:changed', { key: this.#key })
+        // `context:reconnected` listeners run synchronously and may have removed the context.
+        if (committed.toolsChanged && this.#owns(generation)) {
+          this.#hooks.emit('tools:changed', { key: this.#key })
+        }
         return
       } catch (cause) {
         this.#disposeCandidate(parts)

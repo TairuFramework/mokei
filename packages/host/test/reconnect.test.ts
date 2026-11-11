@@ -17,6 +17,7 @@ const tracked = vi.hoisted(() => ({
   transports: new WeakMap<object, unknown>(),
   clients: [] as Array<unknown>,
   beforeListTools: undefined as ((client: unknown) => Promise<void>) | undefined,
+  afterListTools: undefined as ((client: unknown) => Promise<void>) | undefined,
 }))
 
 vi.mock('@enkaku/transport', async (importOriginal) => {
@@ -44,7 +45,10 @@ vi.mock('@mokei/context-client', async (importOriginal) => {
     ) {
       const hook = tracked.beforeListTools
       if (hook != null) await hook(this)
-      return await super.listTools(...args)
+      const result = await super.listTools(...args)
+      const after = tracked.afterListTools
+      if (after != null) await after(this)
+      return result
     }
   }
   return { ...original, ContextClient: TrackedClient }
@@ -135,6 +139,19 @@ function deferred() {
   return { promise, resolve }
 }
 
+/** Holds the next successful `listTools` result of `client` until released. */
+function holdNextListToolsResult(client: unknown) {
+  const entered = deferred()
+  const release = deferred()
+  tracked.afterListTools = async (c) => {
+    if (c !== client) return
+    tracked.afterListTools = undefined
+    entered.resolve()
+    await release.promise
+  }
+  return { entered: entered.promise, release: release.resolve }
+}
+
 /** Blocks the next `listTools` of a client other than `except` until released. */
 function blockNextListTools(except?: unknown) {
   const entered = deferred()
@@ -159,6 +176,7 @@ function makeHost(params?: ConstructorParameters<typeof ContextHost>[0]): Contex
 
 afterEach(async () => {
   tracked.beforeListTools = undefined
+  tracked.afterListTools = undefined
   vi.useRealTimers()
   vi.restoreAllMocks()
   for (const host of hosts.splice(0)) await host.dispose()
@@ -441,6 +459,87 @@ describe('context reconnect (direct)', () => {
     expect(afterTools).toBe(host.getContext('k').tools)
     expect(afterTools.find((ct) => ct.tool.name === 'a')?.enabled).toBe(true)
     expect(afterTools.find((ct) => ct.tool.name === 'b')?.enabled).toBe(false)
+  })
+
+  test('a refresh from a lost generation publishes nothing', async () => {
+    const host = makeHost()
+    host.addDirectContext({ key: 'k', config: makeConfig(), reconnect: true })
+    await host.setup({ key: 'k' })
+    const lost = host.getContext('k').client
+    const events = record(host)
+    const held = holdNextListToolsResult(lost)
+    void lost.events.emit('toolsListChanged')
+    await held.entered
+    // The replacement's discovery is blocked, so the lost client is still registered.
+    const block = blockNextListTools(lost)
+    await loseServer(host, 'k')
+    await block.entered
+    host.setContextTools({
+      key: 'k',
+      tools: host.getContext('k').tools.filter((ct) => ct.tool.name === 'a'),
+    })
+    held.release()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(host.getContext('k').tools.map((ct) => ct.tool.name)).toEqual(['a'])
+    expect(events.map((e) => e.name)).not.toContain('tools:changed')
+    block.release()
+    await nextEvent(host, 'context:reconnected')
+  })
+
+  test('a failure listener that re-adds the key keeps the replacement', async () => {
+    const host = makeHost()
+    const { state, config } = failingConfig()
+    host.addDirectContext({ key: 'k', config, reconnect: { maxAttempts: 1 } })
+    await host.setup({ key: 'k' })
+    let replacement: unknown
+    host.events.on('context:failed', () => {
+      void host.remove('k')
+      replacement = host.addDirectContext({ key: 'k', config: makeConfig() })
+    })
+    state.failing = true
+    const failed = nextEvent(host, 'context:failed')
+    await loseServer(host, 'k')
+    await failed
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(replacement).toBeDefined()
+    expect(host.hasContext({ key: 'k' })).toBe(true)
+    expect(host.getContext('k').client).toBe(replacement)
+  })
+
+  test('a reconnected listener that removes the key suppresses tools:changed', async () => {
+    const host = makeHost()
+    const tools = { a: tool('a'), b: tool('b') } as Record<string, ReturnType<typeof tool>>
+    host.addDirectContext({ key: 'k', config: makeConfig(tools), reconnect: true })
+    await host.setup({ key: 'k' })
+    tools.c = tool('c')
+    const events = record(host)
+    host.events.on('context:reconnected', () => {
+      void host.remove('k')
+    })
+    const removed = nextEvent(host, 'context:removed')
+    await loseServer(host, 'k')
+    await removed
+    expect(events.map((e) => e.name)).toContain('context:reconnected')
+    expect(events.map((e) => e.name)).not.toContain('tools:changed')
+  })
+
+  test('setup never runs enableTools on superseded discovery', async () => {
+    const host = makeHost()
+    host.addDirectContext({ key: 'k', config: makeConfig(), reconnect: true })
+    await host.setup({ key: 'k' })
+    const lost = host.getContext('k').client
+    const held = holdNextListToolsResult(lost)
+    const enableTools = vi.fn(() => false)
+    const pending = host.setup({ key: 'k', enableTools })
+    await held.entered
+    const reconnected = nextEvent(host, 'context:reconnected')
+    await loseServer(host, 'k')
+    await reconnected
+    held.release()
+    const tools = await pending
+    expect(enableTools).not.toHaveBeenCalled()
+    expect(tools).toBe(host.getContext('k').tools)
+    expect(tools.every((ct) => ct.enabled)).toBe(true)
   })
 
   test('invalid reconnect options fail the add', () => {

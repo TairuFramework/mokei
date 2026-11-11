@@ -586,6 +586,10 @@ export class ContextHost extends Disposer {
             return
           }
           void this.#events.emit('context:failed', { key, error }).catch(() => {})
+          // Listeners run synchronously and may have removed (and re-added) the key.
+          if (this.#contexts[key] !== registration) {
+            return
+          }
           void this.remove(key, 'lost').catch(() => {})
         },
         emit: (name, payload) => {
@@ -606,9 +610,26 @@ export class ContextHost extends Disposer {
     this.#subscriptionUnsubscribes.delete(key)
   }
 
-  /** Whether `registration` is still the key's and `client` still its current client. */
-  #owns(key: string, registration: HostedContext, client: ContextClient): boolean {
-    return this.#contexts[key] === registration && registration.client === client
+  /** The reconnect generation of a registration (`undefined` without reconnect). */
+  #generationOf(registration: HostedContext): number | undefined {
+    return this.#registrations.get(registration)?.controller?.generation
+  }
+
+  /**
+   * Whether `registration` is still the key's, `client` still its current client and no loss
+   * happened since `generation` was read.
+   */
+  #owns(
+    key: string,
+    registration: HostedContext,
+    client: ContextClient,
+    generation: number | undefined,
+  ): boolean {
+    return (
+      this.#contexts[key] === registration &&
+      registration.client === client &&
+      this.#generationOf(registration) === generation
+    )
   }
 
   /**
@@ -1020,6 +1041,7 @@ export class ContextHost extends Disposer {
       return
     }
     const client = registration.client
+    const generation = this.#generationOf(registration)
     try {
       if (kind === 'tools') {
         await this.#refreshContextTools(key)
@@ -1032,7 +1054,7 @@ export class ContextHost extends Disposer {
       // Best-effort re-list; still emit the change signal below.
     }
     // Removed, re-added or reconnected meanwhile: the signal belongs to a client that is gone.
-    if (!this.#owns(key, registration, client)) {
+    if (!this.#owns(key, registration, client, generation)) {
       return
     }
     void this.#events.emit(`${kind}:changed`, { key }).catch(() => {})
@@ -1049,8 +1071,9 @@ export class ContextHost extends Disposer {
       return
     }
     const client = registration.client
+    const generation = this.#generationOf(registration)
     const { tools } = await client.listTools()
-    if (!this.#owns(key, registration, client)) {
+    if (!this.#owns(key, registration, client, generation)) {
       return
     }
     registration.tools = mergeContextTools(key, registration.tools, tools)
@@ -1079,6 +1102,13 @@ export class ContextHost extends Disposer {
         return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
       }
       throw err
+    }
+    // Check before handing consumer code the tools: a superseded discovery is never shown.
+    if (this.#contexts[key] !== registration) {
+      throw new Error(`Context ${key} was removed during setup`)
+    }
+    if (registration.client !== client || superseded()) {
+      return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
     }
     const enabledTools = typeof enableTools === 'function' ? await enableTools(tools) : enableTools
     const contextTools = tools.map((tool: Tool) => {
