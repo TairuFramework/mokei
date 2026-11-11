@@ -1242,7 +1242,8 @@ export class ContextHost extends Disposer {
   ): Promise<R> {
     const { signal, timeout } = options
     const deadline = timeout == null ? Number.POSITIVE_INFINITY : Date.now() + timeout
-    for (let retried = false; ; retried = true) {
+    let retried = false
+    for (;;) {
       if (signal?.aborted) throw signal.reason
       // Aborts are checked again on wake inside `waitForGate`, where an abort wins the race.
       await controller.waitForGate({ signal, deadline })
@@ -1253,6 +1254,14 @@ export class ContextHost extends Disposer {
           cause: new Error(`Context ${key} was removed while the request waited`),
         })
       }
+      // Lost again between the gate opening and this wake: wait for the next gate, same deadline.
+      if (controller.state === 'reconnecting') continue
+      if (Date.now() >= deadline) {
+        throw new ContextUnavailableError({
+          key,
+          cause: new Error(`Context ${key} reconnected after the request's deadline`),
+        })
+      }
       const client = registration.client
       const generation = controller.generation
       // Read from the generation the call is sent on: a retry trusts the lost one's listing.
@@ -1260,7 +1269,7 @@ export class ContextHost extends Disposer {
         request.toolName != null &&
         registration.tools.find((ct) => ct.tool.name === request.toolName)?.tool.annotations
           ?.readOnlyHint === true
-      const remaining = timeout == null ? undefined : Math.max(0, deadline - Date.now())
+      const remaining = timeout == null ? undefined : deadline - Date.now()
       try {
         return await request.send(client, remaining)
       } catch (error) {
@@ -1279,6 +1288,7 @@ export class ContextHost extends Disposer {
         if (controller.generation === generation || deadline - Date.now() <= 0) {
           throw error
         }
+        retried = true
       }
     }
   }

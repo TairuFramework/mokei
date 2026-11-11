@@ -26,9 +26,16 @@ vi.mock('@mokei/context-client', async (importOriginal) => {
   return await mockClientModule(importOriginal)
 })
 
+/** Exposes the host's loss report so a test can lose a context synchronously. */
+class TestHost extends ContextHost {
+  loseNow(key: string): void {
+    this.reportLoss(key, this.getContext(key).client, new Error('lost again'))
+  }
+}
+
 const hosts: Array<ContextHost> = []
-function makeHost(): ContextHost {
-  const host = new ContextHost()
+function makeHost(): TestHost {
+  const host = new TestHost()
   hosts.push(host)
   return host
 }
@@ -187,9 +194,68 @@ describe('call gate', () => {
     expect(await swappedError).toBeInstanceOf(ContextUnavailableError)
     expect(callsOn(host.getContext('k').client)).toHaveLength(0)
   })
+  test('a deadline that expires as the gate opens fails before dispatch', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const host = makeHost()
+    host.addDirectContext({ key: 'k', config: makeConfig(), reconnect: true })
+    await host.setup({ key: 'k' })
+    const { release } = await loseBlocked(host)
+    // Time passes between the gate opening and the waiter resuming.
+    host.events.on('context:reconnected', () => {
+      vi.setSystemTime(Date.now() + 150)
+    })
+    const error = host
+      .callTool({ key: 'k', name: 'a', arguments: {}, timeout: 100 })
+      .catch((e: unknown) => e)
+    release()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await error).toBeInstanceOf(ContextUnavailableError)
+    expect(callsOn(host.getContext('k').client)).toHaveLength(0)
+  })
+
+  test('a gate that closes again before dispatch is waited out', async () => {
+    const host = makeHost()
+    host.addDirectContext({ key: 'k', config: makeConfig(), reconnect: true })
+    await host.setup({ key: 'k' })
+    const { release } = await loseBlocked(host)
+    let relost: unknown
+    const off = host.events.on('context:reconnected', () => {
+      off()
+      relost = host.getContext('k').client
+      host.loseNow('k')
+    })
+    const pending = host.callTool({ key: 'k', name: 'a', arguments: {} })
+    release()
+    await expect(pending).resolves.toMatchObject({ content: [] })
+    const current = host.getContext('k').client
+    expect(relost).toBeDefined()
+    expect(current).not.toBe(relost)
+    expect(callsOn(relost)).toHaveLength(0)
+    expect(callsOn(current)).toHaveLength(1)
+  })
 })
 
 describe('read-only retry', () => {
+  test('a retry whose deadline expires as the gate opens fails before dispatch', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const host = makeHost()
+    const { tools, entered } = lossTools({ readOnlyHint: true })
+    host.addDirectContext({ key: 'k', config: makeConfig(tools), reconnect: true })
+    await host.setup({ key: 'k' })
+    host.events.on('context:reconnected', () => {
+      vi.setSystemTime(Date.now() + 150)
+    })
+    const error = host
+      .callTool({ key: 'k', name: 'r', arguments: {}, timeout: 100 })
+      .catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(0)
+    await entered
+    await loseServer(host, 'k')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await error).toBeInstanceOf(ContextUnavailableError)
+    expect(callsOn(host.getContext('k').client)).toHaveLength(0)
+  })
+
   test('a read-only call lost in flight is retried once', async () => {
     const host = makeHost()
     const { tools, entered, calls } = lossTools({ readOnlyHint: true })
