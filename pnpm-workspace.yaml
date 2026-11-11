@@ -33,6 +33,7 @@ catalog:
   '@enkaku/server': ^0.23.2
   '@enkaku/socket': ^0.23.2
   '@enkaku/transport': ^0.23.2
+  '@kokuin/oauth': ^0.7.4
   '@kokuin/token': ^0.7.0
   '@logtape/logtape': ^2.4.2
   '@napi-rs/keyring': ^2.1.2

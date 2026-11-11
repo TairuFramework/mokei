@@ -17,11 +17,19 @@ import {
 } from '@mokei/context-protocol'
 import { getMokeiLogger, type Logger } from '@mokei/logger'
 import { EventEmitter } from '@sozai/event'
+import { createRuntime, type Runtime } from '@sozai/runtime'
 import { createReadable, writeTo } from '@sozai/stream'
 import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 import { SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE } from './errors.js'
+import { withCredentialRedirectGuard } from './redirect-guard.js'
+import {
+  REQUEST_TIMEOUT,
+  RequestTimeoutError,
+  type TimedRequestInit,
+  withRequestTimeout,
+} from './request-timeout.js'
 import {
   buildParamHeaders,
   collectHeaderAnnotations,
@@ -166,8 +174,18 @@ export type HTTPTransportParams = {
    * revision the client speaks.
    */
   protocolVersionHeader?: string
-  /** Wraps the transport's fetch (e.g. OAuth). Composed once over globalThis.fetch. */
+  /**
+   * Wraps the transport's fetch (e.g. OAuth). Composed once over `runtime.fetch`. The request
+   * timeout travels in an internal `init` field: spread `init` (`{ ...init, headers }`) when
+   * rebuilding it, or the request runs without its time-to-headers timeout.
+   */
   fetchMiddleware?: FetchMiddleware
+  /**
+   * Platform services: `fetch` for every request. Defaults to `createRuntime()` from
+   * `@sozai/runtime` (the globals). React Native passes `@sozai/runtime-expo`'s
+   * `createRuntime({ fetch })`, for example with `expo/fetch` for streaming responses.
+   */
+  runtime?: Runtime
 }
 
 /**
@@ -320,6 +338,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const params: Record<string, unknown> = Object.keys(meta).length > 0 ? { _meta: meta } : {}
 
     const controller = new AbortController()
+    // `refreshTimeout` bounds the whole refresh, body read included: the tag below only covers
+    // time-to-headers, and a peer that answers with an event stream and never sends the response
+    // would otherwise hold the rejected call forever.
     const timeoutID = setTimeout(() => controller.abort(), this.#refreshTimeout)
     this.#untrackedControllers.add(controller)
     const refreshID = `mokei-internal:tools/list:${++this.#internalRequestCount}`
@@ -336,7 +357,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           params,
         }),
         signal: controller.signal,
-      })
+        [REQUEST_TIMEOUT]: this.#refreshTimeout,
+      } as TimedRequestInit)
       if (!response.ok) {
         return false
       }
@@ -446,7 +468,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#refreshTimeout = params.refreshTimeout ?? DEFAULT_HTTP_REFRESH_TIMEOUT
     this.#protocolVersion = params.protocolVersionHeader ?? null
     this.#logger = params.logger ?? getMokeiLogger('http-client')
-    const baseFetch: FetchLike = (url, init) => globalThis.fetch(url, init)
+    const runtime = params.runtime ?? createRuntime()
+    const baseFetch = withRequestTimeout(
+      withCredentialRedirectGuard(
+        (url, init) => runtime.fetch(url, init),
+        Object.keys(this.#headers),
+      ),
+    )
     this.#fetch = params.fetchMiddleware ? params.fetchMiddleware(baseFetch) : baseFetch
   }
 
@@ -634,11 +662,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       }
     }
 
-    // The timer guards time-to-headers only. The controller outlives it: once a response
-    // begins, a long streamed tool call must not be cut off by a timeout -- but it must still
-    // be cuttable by an explicit cancellation.
+    // The `REQUEST_TIMEOUT` tag guards time-to-headers of each network call the base fetch makes,
+    // so a `fetchMiddleware` waiting on an interactive sign-in is not under it. The controller
+    // outlives it: once a response begins, a long streamed tool call must not be cut off by a
+    // timeout -- but it must still be cuttable by an explicit cancellation.
     const controller = new AbortController()
-    const timeoutID = setTimeout(() => controller.abort(), this.#timeout)
     if (trackedID != null) {
       this.#exchangeControllers.set(trackedID, {
         cancelled: false,
@@ -656,9 +684,9 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         headers,
         body: JSON.stringify(message),
         signal: controller.signal,
-      })
+        [REQUEST_TIMEOUT]: this.#timeout,
+      } as TimedRequestInit)
     } catch (error) {
-      clearTimeout(timeoutID)
       const entry = trackedID == null ? undefined : this.#exchangeControllers.get(trackedID)
       this.#releaseController(trackedID, controller)
       if (entry?.cancelled) {
@@ -666,13 +694,13 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         // settled id is noise.
         return
       }
-      const reason = controller.signal.aborted
-        ? `Request timed out after ${this.#timeout}ms`
-        : `Request failed: ${error instanceof Error ? error.message : String(error)}`
+      const reason =
+        error instanceof RequestTimeoutError || controller.signal.aborted
+          ? `Request timed out after ${this.#timeout}ms`
+          : `Request failed: ${error instanceof Error ? error.message : String(error)}`
       this.#failRequest(trackedID, INTERNAL_ERROR_CODE, reason)
       return
     }
-    clearTimeout(timeoutID)
 
     // Capture session ID from response
     const newSessionID = response.headers.get('Mcp-Session-Id')
@@ -1072,6 +1100,7 @@ const HTTP_TRANSPORT_PARAM_KEYS = {
   logger: true,
   protocolVersionHeader: true,
   fetchMiddleware: true,
+  runtime: true,
 } satisfies Record<keyof HTTPTransportParams, true>
 
 /**

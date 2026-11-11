@@ -822,7 +822,7 @@ export class AgentSession<T extends ProviderTypes = ProviderTypes> extends Dispo
       if (errorType === undefined) {
         agentSpan.end()
       } else {
-        endSpanError(agentSpan, errorType, outcome?.message)
+        endSpanError(agentSpan, errorType, outcome?.message, session.payloadCapture)
       }
       if (genAIMetricsEnabled()) {
         const attributes =

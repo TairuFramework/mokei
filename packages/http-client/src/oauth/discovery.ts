@@ -1,5 +1,7 @@
+import { fetchOAuthJSON } from '@kokuin/oauth'
+import type { Runtime } from '@sozai/runtime'
+
 import type { FetchLike } from '../transport.js'
-import { fetchOAuthJSON } from './fetch.js'
 
 export type ProtectedResourceMetadata = { resource: string; authorization_servers: Array<string> }
 export type AuthServerMetadata = {
@@ -34,6 +36,18 @@ function requireHTTPS(url: string, allowLoopback: boolean): void {
   throw new Error(`OAuth endpoint must be https: ${url}`)
 }
 
+/** GETs an OAuth metadata document through `fetch` (kokuin `fetchOAuthJSON`: bounded deadline,
+ * size cap, `redirect: 'error'`). An empty body is an error, not a document. */
+function fetchMetadata(fetch: FetchLike, url: string, signal?: AbortSignal): Promise<unknown> {
+  return fetchOAuthJSON({
+    runtime: { fetch: fetch as Runtime['fetch'] },
+    url,
+    method: 'GET',
+    allowEmpty: false,
+    signal,
+  })
+}
+
 function wellKnownPRM(resource: string): string {
   const u = new URL(resource)
   const path = u.pathname === '/' ? '' : u.pathname
@@ -57,10 +71,11 @@ export async function discover(params: {
   const allowLoopback = isLoopbackHost(new URL(params.resource).hostname)
   const prmURL = params.resourceMetadataURL ?? wellKnownPRM(params.resource)
   requireHTTPS(prmURL, allowLoopback)
-  const prm = (await fetchOAuthJSON(params.fetch, prmURL, {
-    signal: params.signal,
-    errorLabel: 'protected-resource metadata',
-  })) as ProtectedResourceMetadata
+  const prm = (await fetchMetadata(
+    params.fetch,
+    prmURL,
+    params.signal,
+  )) as ProtectedResourceMetadata
   if (prm.resource !== params.resource) {
     throw new Error(`metadata resource ${prm.resource} != requested ${params.resource}`)
   }
@@ -94,10 +109,11 @@ export async function fetchAuthServerMetadata(params: {
   const { issuer } = params
   const allowLoopback = params.allowLoopback ?? false
   requireHTTPS(issuer, allowLoopback)
-  const as = (await fetchOAuthJSON(params.fetch, wellKnownAS(issuer), {
-    signal: params.signal,
-    errorLabel: 'authorization-server metadata',
-  })) as AuthServerMetadata
+  const as = (await fetchMetadata(
+    params.fetch,
+    wellKnownAS(issuer),
+    params.signal,
+  )) as AuthServerMetadata
   if (as.issuer !== issuer) throw new Error(`AS issuer ${as.issuer} != ${issuer}`)
   requireHTTPS(as.authorization_endpoint, allowLoopback)
   requireHTTPS(as.token_endpoint, allowLoopback)

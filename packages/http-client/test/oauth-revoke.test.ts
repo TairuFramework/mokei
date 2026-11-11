@@ -52,6 +52,17 @@ function fakeAS(
 }
 
 describe('revokeTokens (RFC 7009)', () => {
+  test('revocation accepts an empty 200', async () => {
+    const { fetch } = fakeAS({ revoke: () => new Response('', { status: 200 }) })
+    const result = await revokeTokens({
+      tokens: TOKENS,
+      clientID: 'cli',
+      resource: RESOURCE,
+      fetch,
+    })
+    expect(result).toMatchObject({ status: 'revoked', revoked: ['refresh_token', 'access_token'] })
+  })
+
   test('revokes the refresh token, then the access token, as a public client', async () => {
     const { fetch, posts } = fakeAS()
     const result = await revokeTokens({

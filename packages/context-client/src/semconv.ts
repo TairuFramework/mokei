@@ -43,7 +43,10 @@ export function getMokeiMeter(scope: string): Meter {
   return meterFactory(scope)
 }
 
-/** Env opt-in only applies when `payloads` is unset or `'off'`; Node-free env access. */
+/**
+ * Env opt-in only applies when `payloads` is unset or `'off'`, never over `'never'`; Node-free
+ * env access.
+ */
 export function resolveContentCapture(payloads: PayloadCapture | undefined): PayloadCapture {
   if (payloads !== undefined && payloads !== 'off') {
     return payloads
@@ -54,9 +57,15 @@ export function resolveContentCapture(payloads: PayloadCapture | undefined): Pay
   return value?.toLowerCase() === 'true' ? 'on' : 'off'
 }
 
-export function endSpanError(span: Span, errorType: string, message?: string): void {
+/** Ends `span` as failed. Under `capture: 'never'` the message text is dropped. */
+export function endSpanError(
+  span: Span,
+  errorType: string,
+  message?: string,
+  capture?: PayloadCapture,
+): void {
   span.setAttribute('error.type', errorType)
-  span.setStatus({ code: SpanStatusCode.ERROR, message })
+  span.setStatus({ code: SpanStatusCode.ERROR, message: capture === 'never' ? undefined : message })
   span.end()
 }
 

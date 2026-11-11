@@ -1,10 +1,25 @@
-import { toB64U } from '@sozai/codec'
+import {
+  buildAuthorizationURL as buildKokuinAuthorizationURL,
+  deriveCodeChallenge,
+  exchangeCode,
+  generateCodeVerifier,
+  generateState,
+  type OAuthProviderDefinition,
+  OAuthTokenError,
+  refreshToken as redeemRefreshToken,
+  type TokenResponse,
+} from '@kokuin/oauth'
+import { createRuntime, type Runtime } from '@sozai/runtime'
 
+import {
+  linkSignals,
+  REQUEST_TIMEOUT,
+  requestTimeoutOf,
+  type TimedRequestInit,
+} from '../request-timeout.js'
 import type { FetchLike, FetchMiddleware } from '../transport.js'
 import { parseBearerChallenge, splitScopes } from './challenge.js'
 import { discover, parseResourceMetadataURL } from './discovery.js'
-import { fetchOAuthJSON, OAuthResponseError } from './fetch.js'
-import { createPKCE } from './pkce.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
 import { createMemoryTokenStore, tokenStoreKey } from './store.js'
@@ -42,6 +57,33 @@ export type OAuthClientConfig = {
    * sign-in loop. Set `false` to pass every `403` through untouched.
    */
   stepUp?: boolean
+  /**
+   * Platform services: `getRandomValues` for the PKCE verifier and `state`. Defaults to
+   * `createRuntime()` from `@sozai/runtime`. Requests go through the transport's fetch, so set
+   * the transport's `runtime` for `fetch`.
+   */
+  runtime?: Runtime
+  /**
+   * Budget in milliseconds for `handler.authorize` (default `600_000`). The wait is outside the
+   * transport's request timeout, so a sign-in may take minutes; the caller's `AbortSignal` still
+   * ends it early. The handler's `signal` aborts when either fires.
+   */
+  authorizationTimeout?: number
+}
+
+/** Default budget for an interactive `handler.authorize`, in milliseconds. */
+export const DEFAULT_AUTHORIZATION_TIMEOUT = 600_000
+
+/** Waits for `run`, rejecting with `signal.reason` as soon as `signal` aborts. */
+function untilAborted<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason)
+    signal.addEventListener('abort', onAbort, { once: true })
+    run()
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort))
+  })
 }
 
 function unionScopes(...lists: Array<ReadonlyArray<string> | undefined>): Array<string> {
@@ -59,38 +101,42 @@ export function nearExpiry(tokens: StoredTokens, now: () => number, skew: number
   return tokens.expiresAt != null && tokens.expiresAt - skew <= now()
 }
 
-/** Validate a token-endpoint response before it becomes `StoredTokens`, so a malformed response
- * is never persisted as a poisoned credential. */
-export function parseTokenResponse(raw: unknown): {
-  access_token: string
-  token_type: string
-  expires_in?: number
-  refresh_token?: string
-  scope?: string
-} {
-  if (typeof raw !== 'object' || raw === null) throw new Error('token response is not an object')
-  const r = raw as Record<string, unknown>
-  if (typeof r.access_token !== 'string' || r.access_token.length === 0)
-    throw new Error('token response missing access_token')
-  if (typeof r.token_type !== 'string') throw new Error('token response missing token_type')
-  // a non-finite or negative expires_in (e.g. -5, Infinity, NaN) is not a valid delta-seconds
-  // value and must not be turned into a bogus `expiresAt` -- reject it the same as a non-numeric
-  // value rather than silently persisting a poisoned/garbage expiry.
-  if (
-    r.expires_in != null &&
-    (typeof r.expires_in !== 'number' || !Number.isFinite(r.expires_in) || r.expires_in < 0)
-  )
-    throw new Error('token response has invalid expires_in')
-  if (r.refresh_token != null && typeof r.refresh_token !== 'string')
-    throw new Error('token response has non-string refresh_token')
-  if (r.scope != null && typeof r.scope !== 'string')
-    throw new Error('token response has non-string scope')
-  return r as {
-    access_token: string
-    token_type: string
-    expires_in?: number
-    refresh_token?: string
-    scope?: string
+/** A kokuin provider definition for one token endpoint, as a native (public PKCE) client. */
+function nativeDefinition(params: {
+  issuer?: string
+  clientID: string
+  authorizationEndpoint?: string
+  tokenEndpoint: string
+}): OAuthProviderDefinition {
+  return {
+    name: params.issuer ?? params.tokenEndpoint,
+    mode: 'native',
+    clientID: params.clientID,
+    authorizationEndpoint: params.authorizationEndpoint ?? params.tokenEndpoint,
+    tokenEndpoint: params.tokenEndpoint,
+  }
+}
+
+/** A runtime whose `fetch` is `fetch`: kokuin's token calls stay on the unwrapped transport fetch. */
+function runtimeFor(fetch: FetchLike, runtime: Runtime = createRuntime()): Runtime {
+  return { ...runtime, fetch: fetch as Runtime['fetch'] }
+}
+
+/** Maps a validated kokuin token response to `StoredTokens`, rejecting a non-bearer token. */
+function toStoredTokens(
+  data: TokenResponse,
+  now: () => number,
+  fallbackRefreshToken?: string,
+): StoredTokens {
+  if (String(data.token_type).toLowerCase() !== 'bearer') {
+    throw new Error(`Unsupported token_type: ${data.token_type}`)
+  }
+  return {
+    accessToken: data.access_token,
+    tokenType: data.token_type,
+    refreshToken: data.refresh_token ?? fallbackRefreshToken,
+    expiresAt: data.expires_in == null ? undefined : now() + data.expires_in,
+    scope: data.scope,
   }
 }
 
@@ -106,37 +152,19 @@ export type ExchangeRefreshParams = {
   signal?: AbortSignal
 }
 
-/** Exchange a refresh token for a new access token via `grant_type=refresh_token`. */
+/** Redeems a refresh token (kokuin `refreshToken`) with `resource` and `scope` form fields. */
 export async function exchangeRefresh(params: ExchangeRefreshParams): Promise<StoredTokens> {
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: params.refreshToken,
-    client_id: params.clientID,
-  })
-  if (params.resource != null) {
-    body.set('resource', params.resource)
-  }
-  if (params.scopes != null && params.scopes.length > 0) {
-    body.set('scope', params.scopes.join(' '))
-  }
-  const json = await fetchOAuthJSON(params.fetchUnwrapped, params.tokenEndpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
+  const extraParams: Record<string, string> = {}
+  if (params.resource != null) extraParams.resource = params.resource
+  if (params.scopes != null && params.scopes.length > 0) extraParams.scope = params.scopes.join(' ')
+  const data = await redeemRefreshToken({
+    definition: nativeDefinition(params),
+    runtime: runtimeFor(params.fetchUnwrapped),
+    refreshToken: params.refreshToken,
+    extraParams,
     signal: params.signal,
-    errorLabel: 'Token refresh',
   })
-  const data = parseTokenResponse(json)
-  if (String(data.token_type).toLowerCase() !== 'bearer') {
-    throw new Error(`Unsupported token_type: ${data.token_type}`)
-  }
-  return {
-    accessToken: data.access_token,
-    tokenType: data.token_type,
-    refreshToken: data.refresh_token ?? params.refreshToken,
-    expiresAt: data.expires_in == null ? undefined : params.now() + data.expires_in,
-    scope: data.scope,
-  }
+  return toStoredTokens(data, params.now, params.refreshToken)
 }
 
 /** Default refresh window before actual token expiry, in seconds. */
@@ -162,53 +190,7 @@ function isRefreshable(
 
 /** RFC 6749 §5.2: the refresh token is invalid, expired or revoked -- retrying cannot succeed. */
 function isInvalidGrant(error: unknown): boolean {
-  return error instanceof OAuthResponseError && error.oauthError === 'invalid_grant'
-}
-
-type ExchangeAuthorizationCodeParams = {
-  /** Unwrapped `fetch` (never the OAuth middleware itself) so this cannot re-enter and loop. */
-  fetchUnwrapped: FetchLike
-  tokenEndpoint: string
-  clientID: string
-  resource: string
-  code: string
-  redirectURI: string
-  codeVerifier: string
-  now: () => number
-  signal?: AbortSignal
-}
-
-/** Runs the PKCE authorisation-code exchange (form-encoded, no client secret) against the token
- * endpoint. */
-async function exchangeAuthorizationCode(
-  params: ExchangeAuthorizationCodeParams,
-): Promise<StoredTokens> {
-  const body = new URLSearchParams({
-    grant_type: 'authorization_code',
-    code: params.code,
-    redirect_uri: params.redirectURI,
-    client_id: params.clientID,
-    code_verifier: params.codeVerifier,
-    resource: params.resource,
-  })
-  const json = await fetchOAuthJSON(params.fetchUnwrapped, params.tokenEndpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-    signal: params.signal,
-    errorLabel: 'Token exchange',
-  })
-  const data = parseTokenResponse(json)
-  if (String(data.token_type).toLowerCase() !== 'bearer') {
-    throw new Error(`Unsupported token_type: ${data.token_type}`)
-  }
-  return {
-    accessToken: data.access_token,
-    tokenType: data.token_type,
-    refreshToken: data.refresh_token,
-    expiresAt: data.expires_in == null ? undefined : params.now() + data.expires_in,
-    scope: data.scope,
-  }
+  return error instanceof OAuthTokenError && error.code === 'invalid_grant'
 }
 
 /** In-flight refreshes and authorisations, shared by every middleware using the same store, so
@@ -253,6 +235,7 @@ function serialiseAuthorize<T>(handler: AuthorizationHandler, run: () => Promise
  */
 export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddleware {
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
+  const runtime = config.runtime ?? createRuntime()
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
   // A per-request default store would never retain a token.
   const store = config.store ?? createMemoryTokenStore()
@@ -374,40 +357,58 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       signal,
     })
 
-    const pkce = await createPKCE()
-    const state = toB64U(crypto.getRandomValues(new Uint8Array(16)))
+    const definition = nativeDefinition({
+      issuer: as.issuer,
+      clientID: config.clientID,
+      authorizationEndpoint: as.authorization_endpoint,
+      tokenEndpoint: as.token_endpoint,
+    })
+    const codeVerifier = generateCodeVerifier(runtime)
+    const codeChallenge = deriveCodeChallenge(codeVerifier)
+    const state = generateState(runtime)
 
     function buildAuthorizationURL(redirectURI: string): string {
-      const authURL = new URL(as.authorization_endpoint)
-      authURL.searchParams.set('response_type', 'code')
-      authURL.searchParams.set('client_id', config.clientID)
-      authURL.searchParams.set('redirect_uri', redirectURI)
-      authURL.searchParams.set('code_challenge', pkce.challenge)
-      authURL.searchParams.set('code_challenge_method', 'S256')
-      authURL.searchParams.set('state', state)
-      if (scopes.length > 0) {
-        authURL.searchParams.set('scope', scopes.join(' '))
-      }
-      authURL.searchParams.set('resource', resource)
-      return authURL.toString()
+      return buildKokuinAuthorizationURL({
+        definition,
+        redirectURL: redirectURI,
+        scopes,
+        state,
+        codeChallenge,
+        authorizationParams: { resource },
+      })
     }
 
-    const result = await config.handler.authorize({ buildAuthorizationURL, state, signal })
+    const budget = config.authorizationTimeout ?? DEFAULT_AUTHORIZATION_TIMEOUT
+    const linked = linkSignals(
+      [signal],
+      budget,
+      new Error(`OAuth authorize: no authorization within ${budget}ms`),
+    )
+    let result: { code: string; state: string; redirectURI: string }
+    try {
+      result = await untilAborted(
+        () => config.handler.authorize({ buildAuthorizationURL, state, signal: linked.signal }),
+        linked.signal,
+      )
+    } finally {
+      linked.clearTimer()
+    }
     if (result.state !== state) {
       throw new Error('OAuth authorize: state mismatch')
     }
 
-    const exchanged = await exchangeAuthorizationCode({
-      fetchUnwrapped: next,
-      tokenEndpoint: as.token_endpoint,
-      clientID: config.clientID,
-      resource,
-      code: result.code,
-      redirectURI: result.redirectURI,
-      codeVerifier: pkce.verifier,
+    const exchanged = toStoredTokens(
+      await exchangeCode({
+        definition,
+        runtime: runtimeFor(next, runtime),
+        code: result.code,
+        redirectURL: result.redirectURI,
+        codeVerifier,
+        extraParams: { resource },
+        signal,
+      }),
       now,
-      signal,
-    })
+    )
     const tokens: StoredTokens = {
       ...exchanged,
       ...(scopes.length > 0 ? { requestedScopes: scopes } : {}),
@@ -423,6 +424,14 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       // Threaded through every OAuth subrequest below so aborting the caller's request cancels the
       // whole recovery flow instead of leaving it running in the background.
       const signal = init?.signal ?? undefined
+      // OAuth's own discovery, token and refresh calls inherit the triggering request's timeout
+      // tag, so a hung authorisation server still fails at the transport's `timeout`.
+      const timeout = requestTimeoutOf(init)
+      const oauthNext: FetchLike =
+        timeout == null
+          ? next
+          : (oauthURL, oauthInit) =>
+              next(oauthURL, { ...oauthInit, [REQUEST_TIMEOUT]: timeout } as TimedRequestInit)
       const u = new URL(url)
       const loopback = isLoopbackHost(u.hostname)
       if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) {
@@ -440,7 +449,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         // not fail the outbound request outright -- it proceeds on the current, possibly-stale
         // token, and the 401 path below recovers.
         try {
-          tokens = await refreshAndStore(next, key, resource, tokens.accessToken, signal)
+          tokens = await refreshAndStore(oauthNext, key, resource, tokens.accessToken, signal)
         } catch (error) {
           // A dead refresh token was cleared: send no stale token, so the 401 goes straight to
           // authorisation instead of redeeming it again.
@@ -468,7 +477,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       // when there is no refresh token/endpoint, or the refresh itself fails.
       if (isRefreshable(tokens)) {
         try {
-          tokens = await refreshAndStore(next, key, resource, tokens.accessToken, signal)
+          tokens = await refreshAndStore(oauthNext, key, resource, tokens.accessToken, signal)
           return next(url, attach(init))
         } catch {
           // Fall through to full authorisation below.
@@ -486,7 +495,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       const authorized = await withSingleFlight(key, stale, () => {
         return serialiseAuthorize(config.handler, () => {
           return authorize({
-            next,
+            next: oauthNext,
             key,
             resource,
             staleAccessToken: stale,
@@ -520,7 +529,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         const run = (staleAccessToken: string) => () =>
           serialiseAuthorize(config.handler, () => {
             return authorize({
-              next,
+              next: oauthNext,
               key,
               resource,
               staleAccessToken,

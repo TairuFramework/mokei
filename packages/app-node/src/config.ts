@@ -50,7 +50,7 @@ const configurationSchema = {
       properties: {
         payloads: {
           anyOf: [
-            { type: 'string', enum: ['on', 'off'] },
+            { type: 'string', enum: ['on', 'off', 'never'] },
             { type: 'integer', minimum: 1 },
           ],
         },

@@ -4,7 +4,6 @@ import {
   type AuthorizationHandler,
   createOAuthMiddleware,
   exchangeRefresh,
-  parseTokenResponse,
 } from '../src/oauth/middleware.js'
 import { createMemoryTokenStore, tokenStoreKey } from '../src/oauth/store.js'
 
@@ -294,22 +293,6 @@ test('exchangeRefresh rejects a token response with a non-numeric expires_in', a
   ).rejects.toThrow(/expires_in/)
 })
 
-test('parseTokenResponse rejects a negative expires_in', () => {
-  expect(() =>
-    parseTokenResponse({ access_token: 'a', token_type: 'Bearer', expires_in: -5 }),
-  ).toThrow(/expires_in/)
-})
-
-test('parseTokenResponse rejects a non-finite expires_in (Infinity)', () => {
-  expect(() =>
-    parseTokenResponse({
-      access_token: 'a',
-      token_type: 'Bearer',
-      expires_in: Number.POSITIVE_INFINITY,
-    }),
-  ).toThrow(/expires_in/)
-})
-
 // an unbounded or SSE 401 body left open while the refresh/authorise recovery runs
 // (potentially an interactive, multi-minute flow) retains its socket for that whole time. The
 // middleware must cancel it up front, before starting recovery.
@@ -506,4 +489,37 @@ test('a refresh that finds the token already replaced uses it and sends no token
   expect(tokenCalls).toBe(0)
   expect(sent).toBe('Bearer other')
   expect(await base.get(key(resource))).toEqual(replacement)
+})
+
+test('refresh sends resource and scope', async () => {
+  const store = createMemoryTokenStore()
+  const scoped = (r: string) =>
+    tokenStoreKey({ resource: r, clientID: 'c', scopes: ['read', 'write'] })
+  await store.set(scoped(resource), {
+    accessToken: 'old',
+    tokenType: 'Bearer',
+    refreshToken: 'r1',
+    tokenEndpoint: 'https://as.example.com/token',
+    expiresAt: 1010,
+  })
+  let body: URLSearchParams | undefined
+  const next = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (url.endsWith('/token')) {
+      body = new URLSearchParams(String(init?.body))
+      return json({ access_token: 'new', token_type: 'Bearer', expires_in: 3600 })
+    }
+    return json({})
+  }
+  const mw = createOAuthMiddleware({
+    clientID: 'c',
+    resource,
+    scopes: ['read', 'write'],
+    handler,
+    store,
+    now: () => 1000,
+  })
+  await mw(next)(resource, { method: 'POST', body: '{}' })
+  expect(body?.get('grant_type')).toBe('refresh_token')
+  expect(body?.get('resource')).toBe(resource)
+  expect(body?.get('scope')).toBe('read write')
 })

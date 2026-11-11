@@ -121,7 +121,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
         }),
       )
       if (errorType === undefined) span.end()
-      else endSpanError(span, errorType, message)
+      else endSpanError(span, errorType, message, resolveContentCapture(binding?.payloads))
     }
     const exchange: ExchangeSpan = {
       span,
@@ -158,7 +158,11 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
       },
       failRPC(error) {
         if (settled) return
-        const outcome = responseOutcome({ error }, direction)
+        const outcome = responseOutcome(
+          { error },
+          direction,
+          resolveContentCapture(binding?.payloads),
+        )
         if (outcome.error) finish(outcome.errorType, outcome.message, outcome.statusCode)
         else finish(undefined, undefined, outcome.statusCode)
       },
@@ -243,6 +247,7 @@ export function createExchangeTracer(getBinding: () => ClientTracing | undefined
         span,
         params.errorType ?? errorTypeOf(params.error),
         params.error instanceof Error ? params.error.message : String(params.error),
+        resolveContentCapture(getBinding()?.payloads),
       )
     },
     startIncoming(

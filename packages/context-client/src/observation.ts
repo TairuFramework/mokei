@@ -1,6 +1,11 @@
 import type { Attributes } from '@opentelemetry/api'
 
-export type PayloadCapture = 'on' | 'off' | number
+/**
+ * What telemetry may record of MCP and model content: `'off'` (default) records none, `'on'` or a
+ * byte cap records payloads. `'never'` records no payloads and no error message text either (only
+ * error codes and types), and `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` cannot override it.
+ */
+export type PayloadCapture = 'on' | 'off' | 'never' | number
 export type MessageDirection = 'client' | 'server'
 
 export const DEFAULT_PAYLOAD_CAP = 65536
@@ -16,7 +21,7 @@ const PUBLIC_KEYS = new Set([
 const SECRET_KEY = /authorization|token|secret|password|api[-_]?key|cookie|credential/i
 
 export function resolvePayloadCap(capture: PayloadCapture | undefined): number | null {
-  if (capture === undefined || capture === 'off') return null
+  if (capture === undefined || capture === 'off' || capture === 'never') return null
   if (typeof capture === 'number') return Math.max(0, capture)
   return DEFAULT_PAYLOAD_CAP
 }
@@ -206,6 +211,7 @@ export function responseAttributes(
 export function responseOutcome(
   message: { result?: unknown; error?: { code: number; message?: string } },
   side: MessageDirection,
+  capture?: PayloadCapture,
 ):
   | { error: false; statusCode?: string }
   | { error: true; errorType: string; statusCode?: string; message?: string } {
@@ -214,6 +220,7 @@ export function responseOutcome(
     if (side === 'server' && SERVER_NON_ERROR_CODES.has(message.error.code)) {
       return { error: false, statusCode }
     }
+    if (capture === 'never') return { error: true, errorType: statusCode, statusCode }
     return { error: true, errorType: statusCode, statusCode, message: message.error.message }
   }
   if (isRecord(message.result) && message.result.isError === true) {
@@ -230,7 +237,10 @@ export function sanitizeMessage(message: unknown, capture: PayloadCapture | unde
       Object.entries(message).filter(([key]) => ['jsonrpc', 'id', 'method'].includes(key)),
     )
     if (isRecord(message.error)) {
-      sanitised.error = { code: message.error.code, message: message.error.message }
+      sanitised.error =
+        capture === 'never'
+          ? { code: message.error.code }
+          : { code: message.error.code, message: message.error.message }
     }
     return sanitised
   }

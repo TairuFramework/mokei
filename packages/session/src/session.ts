@@ -247,6 +247,11 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     return this.#contextHost
   }
 
+  /** Content capture this session's spans use, resolved against the environment. */
+  get payloadCapture(): PayloadCapture {
+    return resolveContentCapture(this.#tracing?.payloads)
+  }
+
   get events(): EventEmitter<SessionEvents<T>> {
     return this.#events
   }
@@ -266,6 +271,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       fetchMiddleware,
       enableTools,
       elicit,
+      runtime,
     } = params
     // `ContextHost.addHTTPContext` registers the context synchronously (unlike stdio's
     // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
@@ -280,6 +286,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       protocolVersion,
       fetchMiddleware,
       elicit,
+      runtime,
     })
     try {
       const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })

@@ -34,7 +34,12 @@ import type {
 } from '@mokei/context-protocol'
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
-import { type FetchMiddleware, type HTTPAuthOptions, HTTPTransport } from '@mokei/http-client'
+import {
+  type FetchMiddleware,
+  type HTTPAuthOptions,
+  HTTPTransport,
+  type Runtime,
+} from '@mokei/http-client'
 import { ROOT_CONTEXT, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
@@ -300,6 +305,11 @@ export type HTTPContextParams = {
   protocolVersion?: ProtocolVersion | 'auto'
   /** Fetch middleware (e.g. OAuth from createOAuthMiddleware) applied to the transport. */
   fetchMiddleware?: FetchMiddleware
+  /**
+   * Fetch and random-value implementations for the HTTP transport (default `createRuntime()`
+   * from `@sozai/runtime`). React Native passes `@sozai/runtime-expo`'s `createRuntime({ fetch })`.
+   */
+  runtime?: Runtime
 }
 
 export class ContextHost extends Disposer {
@@ -629,7 +639,8 @@ export class ContextHost extends Disposer {
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
     params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, elicit } = params
+    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, runtime, elicit } =
+      params
 
     if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
@@ -645,6 +656,7 @@ export class ContextHost extends Disposer {
       auth,
       timeout,
       fetchMiddleware,
+      runtime,
     })
     const context = createHostedContext<T>({
       transport: transport as ClientTransport,
@@ -977,7 +989,7 @@ export class ContextHost extends Disposer {
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      endSpanError(span, errorTypeOf(error), errorMessage)
+      endSpanError(span, errorTypeOf(error), errorMessage, capture)
       return {
         content: [{ type: 'text' as const, text: errorMessage }],
         isError: true,

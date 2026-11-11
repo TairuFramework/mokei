@@ -156,7 +156,7 @@ export function traceStreamChat<TPart, TCall>(
     if (failure === undefined) {
       span.end()
     } else {
-      endSpanError(span, failure.type, failure.message)
+      endSpanError(span, failure.type, failure.message, capture)
     }
     if (!metricsEnabled || options.metrics === false) return
     const attributes = { ...baseAttributes }

@@ -1,6 +1,8 @@
+import { fetchOAuthJSON, OAuthTokenError } from '@kokuin/oauth'
+import type { Runtime } from '@sozai/runtime'
+
 import type { FetchLike } from '../transport.js'
 import { fetchAuthServerMetadata, isLoopbackHost } from './discovery.js'
-import { fetchOAuthJSON, OAuthResponseError } from './fetch.js'
 import type { StoredTokens } from './store.js'
 
 export type RevokeTokensParams = {
@@ -57,17 +59,17 @@ export async function revokeTokens(params: RevokeTokensParams): Promise<RevokeTo
   for (const [hint, token] of pairs) {
     if (token == null) continue
     try {
-      await fetchOAuthJSON(fetch, endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      await fetchOAuthJSON({
+        runtime: { fetch: fetch as Runtime['fetch'] },
+        url: endpoint,
+        contentType: 'application/x-www-form-urlencoded',
         body: new URLSearchParams({ token, token_type_hint: hint, client_id: clientID }).toString(),
         signal,
-        errorLabel: 'Token revocation',
       })
     } catch (error) {
       // RFC 7009 §2.2.1: a server that cannot revoke this kind of token says so. Not a failure:
       // the refresh token, revoked first, is the one that matters.
-      if (error instanceof OAuthResponseError && error.oauthError === 'unsupported_token_type') {
+      if (error instanceof OAuthTokenError && error.code === 'unsupported_token_type') {
         continue
       }
       throw error
