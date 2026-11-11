@@ -1,6 +1,6 @@
 # Opt-in context reconnect
 
-**Status:** design for approval, 2026-11-11 (builder check and Codex review done; revision 1). Approach approved earlier the same day (host-owned
+**Status:** design for approval, 2026-11-11 (builder check and two Codex review rounds done; revision 2). Approach approved earlier the same day (host-owned
 reconnect); this document is the full design written from it.
 **Requested by:** Yosura (one `ContextHost` per device) and the roadmap's "Enhanced error
 handling" item.
@@ -132,13 +132,19 @@ Loss is classified where the evidence is, never from messages:
 
 - **Raw fetch boundary.** The transport's innermost fetch (`runtime.fetch`, under the timeout and
   redirect wrappers) marks a rejection as `NetworkError` (cause kept) unless the caller's signal
-  aborted, the transport is disposed, or the request timed out. Errors thrown by middleware
-  (OAuth storage, discovery, configuration) or by the redirect guard are not network errors.
-- **Typed failure channel.** When the transport fails a request it attaches
-  `data['dev.mokei/transport'] = { kind, status? }` to the error frame: `kind` is `network`,
-  `timeout`, `auth-required` (the middleware's `AuthRequiredError`), `http` (with the final
-  status, including a `401` the middleware returned after its own retry) or `session-expired`.
-  The host reads this from the `RPCError`, never the message text.
+  aborted, the transport is disposed, or the request timed out. Only the transport's own requests
+  to its MCP URL qualify: OAuth discovery, token and revocation fetches that the middleware makes
+  through the same fetch are never loss, nor are errors thrown by middleware (OAuth storage,
+  configuration) or by the redirect guard.
+- **Typed failure channel.** When the transport fails a request locally it brands the error
+  frame's `data` with a symbol-keyed field (`TRANSPORT_FAILURE`, `{ kind, status? }`), which no
+  JSON from a server can produce: `kind` is `network`, `timeout`, `auth-required` (the
+  middleware's `AuthRequiredError`), `http` (with the final status, including a `401` the
+  middleware returned after its own retry) or `session-expired`. `@mokei/http-client` exports
+  `transportFailureOf(error)` to read it; the host never reads message text or string-keyed
+  `data`. Errors the server sent (including JSON-RPC errors carried in an HTTP response) never
+  carry the brand. If `RPCError.fromResponse` turns out not to keep the `data` object, the builder
+  uses an out-of-band per-transport registry keyed by request id instead.
 - **Connection events.** `HTTPTransport` emits `connection` `{ type: 'failed', error }` on a
   `NetworkError` and `{ type: 'session-expired' }` on the `2025-11-25` session `404` (POST, and
   the GET stream when it held a session). `5xx`, other HTTP responses, timeouts, aborts and
@@ -205,8 +211,10 @@ then runs with `timeout: remaining`, so waiting and a retry never grant a fresh 
 
 - The caller's `AbortSignal` is checked before waiting, on wake, and before dispatch; when the
   abort and the gate opening race, the abort wins. Aborts reject with the signal's reason.
-- Before dispatch the registration and client are re-read (never a client captured before the
-  wait).
+- Before dispatch the registration is re-read and must be the one captured at entry: if the key
+  was removed, or removed and re-added, the call fails with `ContextUnavailableError` instead of
+  running on a different registration. The client is read from it then, never captured before the
+  wait.
 - A gate timeout fails with `ContextUnavailableError`. `callNamespacedTool` (the agent path)
   returns only that error as an `isError: true` tool result, like `callLocalTool`; every other
   error, aborts included, keeps today's behaviour. `callTool` and `getPrompt` reject with it.
@@ -237,6 +245,11 @@ subscriptions go through new host methods `subscribeResource(key, uri)` /
 - restoration after a swap runs in the same queue, one URI at a time from a snapshot, skipping URIs
   no longer desired; it stops when ownership is lost;
 - the gate opens before restoration; calls do not wait for it;
+- restoration requests are non-interactive per request (the tag is set on each restoration
+  request, whatever the committed transport's mode), so a `403 insufficient_scope` on a
+  re-subscribe drops that URI rather than starting a sign-in;
+- a failed unsubscribe puts the URI back in the desired set (the client driver also keeps it,
+  as it commits only acknowledged changes), so host and client intent stay the same;
 - if the new server lacks resource subscriptions, or a re-subscribe fails, the URI is dropped
   from the desired set and `resource:subscription-lost { key, uri, error }` is emitted.
 
@@ -254,6 +267,10 @@ interactive. In non-interactive mode `createOAuthMiddleware`:
 - throws `AuthRequiredError` before entering the authorize queue on a `401`;
 - returns a `403 insufficient_scope` as-is instead of stepping up;
 - applies the same rules to the `DELETE` sent on dispose.
+
+A request of the lost generation already inside an interactive sign-in when the loss happens is
+not converted: quiescing disposes that transport, which aborts its requests, so the handler's
+`signal` aborts and the sign-in ends.
 
 The host ends the loop on `auth-required` or a final `401`. Once removed, the consumer re-adds the
 context, which may sign in normally.
