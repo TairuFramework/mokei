@@ -8,7 +8,7 @@ import type {
   ServerMessage,
 } from '@mokei/context-protocol'
 import { METHOD_NOT_FOUND, TASKS_EXTENSION } from '@mokei/context-protocol'
-import { RequestTimeoutError } from '@mokei/context-rpc'
+import { RequestTimeoutError, TransportClosedError } from '@mokei/context-rpc'
 import { afterEach, expect, expectTypeOf, test, vi } from 'vitest'
 
 import { ContextServer, createTaskManager, createTool } from '../../context-server/lib/index.js'
@@ -17,6 +17,7 @@ import {
   MethodNotInRevisionError,
   StructuredContentValidationError,
   TaskInputUnavailableError,
+  TaskInterruptedError,
 } from '../src/index.js'
 
 const created = {
@@ -382,4 +383,42 @@ test('returns task output without a cached schema', async () => {
   const invalid = { ...complete, result: { ...finalResult, structuredContent: { count: 'wrong' } } }
   const { client } = harness((request) => (request.method === 'tools/call' ? created : invalid))
   expect(await client.callTool({ name: 'echo', arguments: {} })).toEqual(invalid.result)
+})
+
+test('a loss after the server returned a task rejects with TaskInterruptedError', async () => {
+  // A harness variant: once the client waits on the task (any tasks/* request), drop the link.
+  const pair = new DirectTransports<ServerMessage, ClientMessage>()
+  transports.push(pair)
+  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  void (async () => {
+    for (;;) {
+      const next = await pair.server.read()
+      if (next.done) return
+      const request = next.value as ClientRequest
+      if (request.id == null) continue
+      if (request.method.startsWith('tasks/')) {
+        await pair.dispose()
+        return
+      }
+      const result =
+        request.method === 'subscriptions/listen'
+          ? undefined
+          : request.method === 'tools/call'
+            ? created
+            : discovery
+      if (result == null) {
+        pair.server.write({
+          jsonrpc: '2.0',
+          id: request.id,
+          error: { code: METHOD_NOT_FOUND, message: 'unavailable' },
+        } as ServerMessage)
+        continue
+      }
+      pair.server.write({ jsonrpc: '2.0', id: request.id, result } as ServerMessage)
+    }
+  })()
+  const error = await client.callTool({ name: 'echo', arguments: {} }).catch((e: unknown) => e)
+  expect(error).toBeInstanceOf(TaskInterruptedError)
+  expect((error as TaskInterruptedError).taskID).toBe('task-1')
+  expect((error as TaskInterruptedError).cause).toBeInstanceOf(TransportClosedError)
 })

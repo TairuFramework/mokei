@@ -110,6 +110,21 @@ export class TaskCancelledError extends Error {
   }
 }
 
+/** Thrown when the transport is lost after the server created a task: the task may still be running. */
+export class TaskInterruptedError extends Error {
+  #taskID: string
+
+  constructor(params: { taskID: string; cause?: unknown }) {
+    super(`Task ${params.taskID} was interrupted by a transport loss`, { cause: params.cause })
+    this.name = 'TaskInterruptedError'
+    this.#taskID = params.taskID
+  }
+
+  get taskID(): string {
+    return this.#taskID
+  }
+}
+
 export class TaskInputUnavailableError extends Error {
   #taskID: string
   #key: string

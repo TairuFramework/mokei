@@ -90,6 +90,7 @@ import {
   MethodNotInRevisionError,
   MRTRNotSupportedError,
   StructuredContentValidationError,
+  TaskInterruptedError,
   UnsupportedProtocolVersionError,
 } from './errors.js'
 import {
@@ -1986,13 +1987,21 @@ export class ContextClient<
       if (isInputRequiredResult(result)) return result
       if (isCreateTaskResult(result)) {
         if (task === 'handle') return result
-        return await this.waitForTask({
-          taskID: result.taskId,
-          signal,
-          toolName: params.name,
-          cancelOnAbort: true,
-          elicit,
-        })
+        try {
+          return await this.waitForTask({
+            taskID: result.taskId,
+            signal,
+            toolName: params.name,
+            cancelOnAbort: true,
+            elicit,
+          })
+        } catch (error) {
+          if (error instanceof TransportClosedError) {
+            // biome-ignore lint/style/useErrorCause: the cause is passed through the params object
+            throw new TaskInterruptedError({ taskID: result.taskId, cause: error })
+          }
+          throw error
+        }
       }
       return this.#validateToolOutput(result, params.name)
     } finally {

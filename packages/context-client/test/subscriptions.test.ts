@@ -1,7 +1,9 @@
 import type { SubscriptionFilter } from '@mokei/context-protocol'
+import { RPCError } from '@mokei/context-rpc'
 import { describe, expect, test, vi } from 'vitest'
 
 import { type ListenHandlers, type OpenListen, SubscriptionDriver } from '../src/subscriptions.js'
+import { brandTransportFailure } from '../src/transport-failure.js'
 
 const ACK = 'notifications/subscriptions/acknowledged'
 
@@ -433,5 +435,43 @@ describe('SubscriptionDriver', () => {
     await flush()
 
     expect(errors.some((error) => error.message === 'onRetry blew up')).toBe(true)
+  })
+
+  test('a branded network error on listen is retried; an unbranded one stops', async () => {
+    const { opens, openListen } = makeHarness()
+    const retries: Array<number> = []
+    const errors: Array<Error> = []
+    const driver = new SubscriptionDriver({
+      openListen,
+      delay: immediateDelay,
+      onRetry: (retry) => retries.push(retry.attempt),
+      onError: (error) => errors.push(error),
+    })
+    const p = driver.subscribeResource({ uri: 'file:///a' })
+    await flush()
+    opens[0]?.ack()
+    await p
+    opens[0]?.close()
+    await flush()
+    expect(opens.length).toBe(2)
+
+    // Reconnect candidate fails before ack with a branded network error: retried.
+    opens[1]?.settle(
+      'error',
+      new RPCError({
+        code: -32603,
+        message: 'fetch failed',
+        data: brandTransportFailure({}, { kind: 'network' }),
+      }),
+    )
+    await flush()
+    expect(retries.length).toBe(2)
+    expect(opens.length).toBe(3)
+
+    // Unbranded -32603 stops and surfaces.
+    opens[2]?.settle('error', new RPCError({ code: -32603, message: 'boom' }))
+    await flush()
+    expect(opens.length).toBe(3)
+    expect(errors.at(-1)?.message).toBe('boom')
   })
 })
