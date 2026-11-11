@@ -30,6 +30,12 @@ export {
   type RequestedSchema,
 } from './elicit-content.js'
 export {
+  ContextUnavailableError,
+  type ContextUnavailableErrorParams,
+  ReconnectExhaustedError,
+  type ReconnectExhaustedErrorParams,
+} from './errors.js'
+export {
   type AddDirectContextParams,
   type AllowToolCalls,
   ContextHost,
@@ -66,3 +72,9 @@ export {
   toolsToLocalTools,
   toolToLocalTool,
 } from './local-tools.js'
+export type {
+  ContextConnectivity,
+  ContextFactory,
+  HostedContextParts,
+  ReconnectOptions,
+} from './reconnect.js'

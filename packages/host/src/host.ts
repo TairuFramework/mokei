@@ -32,7 +32,7 @@ import type {
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
-import type { WithRequestOptions } from '@mokei/context-rpc'
+import { TransportClosedError, type WithRequestOptions } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
 import {
   type FetchMiddleware,
@@ -40,7 +40,7 @@ import {
   HTTPTransport,
   type Runtime,
 } from '@mokei/http-client'
-import { ROOT_CONTEXT, SpanKind } from '@opentelemetry/api'
+import { ROOT_CONTEXT, type SpanContext, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 
@@ -52,6 +52,14 @@ import {
   type LocalTool,
   type LocalToolDefinition,
 } from './local-tools.js'
+import {
+  type ContextConnectivity,
+  type ContextFactory,
+  ReconnectController,
+  type ReconnectEvents,
+  type ReconnectOptions,
+  resolveReconnectOptions,
+} from './reconnect.js'
 
 type ContextTransport = 'stdio' | 'http' | 'direct'
 
@@ -211,6 +219,11 @@ export type ContextHostParams = {
   elicit?: HostElicitHandler | true
   /** MCP payload capture defaults to 'off'. */
   tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
+  /**
+   * Reports whether the network is reachable. A reconnect waits while offline without spending
+   * attempts; a missing or throwing hook counts as online.
+   */
+  connectivity?: ContextConnectivity
 }
 
 export type HasContextParams = { key: string }
@@ -218,12 +231,20 @@ export type RegisterHostedContextParams = {
   key: string
   context: HostedContext
   transport?: ContextTransport
+  /** Rebuilds the context after a loss once `setup()` has run. Omit to remove it on loss. */
+  reconnect?: { options: ReconnectOptions; factory: ContextFactory }
 }
 
 export type HostEvents = {
   'context:added': { key: string }
   'context:removed': { key: string }
   'context:failed': { key: string; error: Error }
+  /** A reconnect attempt for a lost context is about to start. `error` is why the last one ended. */
+  'context:reconnecting': ReconnectEvents['context:reconnecting']
+  /** A lost context was rebuilt; `getContext(key).client` is the new client. */
+  'context:reconnected': ReconnectEvents['context:reconnected']
+  /** A resource subscription could not be restored after a reconnect and was dropped. */
+  'resource:subscription-lost': { key: string; uri: string; error: Error }
   /**
    * A `2026-07-28` context's server signalled its tools list changed (SEP-1391). The host has
    * already re-listed the context and refreshed its namespaced tool aggregate before emitting.
@@ -250,6 +271,52 @@ export type HostEvents = {
    * (`notifications/elicitation/complete`). An application can close the matching URL prompt.
    */
   'elicitation:complete': { key: string; elicitationId: string }
+}
+
+/**
+ * Merges a fresh tool list into a context's tools: each surviving tool keeps its
+ * `enabled`/`allow` state by name, new tools are enabled, vanished tools are dropped.
+ */
+function mergeContextTools(
+  key: string,
+  previous: Array<ContextTool>,
+  tools: Array<Tool>,
+): Array<ContextTool> {
+  const byName = new Map(previous.map((ct) => [ct.tool.name, ct]))
+  return tools.map((tool: Tool) => {
+    const prior = byName.get(tool.name)
+    const contextTool: ContextTool = {
+      id: getContextToolID(key, tool.name),
+      tool,
+      enabled: prior?.enabled ?? true,
+    }
+    if (prior?.allow != null) {
+      contextTool.allow = prior.allow
+    }
+    return contextTool
+  })
+}
+
+function sameToolDefinitions(a: Array<ContextTool>, b: Array<ContextTool>): boolean {
+  return JSON.stringify(a.map((ct) => ct.tool)) === JSON.stringify(b.map((ct) => ct.tool))
+}
+
+/** Host-side state of one registration (one `add*Context` call), kept across reconnects. */
+type RegistrationState = {
+  transport: ContextTransport
+  url?: string
+  /** The current client's HTTP transport, set non-interactive when its generation is lost. */
+  httpTransport?: HTTPTransport
+  controller?: ReconnectController
+  /** The current client's `mcp.context` span; the next client's span links to it after a loss. */
+  spanContext?: SpanContext
+}
+
+type RegisterParams = {
+  transport: ContextTransport
+  httpTransport?: HTTPTransport
+  url?: string
+  reconnect?: { options: ReconnectOptions; factory: ContextFactory }
 }
 
 export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
@@ -283,6 +350,13 @@ export type AddDirectContextParams = {
    * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
    */
   protocolVersion?: ProtocolVersion | 'auto'
+  /**
+   * Rebuild the context when its connection is lost, instead of removing it (`true` = defaults).
+   * Applies once `setup()` has committed the context's tools. Clients returned by `add*Context`
+   * or read from `getContext(key).client` earlier are not gated and go stale after a reconnect;
+   * `getContext(key).client` always returns the current one.
+   */
+  reconnect?: boolean | ReconnectOptions
 }
 
 export type HTTPContextParams = {
@@ -314,6 +388,8 @@ export type HTTPContextParams = {
 
 export class ContextHost extends Disposer {
   #contexts: Record<string, HostedContext> = {}
+  #registrations: WeakMap<HostedContext, RegistrationState> = new WeakMap()
+  #connectivity?: ContextConnectivity
   #payloads?: PayloadCapture
   #parentFrom?: TraceParentFrom
   #contextSettlers = new Map<string, (reason: TerminationReason) => void>()
@@ -341,6 +417,7 @@ export class ContextHost extends Disposer {
     this.#elicit = params.elicit
     this.#payloads = params.tracing?.payloads ?? 'off'
     this.#parentFrom = params.tracing?.parentFrom
+    this.#connectivity = params.connectivity
   }
 
   get contexts(): Record<string, HostedContext> {
@@ -433,8 +510,127 @@ export class ContextHost extends Disposer {
     if (this.hasContext({ key: params.key })) {
       throw new Error(`Context ${params.key} already exists`)
     }
-    this.#contexts[params.key] = params.context
-    this.#wireContextSubscriptions(params.key, params.context.client, params.transport)
+    this.#register(params.key, params.context, {
+      transport: params.transport ?? 'direct',
+      reconnect: params.reconnect,
+    })
+  }
+
+  /** Stores a registration and wires its first client. */
+  #register(key: string, context: HostedContext, params: RegisterParams): void {
+    const state: RegistrationState = {
+      transport: params.transport,
+      url: params.url,
+      httpTransport: params.httpTransport,
+    }
+    if (params.reconnect != null) {
+      state.controller = this.#createController(key, context, state, params.reconnect)
+    }
+    this.#contexts[key] = context
+    this.#registrations.set(context, state)
+    state.spanContext = this.#wireContextSubscriptions(
+      key,
+      context.client,
+      params.transport,
+      params.httpTransport,
+      params.url,
+    )
+  }
+
+  #createController(
+    key: string,
+    registration: HostedContext,
+    state: RegistrationState,
+    reconnect: { options: ReconnectOptions; factory: ContextFactory },
+  ): ReconnectController {
+    let lostSpanContext: SpanContext | undefined
+    return new ReconnectController({
+      key,
+      options: reconnect.options,
+      factory: reconnect.factory,
+      connectivity: this.#connectivity,
+      hooks: {
+        quiesce: () => {
+          lostSpanContext = state.spanContext
+          state.spanContext = undefined
+          this.#detachClient(key, 'lost')
+          // Teardown of a lost generation never opens a sign-in.
+          state.httpTransport?.setInteractive(false)
+          // In the background: disposal never waits on, or depends on, a replacement.
+          void registration.disposer.dispose().catch(() => {})
+        },
+        commit: (parts, tools, _generation, attempt) => {
+          if (this.#contexts[key] !== registration) {
+            return null
+          }
+          const merged = mergeContextTools(key, registration.tools, tools)
+          const toolsChanged = !sameToolDefinitions(registration.tools, merged)
+          registration.client = parts.client
+          registration.disposer = parts.disposer
+          registration.tools = merged
+          state.httpTransport = parts.transport
+          parts.transport?.setInteractive(true)
+          state.spanContext = this.#wireContextSubscriptions(
+            key,
+            parts.client,
+            state.transport,
+            parts.transport,
+            state.url,
+            { link: lostSpanContext, attempt },
+          )
+          lostSpanContext = undefined
+          return { toolsChanged }
+        },
+        fail: (error) => {
+          if (this.#contexts[key] !== registration) {
+            return
+          }
+          void this.#events.emit('context:failed', { key, error }).catch(() => {})
+          void this.remove(key, 'lost').catch(() => {})
+        },
+        emit: (name, payload) => {
+          // ReconnectEvents is a subset of HostEvents.
+          void this.#events.emit(name, payload as HostEvents[typeof name]).catch(() => {})
+        },
+      },
+    })
+  }
+
+  /** Ends the current client's context span and detaches its host listeners. */
+  #detachClient(key: string, reason: TerminationReason): void {
+    this.#contextSettlers.get(key)?.(reason)
+    this.#contextSettlers.delete(key)
+    for (const unsubscribe of this.#subscriptionUnsubscribes.get(key) ?? []) {
+      unsubscribe()
+    }
+    this.#subscriptionUnsubscribes.delete(key)
+  }
+
+  /** Whether `registration` is still the key's and `client` still its current client. */
+  #owns(key: string, registration: HostedContext, client: ContextClient): boolean {
+    return this.#contexts[key] === registration && registration.client === client
+  }
+
+  /**
+   * Reports that `client`, the current client of `key`, lost its connection. A context armed for
+   * reconnect is rebuilt; any other is removed. Reports for a client that is not current are
+   * ignored.
+   */
+  // biome-ignore lint/style/useConsistentMemberAccessibility: subclasses must access this protected hook
+  protected reportLoss(key: string, client: ContextClient, error: Error): void {
+    const registration = this.#contexts[key]
+    if (registration == null || registration.client !== client) {
+      return
+    }
+    const controller = this.#registrations.get(registration)?.controller
+    if (controller?.armed) {
+      controller.lose(controller.generation, error)
+      return
+    }
+    void this.remove(key, 'lost').catch((cause: unknown) => {
+      const failure = cause instanceof Error ? cause : new Error(String(cause))
+      void this.#events.emit('context:failed', { key, error: failure }).catch(() => {})
+    })
   }
 
   getContextKeys(): Array<string> {
@@ -578,13 +774,10 @@ export class ContextHost extends Disposer {
       ...hostedParams,
       elicit: this.createElicitHandler({ key, elicit }),
     })
-    this.#contexts[key] = context as unknown as HostedContext
-    this.#wireContextSubscriptions(
-      key,
-      context.client as unknown as ContextClient,
-      params.transport instanceof HTTPTransport ? 'http' : 'direct',
-      params.transport instanceof HTTPTransport ? params.transport : undefined,
-    )
+    this.#register(key, context as unknown as HostedContext, {
+      transport: params.transport instanceof HTTPTransport ? 'http' : 'direct',
+      httpTransport: params.transport instanceof HTTPTransport ? params.transport : undefined,
+    })
     return context.client
   }
 
@@ -596,18 +789,37 @@ export class ContextHost extends Disposer {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const server = new ContextServer({ ...config, transport: transports.server })
-    return this.createContext({
-      key,
-      transport: transports.client,
-      tools,
-      protocolVersion,
-      elicit,
-      dispose: async () => {
-        await Promise.all([server.dispose(), transports.client.dispose()])
-      },
+    // One generation: a fresh transport pair and server from the same `config`.
+    const build = (initialTools?: Array<ContextTool>): HostedContext<T> => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+      const server = new ContextServer({ ...config, transport: transports.server })
+      return createHostedContext<T>({
+        transport: transports.client,
+        tools: initialTools,
+        protocolVersion,
+        elicit: this.createElicitHandler({ key, elicit }),
+        dispose: async () => {
+          await Promise.all([server.dispose(), transports.client.dispose()])
+        },
+      })
+    }
+    const options = resolveReconnectOptions(params.reconnect)
+    const context = build(tools)
+    this.#register(key, context as unknown as HostedContext, {
+      transport: 'direct',
+      reconnect:
+        options == null
+          ? undefined
+          : {
+              options,
+              factory: async () => {
+                const { client, disposer } = build()
+                return { client: client as unknown as ContextClient, disposer }
+              },
+            },
     })
+    void this.#events.emit('context:added', { key }).catch(() => {})
+    return context.client
   }
 
   /**
@@ -664,14 +876,12 @@ export class ContextHost extends Disposer {
       elicit: this.createElicitHandler({ key, elicit }),
     })
 
-    this.#contexts[key] = context as unknown as HostedContext
-    this.#wireContextSubscriptions(
-      key,
-      context.client as unknown as ContextClient,
-      'http',
-      transport,
+    this.#register(key, context as unknown as HostedContext, {
+      transport: 'http',
+      httpTransport: transport,
       url,
-    )
+    })
+    void this.#events.emit('context:added', { key }).catch(() => {})
 
     return context.client
   }
@@ -691,12 +901,15 @@ export class ContextHost extends Disposer {
     transport: ContextTransport = 'direct',
     httpTransport?: HTTPTransport,
     url?: string,
-  ): void {
+    reconnect?: { link?: SpanContext; attempt: number },
+  ): SpanContext {
     const network = networkInfo(transport, url)
     const span = getMokeiTracer('host').startSpan(
       'mcp.context',
       {
+        ...(reconnect?.link == null ? {} : { links: [{ context: reconnect.link }] }),
         attributes: {
+          ...(reconnect == null ? {} : { 'mokei.context.reconnect.attempt': reconnect.attempt }),
           'mokei.kind': 'context',
           'mokei.root': true,
           'mokei.context.id': key,
@@ -766,12 +979,12 @@ export class ContextHost extends Disposer {
         if (httpTransport?.sessionID != null)
           span.setAttribute('mcp.session.id', httpTransport.sessionID)
       }),
-      client.events.on('closed', () => {
-        if (this.#contexts[key]?.client === client)
-          void this.remove(key, 'lost').catch((cause: unknown) => {
-            const error = cause instanceof Error ? cause : new Error(String(cause))
-            void this.#events.emit('context:failed', { key, error }).catch(() => {})
-          })
+      client.events.on('closed', ({ error }) => {
+        this.reportLoss(
+          key,
+          client,
+          error ?? new TransportClosedError({ message: 'Context client closed' }),
+        )
       }),
       client.events.on('toolsListChanged', () => {
         void this.#onListChanged(key, 'tools')
@@ -790,6 +1003,7 @@ export class ContextHost extends Disposer {
       }),
     ]
     this.#subscriptionUnsubscribes.set(key, unsubscribes)
+    return span.spanContext()
   }
 
   /**
@@ -801,22 +1015,24 @@ export class ContextHost extends Disposer {
    * a frame was in flight.
    */
   async #onListChanged(key: string, kind: 'tools' | 'prompts' | 'resources'): Promise<void> {
-    const ctx = this.#contexts[key]
-    if (ctx == null) {
+    const registration = this.#contexts[key]
+    if (registration == null) {
       return
     }
+    const client = registration.client
     try {
       if (kind === 'tools') {
         await this.#refreshContextTools(key)
       } else if (kind === 'prompts') {
-        await ctx.client.listPrompts()
+        await client.listPrompts()
       } else {
-        await ctx.client.listResources()
+        await client.listResources()
       }
     } catch {
       // Best-effort re-list; still emit the change signal below.
     }
-    if (this.#contexts[key] == null) {
+    // Removed, re-added or reconnected meanwhile: the signal belongs to a client that is gone.
+    if (!this.#owns(key, registration, client)) {
       return
     }
     void this.#events.emit(`${kind}:changed`, { key }).catch(() => {})
@@ -828,39 +1044,42 @@ export class ContextHost extends Disposer {
    * server no longer advertises.
    */
   async #refreshContextTools(key: string): Promise<void> {
-    const ctx = this.#contexts[key]
-    if (ctx == null) {
+    const registration = this.#contexts[key]
+    if (registration == null) {
       return
     }
-    const { tools } = await ctx.client.listTools()
-    if (this.#contexts[key] == null) {
+    const client = registration.client
+    const { tools } = await client.listTools()
+    if (!this.#owns(key, registration, client)) {
       return
     }
-    const previous = new Map(ctx.tools.map((ct) => [ct.tool.name, ct]))
-    ctx.tools = tools.map((tool: Tool) => {
-      const prior = previous.get(tool.name)
-      const contextTool: ContextTool = {
-        id: getContextToolID(key, tool.name),
-        tool,
-        enabled: prior?.enabled ?? true,
-      }
-      if (prior?.allow != null) {
-        contextTool.allow = prior.allow
-      }
-      return contextTool
-    })
+    registration.tools = mergeContextTools(key, registration.tools, tools)
   }
 
   async setup(params: SetupParams): Promise<Array<ContextTool>> {
     const { key, enableTools = true, ...listOptions } = params
-    const context = this.getContext(key)
-    const { tools } = await context.client.listTools(listOptions).catch((err: unknown) => {
+    const registration = this.getContext(key)
+    const controller = this.#registrations.get(registration)?.controller
+    if (controller?.armed && controller.state === 'reconnecting') {
+      return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
+    }
+    const client = registration.client
+    const generation = controller?.generation
+    // Lost (and maybe rebuilt) while this setup awaited: its result belongs to a gone client.
+    const superseded = () => controller != null && controller.generation !== generation
+    let tools: Array<Tool>
+    try {
+      ;({ tools } = await client.listTools(listOptions))
+    } catch (err) {
       // If the context was removed while listTools was in flight, surface a clear error.
-      if (this.#contexts[key] !== context) {
-        throw new Error(`Context ${key} was removed during setup`)
+      if (this.#contexts[key] !== registration) {
+        throw new Error(`Context ${key} was removed during setup`, { cause: err })
+      }
+      if (superseded()) {
+        return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
       }
       throw err
-    })
+    }
     const enabledTools = typeof enableTools === 'function' ? await enableTools(tools) : enableTools
     const contextTools = tools.map((tool: Tool) => {
       const enabled =
@@ -868,11 +1087,39 @@ export class ContextHost extends Disposer {
       return { id: getContextToolID(key, tool.name), tool, enabled }
     })
     // The context may have been removed while listTools / enableTools awaited.
-    if (this.#contexts[key] !== context) {
+    if (this.#contexts[key] !== registration) {
       throw new Error(`Context ${key} was removed during setup`)
     }
-    context.tools = contextTools
+    if (registration.client !== client || superseded()) {
+      return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
+    }
+    registration.tools = contextTools
+    controller?.arm()
     return contextTools
+  }
+
+  /** Waits out a reconnect, then returns the registration's tools as they are now. */
+  async #currentToolsAfterReconnect(
+    key: string,
+    registration: HostedContext,
+    controller: ReconnectController | undefined,
+    options: { signal?: AbortSignal; timeout?: number },
+  ): Promise<Array<ContextTool>> {
+    if (controller != null && controller.state === 'reconnecting') {
+      const budget = Math.min(controller.gateTimeoutMs, options.timeout ?? Number.POSITIVE_INFINITY)
+      try {
+        await controller.waitForGate({ signal: options.signal, deadline: Date.now() + budget })
+      } catch (err) {
+        if (this.#contexts[key] !== registration) {
+          throw new Error(`Context ${key} was removed during setup`, { cause: err })
+        }
+        throw err
+      }
+    }
+    if (this.#contexts[key] !== registration) {
+      throw new Error(`Context ${key} was removed during setup`)
+    }
+    return registration.tools
   }
 
   async remove(key: string, reason: TerminationReason = 'stopped'): Promise<void> {
@@ -883,14 +1130,13 @@ export class ContextHost extends Disposer {
     // Delete before the async dispose so a concurrent remove/dispose (e.g. an
     // onExit reap racing a user remove) sees null and exits -- no double removal.
     delete this.#contexts[key]
-    this.#contextSettlers.get(key)?.(reason)
-    this.#contextSettlers.delete(key)
-
-    // Tear down the client subscription-event listeners (SEP-1391) before disposing the client.
-    for (const unsubscribe of this.#subscriptionUnsubscribes.get(key) ?? []) {
-      unsubscribe()
-    }
-    this.#subscriptionUnsubscribes.delete(key)
+    // Stops a reconnect in flight: no swap, no events, gate waiters fail.
+    this.#registrations
+      .get(ctx)
+      ?.controller?.abort(new Error(`Context ${key} was removed (${reason})`))
+    // Settle the context span and tear down the client subscription-event listeners (SEP-1391)
+    // before disposing the client. A context lost mid-reconnect has neither left.
+    this.#detachClient(key, reason)
 
     await ctx.disposer.dispose()
     void this.#events.emit('context:removed', { key }).catch(() => {})
