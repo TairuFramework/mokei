@@ -119,6 +119,7 @@ import {
   type ElicitHandler,
   type ListParams,
   type ListRootsHandler,
+  type PerRequestElicit,
   type PromptParams,
   type ResourceSubscriptionParams,
   splitListOptions,
@@ -623,7 +624,7 @@ export class ContextClient<
   async request<Method extends keyof ClientTypes['SendRequests']>(
     method: Method,
     params: ClientTypes['SendRequests'][Method]['Params'],
-    options?: RequestOptions,
+    options?: RequestOptions & PerRequestElicit,
   ): Promise<ClientTypes['SendRequests'][Method]['Result']> {
     await this.#ready
     const protocol = this.#requireProtocol()
@@ -757,7 +758,7 @@ export class ContextClient<
           startedAt,
           signal: options?.signal,
           dispatch: (key, inputRequest, signal) =>
-            this.#fulfilInputRequest(key, inputRequest, signal),
+            this.#fulfilInputRequest(key, inputRequest, signal, options?.elicit),
           retry: async (retryParams, timeout) => {
             const round = legs++
             suspended = false
@@ -1461,6 +1462,7 @@ export class ContextClient<
     key: string,
     request: InputRequest,
     signal: AbortSignal,
+    elicit?: ElicitHandler,
   ): Promise<InputResponse> {
     switch (request.method) {
       case 'sampling/createMessage':
@@ -1470,7 +1472,7 @@ export class ContextClient<
         break
       case 'elicitation/create':
         if (this.#elicit != null) {
-          return await this.#elicit({ params: request.params, signal })
+          return await (elicit ?? this.#elicit)({ params: request.params, signal })
         }
         break
       case 'roots/list':
@@ -1774,19 +1776,24 @@ export class ContextClient<
   }
 
   getPrompt(
-    params: WithRequestOptions<PromptParams<T>> & { allowInputRequired?: false },
+    params: WithRequestOptions<PromptParams<T>> & PerRequestElicit & { allowInputRequired?: false },
   ): Promise<GetPromptResult>
   getPrompt(
-    params: WithRequestOptions<PromptParams<T>> & { allowInputRequired: true },
+    params: WithRequestOptions<PromptParams<T>> & PerRequestElicit & { allowInputRequired: true },
   ): Promise<GetPromptResult | InputRequiredResult>
   getPrompt(
-    params: WithRequestOptions<PromptParams<T>> & { allowInputRequired: boolean },
+    params: WithRequestOptions<PromptParams<T>> &
+      PerRequestElicit & { allowInputRequired: boolean },
   ): Promise<GetPromptResult | InputRequiredResult>
   getPrompt(
-    params: WithRequestOptions<PromptParams<T>>,
+    params: WithRequestOptions<PromptParams<T>> & PerRequestElicit,
   ): Promise<GetPromptResult | InputRequiredResult> {
-    const [wireParams, options] = splitRequestOptions(params)
-    return this.request('prompts/get', wireParams as GetPromptRequest['params'], options)
+    const { elicit, ...requestParams } = params
+    const [wireParams, options] = splitRequestOptions(requestParams)
+    return this.request('prompts/get', wireParams as GetPromptRequest['params'], {
+      ...options,
+      elicit,
+    })
   }
 
   async listResources(
@@ -1826,19 +1833,23 @@ export class ContextClient<
   }
 
   readResource(
-    params: WithRequestOptions<ReadResourceRequest['params']> & { allowInputRequired?: false },
+    params: WithRequestOptions<ReadResourceRequest['params']> &
+      PerRequestElicit & { allowInputRequired?: false },
   ): Promise<ReadResourceResult>
   readResource(
-    params: WithRequestOptions<ReadResourceRequest['params']> & { allowInputRequired: true },
+    params: WithRequestOptions<ReadResourceRequest['params']> &
+      PerRequestElicit & { allowInputRequired: true },
   ): Promise<ReadResourceResult | InputRequiredResult>
   readResource(
-    params: WithRequestOptions<ReadResourceRequest['params']> & { allowInputRequired: boolean },
+    params: WithRequestOptions<ReadResourceRequest['params']> &
+      PerRequestElicit & { allowInputRequired: boolean },
   ): Promise<ReadResourceResult | InputRequiredResult>
   readResource(
-    params: WithRequestOptions<ReadResourceRequest['params']>,
+    params: WithRequestOptions<ReadResourceRequest['params']> & PerRequestElicit,
   ): Promise<ReadResourceResult | InputRequiredResult> {
-    const [wireParams, options] = splitRequestOptions(params)
-    return this.request('resources/read', wireParams, options)
+    const { elicit, ...requestParams } = params
+    const [wireParams, options] = splitRequestOptions(requestParams)
+    return this.request('resources/read', wireParams, { ...options, elicit })
   }
 
   async listTools(params: ListParams<ListToolsRequest['params']> = {}): Promise<ListToolsResult> {
@@ -1891,8 +1902,8 @@ export class ContextClient<
         return await this.request('tasks/cancel', { taskId: requestParams.taskId })
       },
       openListen: (filter, handlers) => this.#openListen(filter, handlers),
-      fulfil: async (key, request, signal) => {
-        return await this.#fulfilInputRequest(key, request, signal)
+      fulfil: async (key, request, signal, elicit) => {
+        return await this.#fulfilInputRequest(key, request, signal, elicit)
       },
       validate: (result, toolName) => this.#validateToolOutput(result, toolName),
     })
@@ -1922,27 +1933,33 @@ export class ContextClient<
   }
 
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired?: false },
+    params: WithRequestOptions<ToolParams<T>> &
+      PerRequestElicit & { task?: undefined; allowInputRequired?: false },
   ): Promise<CallToolResult>
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired: true },
+    params: WithRequestOptions<ToolParams<T>> &
+      PerRequestElicit & { task?: undefined; allowInputRequired: true },
   ): Promise<CallToolResult | InputRequiredResult>
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { task?: undefined; allowInputRequired: boolean },
+    params: WithRequestOptions<ToolParams<T>> &
+      PerRequestElicit & { task?: undefined; allowInputRequired: boolean },
   ): Promise<CallToolResult | InputRequiredResult>
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired?: false },
+    params: WithRequestOptions<ToolParams<T>> &
+      PerRequestElicit & { task: 'handle'; allowInputRequired?: false },
   ): Promise<CallToolResult | CreateTaskResult>
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired: true },
+    params: WithRequestOptions<ToolParams<T>> &
+      PerRequestElicit & { task: 'handle'; allowInputRequired: true },
   ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult>
   callTool(
-    params: WithRequestOptions<ToolParams<T>> & { task: 'handle'; allowInputRequired: boolean },
+    params: WithRequestOptions<ToolParams<T>> &
+      PerRequestElicit & { task: 'handle'; allowInputRequired: boolean },
   ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult>
   async callTool(
-    params: WithRequestOptions<ToolParams<T>> & { task?: 'handle' },
+    params: WithRequestOptions<ToolParams<T>> & PerRequestElicit & { task?: 'handle' },
   ): Promise<CallToolResult | CreateTaskResult | InputRequiredResult> {
-    const { task, ...requestParams } = params
+    const { task, elicit, ...requestParams } = params
     const [wireParams, options] = splitRequestOptions(requestParams)
     const timeout = options?.timeout
     const deadline = timeout == null ? undefined : new AbortController()
@@ -1964,6 +1981,7 @@ export class ContextClient<
       const result = await this.request('tools/call', wireParams as CallToolRequest['params'], {
         ...options,
         signal,
+        elicit,
       })
       if (isInputRequiredResult(result)) return result
       if (isCreateTaskResult(result)) {
@@ -1973,6 +1991,7 @@ export class ContextClient<
           signal,
           toolName: params.name,
           cancelOnAbort: true,
+          elicit,
         })
       }
       return this.#validateToolOutput(result, params.name)
