@@ -88,6 +88,22 @@ describe('credential redirect safety', () => {
     await transport.dispose()
   })
 
+  test('a fetch that followed a redirect anyway fails the request', async () => {
+    const { transport, ping } = setup({
+      auth: { type: 'bearer', token: 't' },
+      respond: () => {
+        const followed = ok()
+        Object.defineProperty(followed, 'redirected', { value: true })
+        return followed
+      },
+    })
+    const frame = await ping()
+    expect(frame.error?.message).toBe(
+      'Request failed: refused a response reached through a redirect with credentials',
+    )
+    await transport.dispose()
+  })
+
   test('uncredentialed request keeps the default', async () => {
     const { transport, ping, redirectOf } = setup()
     await ping()

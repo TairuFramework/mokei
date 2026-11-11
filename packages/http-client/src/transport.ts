@@ -338,6 +338,10 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     const params: Record<string, unknown> = Object.keys(meta).length > 0 ? { _meta: meta } : {}
 
     const controller = new AbortController()
+    // `refreshTimeout` bounds the whole refresh, body read included: the tag below only covers
+    // time-to-headers, and a peer that answers with an event stream and never sends the response
+    // would otherwise hold the rejected call forever.
+    const timeoutID = setTimeout(() => controller.abort(), this.#refreshTimeout)
     this.#untrackedControllers.add(controller)
     const refreshID = `mokei-internal:tools/list:${++this.#internalRequestCount}`
     try {
@@ -369,6 +373,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // A failed refresh is never the caller's error: the peer's own `-32020` is what surfaces.
       return false
     } finally {
+      clearTimeout(timeoutID)
       this.#untrackedControllers.delete(controller)
     }
   }

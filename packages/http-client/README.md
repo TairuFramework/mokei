@@ -49,6 +49,11 @@ const client = createHTTPClient({
 })
 ```
 
+The runtime must provide `AbortSignal.timeout` and `AbortSignal.any` (used by the setup deadline
+and the OAuth requests); polyfill them where missing. Its `fetch` must honour
+`redirect: 'manual'`: one that follows natively sends credentials to the redirect target before
+the transport can refuse the response.
+
 `protocolVersion` is required. Pass `'2025-11-25'` to speak the older revision, which does
 have a handshake:
 

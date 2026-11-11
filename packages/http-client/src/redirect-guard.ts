@@ -7,6 +7,10 @@ import type { FetchLike } from './transport.js'
  * `redirect: 'manual'` (a caller's `'error'` is kept), and a `3xx` or `opaqueredirect` response
  * to it is refused: the Fetch standard strips only `Authorization` on a cross-origin redirect,
  * so a custom header would otherwise reach the new origin.
+ *
+ * Limits: a credential header a `fetchMiddleware` adds under another name is not detected, and a
+ * fetch implementation that ignores `redirect: 'manual'` sends the credential before this guard
+ * sees the response (it then fails on `response.redirected`). Check your platform's fetch.
  */
 export function withCredentialRedirectGuard(
   fetch: FetchLike,
@@ -29,6 +33,12 @@ export function withCredentialRedirectGuard(
     if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
       await response.body?.cancel().catch(() => {})
       throw new Error(`refused to follow a redirect with credentials (status ${response.status})`)
+    }
+    // A fetch that ignores `redirect: 'manual'` (some React Native implementations follow
+    // natively) has already sent the credential; failing here at least stops the response being used.
+    if (response.redirected) {
+      await response.body?.cancel().catch(() => {})
+      throw new Error('refused a response reached through a redirect with credentials')
     }
     return response
   }

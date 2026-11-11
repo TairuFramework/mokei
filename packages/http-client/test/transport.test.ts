@@ -1994,6 +1994,62 @@ describe('HTTPTransport', () => {
     })
   })
 
+  describe('schema refresh body budget', () => {
+    test('a refresh whose body stalls after headers still ends at refreshTimeout', async () => {
+      vi.useFakeTimers()
+      try {
+        const mismatch = new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 6,
+            error: {
+              code: -32020,
+              message: 'Bad Request',
+              data: { mismatch: { header: 'Mcp-Param-Region', body: 'region' } },
+            },
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        )
+        fetchMock.mockResolvedValueOnce(mismatch)
+        // The refresh: headers arrive at once, the SSE body never sends the response event, and
+        // the stream errors only when its request signal aborts (as a real fetch body does).
+        fetchMock.mockImplementationOnce(async (_url: string, init: RequestInit) => {
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              init.signal?.addEventListener('abort', () => {
+                controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+              })
+            },
+          })
+          return new Response(body, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          })
+        })
+
+        const transport = new HTTPTransport({ url: TEST_URL, timeout: 30_000 })
+        let settled = false
+        const write = transport
+          .write({
+            jsonrpc: '2.0',
+            id: 6,
+            method: 'tools/call',
+            params: { name: 'search', arguments: { region: 'us-east-1' } },
+          } as ClientMessage)
+          .then(() => {
+            settled = true
+          })
+
+        await vi.advanceTimersByTimeAsync(DEFAULT_HTTP_REFRESH_TIMEOUT + 10)
+        expect(settled).toBe(true)
+        await write
+        await transport.dispose()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
   describe('GET stream for server-initiated messages', () => {
     test('opens GET stream after initialized notification when session exists', async () => {
       // Initialize response with session ID
