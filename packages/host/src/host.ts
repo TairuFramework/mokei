@@ -371,19 +371,17 @@ export class ContextHost extends Disposer {
   }
 
   /** The host-wide elicitation path: the `handleElicitation` override, then the base handler. */
-  #hostElicit(request: HostElicitRequest): Promise<ElicitResult> {
+  async #hostElicit(request: HostElicitRequest): Promise<ElicitResult> {
     const override = this.#elicitOverride
     if (override != null) {
-      return Promise.resolve(
-        override.handler(request, (options) =>
-          this.#dispatchElicitation({
-            ...request,
-            signal: options?.signal ?? request.signal,
-          }),
-        ),
+      return await override.handler(request, (options) =>
+        this.#dispatchElicitation({
+          ...request,
+          signal: options?.signal ?? request.signal,
+        }),
       )
     }
-    return this.#dispatchElicitation(request)
+    return await this.#dispatchElicitation(request)
   }
 
   /** Adapts a per-call handler to the client's per-request handler for one context. */

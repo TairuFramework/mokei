@@ -27,6 +27,7 @@ function setup(params: {
   const version = params.version ?? '2026-07-28'
   const rounds = params.rounds ?? 1
   const pair = new DirectTransports<ServerMessage, ClientMessage>()
+  const gate = Promise.withResolvers<void>()
   const manager = createTaskManager({ pollIntervalMs: 60_000 })
   const server = new ContextServer({
     name: 'per-call-elicit-test',
@@ -82,6 +83,26 @@ function setup(params: {
           })
         },
       }),
+      gatedTaskAsk: createTool({
+        description: 'Elicit through task input once the gate opens',
+        inputSchema: { type: 'object' },
+        handler: ({ task }) => {
+          if (task == null) throw new Error('Expected task context')
+          return task.run(async (handle) => {
+            await gate.promise
+            const responses = await handle.requestInput(
+              {
+                ask: {
+                  method: 'elicitation/create',
+                  params: { message: 'gated', requestedSchema: schema },
+                },
+              },
+              { signal: handle.signal },
+            )
+            return { content: [{ type: 'text', text: JSON.stringify(responses.ask) }] }
+          })
+        },
+      }),
     },
     prompts: {
       greet: {
@@ -116,7 +137,7 @@ function setup(params: {
     elicit: clientElicit,
   })
   disposables.push(client, server)
-  return { client, clientElicit }
+  return { client, clientElicit, gate }
 }
 
 const accept = (by: string): ElicitResult => ({ action: 'accept', content: { by } })
@@ -200,5 +221,30 @@ describe('per-request elicit', () => {
     expect(elicit).toHaveBeenCalledTimes(1)
     expect(clientElicit).not.toHaveBeenCalled()
     expect(result.messages[0]?.content).toEqual({ type: 'text', text: JSON.stringify(accept('p')) })
+  })
+
+  test('a departed waiter no longer answers task input', async () => {
+    const { client, clientElicit, gate } = setup({})
+    const handle = await client.callTool({ name: 'gatedTaskAsk', arguments: {}, task: 'handle' })
+    if (handle.resultType !== 'task' || typeof handle.taskId !== 'string') {
+      throw new Error('Expected a task handle')
+    }
+    const leaving = new AbortController()
+    const hA = vi.fn<ElicitHandler>(() => accept('A'))
+    const hB = vi.fn<ElicitHandler>(() => accept('B'))
+    const waitA = client.waitForTask({ taskID: handle.taskId, signal: leaving.signal, elicit: hA })
+    const waitB = client.waitForTask({
+      taskID: handle.taskId,
+      toolName: 'gatedTaskAsk',
+      elicit: hB,
+    })
+    leaving.abort(new Error('screen closed'))
+    await expect(waitA).rejects.toThrow()
+    gate.resolve()
+    const result = await waitB
+    expect(hA).not.toHaveBeenCalled()
+    expect(hB).toHaveBeenCalledTimes(1)
+    expect(clientElicit).not.toHaveBeenCalled()
+    expect(textOf(result)).toBe(JSON.stringify(accept('B')))
   })
 })

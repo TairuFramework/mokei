@@ -215,4 +215,18 @@ describe('ContextHost per-call elicit', () => {
     expect(b.status).toBe('fulfilled')
     if (b.status === 'fulfilled') expect(textOf(b.value)).toBe(JSON.stringify(accept('b')))
   })
+
+  test('fallback rejects instead of throwing when the override throws', async () => {
+    const { host } = setup()
+    host.handleElicitation(() => {
+      throw new Error('override failed')
+    })
+    const result = await host.callTool({
+      key: KEY,
+      name: 'ask',
+      arguments: { who: 'a' },
+      elicit: (_request, fallback) => fallback().catch(() => accept('caught')),
+    })
+    expect(textOf(result)).toBe(JSON.stringify(accept('caught')))
+  })
 })
