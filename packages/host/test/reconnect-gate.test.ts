@@ -233,6 +233,23 @@ describe('call gate', () => {
     expect(callsOn(relost)).toHaveLength(0)
     expect(callsOn(current)).toHaveLength(1)
   })
+  test('the dispatch budget is the one checked against the deadline', async () => {
+    const host = makeHost()
+    host.addDirectContext({ key: 'k', config: makeConfig(), reconnect: true })
+    await host.setup({ key: 'k' })
+    // The clock reads 0 at entry, then 99, then 100: a second read before dispatch would
+    // cross the 100 ms deadline after the guard passed.
+    const readings = [0, 99, 100]
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => readings.shift() ?? 100)
+    const outcome = host
+      .callTool({ key: 'k', name: 'a', arguments: {}, timeout: 100 })
+      .catch((e: unknown) => e)
+    await outcome
+    now.mockRestore()
+    const calls = callsOn(host.getContext('k').client)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.params.timeout).toBe(1)
+  })
 })
 
 describe('read-only retry', () => {

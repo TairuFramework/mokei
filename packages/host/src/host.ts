@@ -1256,12 +1256,6 @@ export class ContextHost extends Disposer {
       }
       // Lost again between the gate opening and this wake: wait for the next gate, same deadline.
       if (controller.state === 'reconnecting') continue
-      if (Date.now() >= deadline) {
-        throw new ContextUnavailableError({
-          key,
-          cause: new Error(`Context ${key} reconnected after the request's deadline`),
-        })
-      }
       const client = registration.client
       const generation = controller.generation
       // Read from the generation the call is sent on: a retry trusts the lost one's listing.
@@ -1269,9 +1263,16 @@ export class ContextHost extends Disposer {
         request.toolName != null &&
         registration.tools.find((ct) => ct.tool.name === request.toolName)?.tool.annotations
           ?.readOnlyHint === true
-      const remaining = timeout == null ? undefined : deadline - Date.now()
+      // One clock read: the budget checked is the budget sent.
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) {
+        throw new ContextUnavailableError({
+          key,
+          cause: new Error(`Context ${key} reconnected after the request's deadline`),
+        })
+      }
       try {
-        return await request.send(client, remaining)
+        return await request.send(client, timeout == null ? undefined : remaining)
       } catch (error) {
         if (
           retried ||
