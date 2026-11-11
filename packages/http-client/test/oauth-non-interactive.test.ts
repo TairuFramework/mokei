@@ -2,6 +2,7 @@ import { transportFailureOf } from '@mokei/context-client'
 import { createRuntime } from '@sozai/runtime'
 import { describe, expect, test } from 'vitest'
 
+import { REQUEST_INTERACTION } from '../src/interaction.js'
 import { createOAuthMiddleware } from '../src/oauth/middleware.js'
 import { createMemoryTokenStore, tokenStoreKey } from '../src/oauth/store.js'
 import { HTTPTransport } from '../src/transport.js'
@@ -21,7 +22,13 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 /** A resource wanting `tok:good`, an authorisation server, and an OAuth middleware in front. */
-function setup(options: { gate?: Promise<void>; mode?: 'unauthorized' | 'insufficient' } = {}) {
+function setup(
+  options: {
+    gate?: Promise<void>
+    mode?: 'unauthorized' | 'insufficient'
+    onUnauthorizedBodyCancel?: () => void
+  } = {},
+) {
   const store = createMemoryTokenStore()
   let authorizeCalls = 0
   const methods: Array<string | undefined> = []
@@ -74,10 +81,15 @@ function setup(options: { gate?: Promise<void>; mode?: 'unauthorized' | 'insuffi
     return json({ jsonrpc: '2.0', id: 1, result: {} }, 200, { 'Mcp-Session-Id': 'sess' })
   }
   const unauthorized = () =>
-    new Response(null, {
-      status: 401,
-      headers: { 'WWW-Authenticate': `Bearer resource_metadata="${METADATA}"` },
-    })
+    new Response(
+      new ReadableStream({
+        cancel: () => options.onUnauthorizedBodyCancel?.(),
+      }),
+      {
+        status: 401,
+        headers: { 'WWW-Authenticate': `Bearer resource_metadata="${METADATA}"` },
+      },
+    )
   const fetchMiddleware = createOAuthMiddleware({
     clientID: 'c',
     resource,
@@ -161,6 +173,53 @@ describe('non-interactive requests', () => {
     expect(env.authorizeCalls()).toBe(1)
     await a.transport.dispose()
     await b.transport.dispose()
+  })
+
+  test('a joiner that aborts settles while the shared sign-in stays pending', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let cancels = 0
+    let joinerReachedJoin: () => void = () => {}
+    const reached = new Promise<void>((resolve) => {
+      joinerReachedJoin = resolve
+    })
+    const env = setup({
+      gate,
+      onUnauthorizedBodyCancel: () => {
+        // The first 401 is the interactive request; the second is the joiner, which goes on to
+        // the join branch with no further await before it.
+        if (++cancels === 2) joinerReachedJoin()
+      },
+    })
+    const wrapped = env.fetchMiddleware(env.fetch as never)
+    const a = wrapped(resource, { method: 'POST' })
+    await viWaitFor(() => env.authorizeCalls() === 1)
+    const controller = new AbortController()
+    const reason = new Error('joiner cancelled')
+    const b = wrapped(resource, {
+      method: 'POST',
+      signal: controller.signal,
+      [REQUEST_INTERACTION]: 'never',
+    } as RequestInit)
+    const bOutcome = b.then(
+      () => 'resolved',
+      (error) => error,
+    )
+    await reached
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    controller.abort(reason)
+    expect(await bOutcome).toBe(reason)
+    let aSettled = false
+    const aDone = a.then(() => {
+      aSettled = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(aSettled).toBe(false)
+    release()
+    await aDone
+    expect(env.authorizeCalls()).toBe(1)
   })
 
   test('dispose DELETE of a non-interactive transport never authorises', async () => {

@@ -493,9 +493,25 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         // Join a sign-in another request already started, but never begin one.
         const joined = flights.get(key)
         if (joined == null) throw new AuthRequiredError()
-        tokens = await joined.catch(() => {
-          throw new AuthRequiredError()
-        })
+        // The shared flight belongs to its starter: this request bounds its own wait by its
+        // signal and the sign-in budget, and abandoning the wait leaves the flight running.
+        const budget = config.authorizationTimeout ?? DEFAULT_AUTHORIZATION_TIMEOUT
+        const linked = linkSignals(
+          [signal],
+          budget,
+          new Error(`OAuth authorize: no authorization within ${budget}ms`),
+        )
+        try {
+          tokens = await untilAborted(
+            () =>
+              joined.catch(() => {
+                throw new AuthRequiredError()
+              }),
+            linked.signal,
+          )
+        } finally {
+          linked.clearTimer()
+        }
         return next(url, attach(init))
       }
 
