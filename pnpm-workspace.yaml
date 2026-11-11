@@ -24,15 +24,15 @@ publicHoistPattern:
 
 catalog:
   '@biomejs/biome': ^2.5.0
-  '@enkaku/client': ^0.23.0
-  '@enkaku/http-fetch': ^0.23.0
-  '@enkaku/http-serve': ^0.23.0
-  '@enkaku/node-streams': ^0.23.0
-  '@enkaku/protocol': ^0.23.0
-  '@enkaku/react': ^0.23.0
-  '@enkaku/server': ^0.23.0
-  '@enkaku/socket': ^0.23.0
-  '@enkaku/transport': ^0.23.0
+  '@enkaku/client': ^0.23.2
+  '@enkaku/http-fetch': ^0.23.2
+  '@enkaku/http-serve': ^0.23.2
+  '@enkaku/node-streams': ^0.23.2
+  '@enkaku/protocol': ^0.23.2
+  '@enkaku/react': ^0.23.2
+  '@enkaku/server': ^0.23.2
+  '@enkaku/socket': ^0.23.2
+  '@enkaku/transport': ^0.23.2
   '@kokuin/token': ^0.7.0
   '@logtape/logtape': ^2.4.2
   '@napi-rs/keyring': ^2.1.2
@@ -40,7 +40,7 @@ catalog:
   '@sozai/codec': ^0.4.4
   '@sozai/event': ^0.1.6
   '@sozai/generator': ^0.2.2
-  '@sozai/http-server': ^0.2.1
+  '@sozai/http-server': ^0.2.2
   '@sozai/log': ^0.4.0
   '@sozai/otel': ^0.4.0
   '@sozai/flow-graph': ^0.3.0

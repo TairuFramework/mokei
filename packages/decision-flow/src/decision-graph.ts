@@ -1,11 +1,17 @@
 import { getMokeiLogger } from '@mokei/logger'
 import { createFlowGraph, type FlowGraph, type FlowGraphOptions } from '@sozai/flow-graph'
-import type { Schema } from '@sozai/schema'
+import { createValidatorCache, type Schema } from '@sozai/schema'
 
 import type { Predictor } from './decide-node.js'
 import { decideKind } from './decide-node.js'
 
 export type DecisionFlowGraphOptions = FlowGraphOptions & { client: Predictor }
+
+/**
+ * Validators shared by every decision graph that is not given its own: definitions and runs carry
+ * runtime schemas, so compiles stay bounded instead of growing the shared AJV instances.
+ */
+const sharedValidators = createValidatorCache()
 
 const defaultDecideRetryPolicy = {
   maxAttempts: 3,
@@ -25,6 +31,7 @@ export function createDecisionFlowGraph({
     kinds: [decideKind({ client }), ...(options.kinds ?? [])],
     retryDefaults: { decide: defaultDecideRetryPolicy, ...retryDefaults },
     logger: options.logger ?? getMokeiLogger('decision-flow'),
+    validators: options.validators ?? sharedValidators,
   })
 }
 

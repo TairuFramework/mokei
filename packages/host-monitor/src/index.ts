@@ -65,60 +65,6 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
     throw new Error('Expected a bearer token from the loopback monitor server')
   }
   const url = new URL(listeningURL).href
-  const bodies = new Set<() => void>()
-
-  function wrapSSE(response: Response, obsolete: boolean): Response {
-    if (
-      !response.headers.get('content-type')?.startsWith('text/event-stream') ||
-      response.body == null
-    ) {
-      return response
-    }
-    const reader = response.body.getReader()
-    let ended = false
-    let finish = () => {}
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        finish = () => {
-          if (ended) return
-          ended = true
-          bodies.delete(finish)
-          controller.close()
-          void reader.cancel().catch(() => {})
-        }
-        bodies.add(finish)
-      },
-      async pull(controller) {
-        try {
-          const chunk = await reader.read()
-          if (ended) return
-          if (chunk.done) finish()
-          else controller.enqueue(chunk.value)
-        } catch (error) {
-          if (ended) return
-          ended = true
-          bodies.delete(finish)
-          controller.error(error)
-        }
-      },
-      cancel() {
-        if (ended) return
-        ended = true
-        bodies.delete(finish)
-        return reader.cancel().catch(() => {})
-      },
-    })
-    if (obsolete) finish()
-    return new Response(body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    })
-  }
-  const endBodies = () => {
-    for (const finish of bodies) finish()
-  }
-
   function connect(stream: typeof socketStream) {
     let attachmentID = ''
     const rid = randomUUID()
@@ -208,8 +154,7 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
     const connection = active
     if (connection == null || !connection.ready)
       return new Response('Daemon reconnecting', { status: 503 })
-    const response = await connection.bridge.handleRequest(ctx.req.raw)
-    return wrapSSE(response, active !== connection || stop.signal.aborted)
+    return connection.bridge.handleRequest(ctx.req.raw)
   })
   const distDir = join(import.meta.dirname, '../dist')
   serveStaticSPA(app, { dir: distDir, token })
@@ -217,7 +162,7 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
     await active.attached
   } catch (error) {
     stop.abort()
-    endBodies()
+    active.bridge.dispose()
     await Promise.all([close(), active.pipes.dispose()])
     throw error
   }
@@ -225,8 +170,8 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
   const reconnecting = (async () => {
     while (!stop.signal.aborted) {
       await active?.pipes.done
+      active?.bridge.dispose()
       active = undefined
-      endBodies()
       let backoff = 250
       while (!stop.signal.aborted) {
         try {
@@ -243,9 +188,9 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
           await connection.attached
           break
         } catch (error) {
+          active?.bridge.dispose()
           await active?.pipes.dispose()
           active = undefined
-          endBodies()
           if (error instanceof MonitorUnavailableError) {
             console.error(error.message)
             return
@@ -258,7 +203,7 @@ export async function startMonitor(params: MonitorParams = {}): Promise<Monitor>
   const disposer = new Disposer({
     dispose: async () => {
       stop.abort()
-      endBodies()
+      active?.bridge.dispose()
       await Promise.all([close(), active?.pipes.dispose()])
       await reconnecting
     },
