@@ -138,6 +138,66 @@ describe('runInputRequiredFlow', () => {
     expect(aborted).toEqual([true])
   })
 
+  test('rejects with the abort reason when a dispatch ignores its signal', async () => {
+    const controller = new AbortController()
+    const started = Promise.withResolvers<void>()
+    const dispatch = vi.fn(() => {
+      started.resolve()
+      return new Promise<never>(() => {})
+    })
+    const retry = vi.fn()
+    const flow = runInputRequiredFlow({
+      method: 'tools/call',
+      first: { inputRequests: { ask: ASK } },
+      maxRounds: 10,
+      signal: controller.signal,
+      dispatch,
+      retry,
+    })
+    await started.promise
+    const reason = new Error('closed')
+    controller.abort(reason)
+    await expect(flow).rejects.toBe(reason)
+    expect(retry).not.toHaveBeenCalled()
+  })
+
+  test('does not retry once a dispatch answers an aborted round', async () => {
+    const controller = new AbortController()
+    const reason = new Error('closed')
+    const retry = vi.fn()
+    const flow = runInputRequiredFlow({
+      method: 'tools/call',
+      first: { inputRequests: { ask: ASK } },
+      maxRounds: 10,
+      signal: controller.signal,
+      dispatch: async () => {
+        controller.abort(reason)
+        return { roots: [] }
+      },
+      retry,
+    })
+    await expect(flow).rejects.toBe(reason)
+    expect(retry).not.toHaveBeenCalled()
+  })
+
+  test('removes its abort listeners once settled', async () => {
+    const controller = new AbortController()
+    const add = vi.spyOn(controller.signal, 'addEventListener')
+    const remove = vi.spyOn(controller.signal, 'removeEventListener')
+    await runInputRequiredFlow({
+      method: 'tools/call',
+      first: { inputRequests: { ask: ASK } },
+      maxRounds: 10,
+      signal: controller.signal,
+      dispatch: async () => ({ roots: [] }),
+      retry: async () => ({ content: [], resultType: 'complete' }),
+    })
+    expect(add.mock.calls.length).toBeGreaterThan(0)
+    expect(remove.mock.calls.map(([, listener]) => listener)).toEqual(
+      expect.arrayContaining(add.mock.calls.map(([, listener]) => listener)),
+    )
+  })
+
   test('shrinks the per-leg budget under maxTotalTimeout', async () => {
     const legTimeouts: Array<number | undefined> = []
     let now = 1000

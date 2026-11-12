@@ -1,4 +1,5 @@
 import type { ElicitResult } from '@mokei/context-protocol'
+import { TransportClosedError } from '@mokei/context-rpc'
 import { inputRequired } from '@mokei/context-server'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -239,5 +240,28 @@ describe('ContextHost per-call elicit', () => {
       elicit: (_request, fallback) => fallback().catch(() => accept('caught')),
     })
     expect(textOf(result)).toBe(JSON.stringify(accept('caught')))
+  })
+
+  test('remove aborts a waiting handler and rejects its call', async () => {
+    const { host } = setup()
+    const received = Promise.withResolvers<AbortSignal>()
+    const elicit: HostElicitOverride = ({ signal }) => {
+      received.resolve(signal)
+      return new Promise<ElicitResult>((resolve) => {
+        signal.addEventListener('abort', () => resolve({ action: 'cancel' }), { once: true })
+      })
+    }
+    const controller = new AbortController()
+    const call = host.callTool({
+      key: KEY,
+      name: 'ask',
+      arguments: { who: 'a' },
+      signal: controller.signal,
+      elicit,
+    })
+    const signal = await received.promise
+    await host.remove(KEY)
+    expect(signal.aborted).toBe(true)
+    await expect(call).rejects.toBeInstanceOf(TransportClosedError)
   })
 })

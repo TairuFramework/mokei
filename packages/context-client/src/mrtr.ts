@@ -141,26 +141,48 @@ function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * A per-round abort linked to the caller's signal. Sibling dispatches share it, so the first
+ * An abort linked to every given signal. The flow links the caller's signal to the client's own
+ * close, and each round links to the flow, so sibling dispatches share one abort and the first
  * failure cancels the others rather than leaving a sampling call running for a round whose result
  * is already thrown away.
  */
-function linkedRoundAbort(outer?: AbortSignal): {
+export function linkedAbort(outers: Array<AbortSignal | undefined>): {
   signal: AbortSignal
   abort: (reason?: unknown) => void
   dispose: () => void
 } {
   const controller = new AbortController()
-  const onOuterAbort = () => controller.abort(outer?.reason)
-  outer?.addEventListener('abort', onOuterAbort, { once: true })
-  if (outer?.aborted) {
-    controller.abort(outer.reason)
+  const links: Array<[AbortSignal, () => void]> = []
+  for (const outer of outers) {
+    if (outer == null) continue
+    if (outer.aborted) {
+      controller.abort(outer.reason)
+      break
+    }
+    const onOuterAbort = () => controller.abort(outer.reason)
+    outer.addEventListener('abort', onOuterAbort, { once: true })
+    links.push([outer, onOuterAbort])
   }
   return {
     signal: controller.signal,
     abort: (reason?: unknown) => controller.abort(reason),
-    dispose: () => outer?.removeEventListener('abort', onOuterAbort),
+    dispose: () => {
+      for (const [outer, listener] of links) outer.removeEventListener('abort', listener)
+    },
   }
+}
+
+/** Rejects with the signal's reason once it aborts, so a handler ignoring it cannot hold a round. */
+function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; dispose: () => void } {
+  let onAbort = () => {}
+  const promise = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason)
+    if (signal.aborted) onAbort()
+  })
+  // Only raced; never left unhandled once the round settles first.
+  promise.catch(() => {})
+  signal.addEventListener('abort', onAbort, { once: true })
+  return { promise, dispose: () => signal.removeEventListener('abort', onAbort) }
 }
 
 export async function runInputRequiredFlow(params: RunInputRequiredFlowParams): Promise<unknown> {
@@ -192,20 +214,29 @@ export async function runInputRequiredFlow(params: RunInputRequiredFlowParams): 
     const entries = Object.entries(payload.inputRequests ?? {})
     let inputResponses: Record<string, InputResponse> | undefined
     if (entries.length > 0) {
-      const roundAbort = linkedRoundAbort(signal)
+      const roundAbort = linkedAbort([signal])
+      const aborted = rejectOnAbort(roundAbort.signal)
       try {
-        const fulfilled = await Promise.all(
-          entries.map(async ([key, request]) => {
-            try {
-              return [key, await dispatch(key, request, roundAbort.signal)] as const
-            } catch (cause) {
-              roundAbort.abort(cause)
-              throw cause
-            }
-          }),
-        )
+        const fulfilled = await Promise.race([
+          aborted.promise,
+          Promise.all(
+            entries.map(async ([key, request]) => {
+              try {
+                return [key, await dispatch(key, request, roundAbort.signal)] as const
+              } catch (cause) {
+                roundAbort.abort(cause)
+                throw cause
+              }
+            }),
+          ),
+        ])
+        // A handler may answer its abort (e.g. `cancel`) rather than reject; that round is void.
+        if (roundAbort.signal.aborted) {
+          throw roundAbort.signal.reason
+        }
         inputResponses = Object.fromEntries(fulfilled)
       } finally {
+        aborted.dispose()
         roundAbort.dispose()
       }
     } else {

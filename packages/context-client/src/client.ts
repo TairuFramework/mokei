@@ -96,6 +96,7 @@ import {
 import {
   DEFAULT_MAX_ROUNDS,
   isInputRequiredResult,
+  linkedAbort,
   MRTR_METHODS,
   runInputRequiredFlow,
 } from './mrtr.js'
@@ -342,6 +343,8 @@ export class ContextClient<
   #tracing?: ClientTracing
   #exchangeTracer = createExchangeTracer(() => this.#tracing)
   #capabilities: ClientCapabilities
+  // Aborted once the transport closes, so an input-required flow waiting on a handler settles.
+  #closed = new AbortController()
   #clientInfo: Implementation
   #createMessage?: CreateMessageHandler
   #discovered: { result: DiscoverResult; expiresAt: number } | null = null
@@ -750,6 +753,7 @@ export class ContextClient<
       // flight and the last settled round was `input_required`, i.e. when a rejection is local.
       let legs = 1
       let suspended = true
+      const flowAbort = linkedAbort([options?.signal, this.#closed.signal])
       try {
         return (await runInputRequiredFlow({
           method: method as string,
@@ -758,7 +762,7 @@ export class ContextClient<
           timeout: options?.timeout,
           maxTotalTimeout: options?.maxTotalTimeout,
           startedAt,
-          signal: options?.signal,
+          signal: flowAbort.signal,
           dispatch: (key, inputRequest, signal) =>
             this.#fulfilInputRequest(key, inputRequest, signal, options?.elicit),
           retry: async (retryParams, timeout) => {
@@ -795,6 +799,8 @@ export class ContextClient<
           })
         }
         throw cause
+      } finally {
+        flowAbort.dispose()
       }
     })
   }
@@ -1121,6 +1127,7 @@ export class ContextClient<
   }
 
   _onTransportClosed(reason?: Error): void {
+    this.#closed.abort(reason ?? new TransportClosedError())
     this.#exchangeTracer.settleAll('lost')
     // Covers a peer EOF (which never runs `_beforeTransportClose`): suppress reconnect so a dead
     // transport is not retried. `dispose()` is idempotent.
