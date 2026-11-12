@@ -56,6 +56,10 @@
     - context-reconnect
     - per-call-elicitation
     - rn-runtime-oauth-reuse
+"@mokei/context-client@0.16.2":
+  dir: packages/context-client
+  intents:
+    - input-required-close
 "@mokei/context-protocol@0.11.0":
   dir: packages/context-protocol
   intents:

@@ -1,6 +1,6 @@
 {
   "name": "@mokei/context-rpc",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "description": "Mokei shared RPC logic for context client and server",
   "keywords": [
     "model",

@@ -1,6 +1,6 @@
 {
   "name": "@mokei/openai-provider",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "description": "Mokei OpenAI provider",
   "keywords": [
     "model",

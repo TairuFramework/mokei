@@ -1,6 +1,6 @@
 {
   "name": "@mokei/flow-host",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "description": "Mokei flow host: run decision flows in the background with approval, inbox and recovery",
   "keywords": [
     "model",

@@ -1,6 +1,6 @@
 {
   "name": "@mokei/http-client",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "description": "Mokei MCP HTTP client transport",
   "keywords": [
     "model",
