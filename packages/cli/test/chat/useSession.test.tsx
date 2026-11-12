@@ -29,6 +29,20 @@ function mockSession(): SessionLike & { emit: (name: string, payload: unknown) =
     removeContext: vi.fn() as unknown as SessionLike['removeContext'],
     contextHost: {
       getContextKeys: () => [] as Array<string>,
+      events: {
+        on(name: string, fn: Listener) {
+          const key = `host:${name}`
+          const list = listeners.get(key) ?? []
+          list.push(fn)
+          listeners.set(key, list)
+          return () => {
+            listeners.set(
+              key,
+              (listeners.get(key) ?? []).filter((x) => x !== fn),
+            )
+          }
+        },
+      },
     } as unknown as SessionLike['contextHost'],
     emit(name: string, payload: unknown) {
       for (const fn of listeners.get(name) ?? []) fn(payload)
@@ -81,6 +95,22 @@ describe('useSession', () => {
 
     await act(async () => {
       session.emit('context-removed', { key: 'sqlite' })
+    })
+
+    expect(hook.current().contexts).toEqual(['fs'])
+    hook.unmount()
+  })
+
+  test('a context removed by the host leaves the list', async () => {
+    const session = mockSession()
+    const hook = await renderHook(() => useSession(session))
+
+    await act(async () => {
+      session.emit('context-added', { key: 'sqlite', tools: [] })
+      session.emit('context-added', { key: 'fs', tools: [] })
+    })
+    await act(async () => {
+      session.emit('host:context:removed', { key: 'sqlite' })
     })
 
     expect(hook.current().contexts).toEqual(['fs'])

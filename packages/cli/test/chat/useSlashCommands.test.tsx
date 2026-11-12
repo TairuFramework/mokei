@@ -111,6 +111,7 @@ describe('useSlashCommands — /context add', () => {
       command: 'sqlite-server',
       args: ['--file', 'x.db'],
       protocolVersion: '2025-11-25',
+      reconnect: true,
     })
   })
 
@@ -122,6 +123,7 @@ describe('useSlashCommands — /context add', () => {
       command: 'sqlite-server',
       args: [],
       protocolVersion: '2025-11-25',
+      reconnect: true,
     })
   })
 
@@ -138,6 +140,7 @@ describe('useSlashCommands — /context add', () => {
       command: 'sqlite-server',
       args: [],
       protocolVersion: 'auto',
+      reconnect: true,
     })
   })
 
@@ -184,6 +187,7 @@ describe('useSlashCommands — /context add-http', () => {
       url: 'https://mcp.example.com/mcp',
       protocolVersion: 'auto',
       fetchMiddleware: undefined,
+      reconnect: true,
     })
   })
 
@@ -197,6 +201,7 @@ describe('useSlashCommands — /context add-http', () => {
       url: 'https://mcp.example.com/mcp',
       protocolVersion: '2025-11-25',
       fetchMiddleware: expect.any(Function),
+      reconnect: true,
     })
   })
 
@@ -215,7 +220,11 @@ describe('useSlashCommands — /context add-http', () => {
       keychain: true,
     })
     expect(addHTTPContext).toHaveBeenCalledWith(
-      expect.objectContaining({ key: 'db', fetchMiddleware: expect.any(Function) }),
+      expect.objectContaining({
+        key: 'db',
+        fetchMiddleware: expect.any(Function),
+        reconnect: true,
+      }),
     )
   })
 
