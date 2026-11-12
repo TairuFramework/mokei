@@ -90,16 +90,26 @@ async function reachable(url: string, timeout = 2_000): Promise<boolean> {
 /**
  * Model to request from an OpenAI-compatible `/v1/models` endpoint. `llama-server` loads a
  * single model, but `llama serve` routes to many, so prefer the LFM2.5 the suites' timings
- * and assertions were written against and fall back to whatever is listed first.
+ * and assertions were written against, then a model the router tags `chat`, then the first
+ * model not tagged `decision` (a System One model cannot chat), then whatever is listed first.
  */
 async function selectModelID(openaiBaseURL: string): Promise<string | null> {
   const body = (await fetchJSON(`${openaiBaseURL}/models`)) as {
-    data?: Array<{ id?: unknown }>
+    data?: Array<{ id?: unknown; tags?: unknown }>
   } | null
-  const ids = (body?.data ?? [])
-    .map((model) => model?.id)
-    .filter((id): id is string => typeof id === 'string' && id !== '')
-  return ids.find((id) => /lfm-?2\.?5/i.test(id)) ?? ids[0] ?? null
+  const models = (body?.data ?? []).flatMap((model) => {
+    const id = model?.id
+    if (typeof id !== 'string' || id === '') return []
+    const tags = Array.isArray(model.tags) ? model.tags : []
+    return [{ id, tags }]
+  })
+  return (
+    models.find((model) => /lfm-?2\.?5/i.test(model.id))?.id ??
+    models.find((model) => model.tags.includes('chat'))?.id ??
+    models.find((model) => !model.tags.includes('decision'))?.id ??
+    models[0]?.id ??
+    null
+  )
 }
 
 async function resolveLlamaServer(url: string): Promise<ChatBackend> {
