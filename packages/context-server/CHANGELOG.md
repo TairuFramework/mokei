@@ -1,5 +1,11 @@
 # @mokei/context-server
 
+## 0.16.3
+
+### Patch Changes
+
+- Allow an optional title on tool definitions, matching the MCP tools/list response.
+
 ## 0.16.2
 
 ## 0.16.1

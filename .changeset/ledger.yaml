@@ -168,6 +168,10 @@
     - good-cups-shop
     - quiet-params-match
     - stack-enkaku-0-23
+"@mokei/context-server@0.16.3":
+  dir: packages/context-server
+  intents:
+    - tool-definition-title
 "@mokei/decision-flow-server@0.15.0":
   dir: packages/decision-flow-server
   intents:
