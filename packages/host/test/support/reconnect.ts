@@ -19,7 +19,8 @@ import type * as EnkakuTransport from '@enkaku/transport'
 import type * as ContextClientModule from '@mokei/context-client'
 import type { ServerConfig } from '@mokei/context-server'
 
-import type { ContextHost, HostEvents } from '../../src/host.js'
+import type { ContextHost } from '../../src/host.js'
+import type { HostEvents } from '../../src/types.js'
 
 type AnyTransport = { dispose(): Promise<void>; signal: AbortSignal }
 export type Pair = { client: AnyTransport; server: AnyTransport }

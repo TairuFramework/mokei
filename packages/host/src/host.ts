@@ -1,22 +1,16 @@
 import { DirectTransports } from '@enkaku/transport'
 import {
   type ClientTransport,
-  ContextClient,
+  type ContextClient,
   type ContextTypes,
   capturePayload,
   type ElicitHandler,
   endSpanError,
   errorTypeOf,
   getMokeiTracer,
-  type ListParams,
-  mcpMetricsEnabled,
-  metricAttributes,
-  type NetworkInfo,
   type PayloadCapture,
   type PromptParams,
-  recordMCPSession,
   resolveContentCapture,
-  TaskInterruptedError,
   type TerminationReason,
   type ToolParams,
   type TraceParentFrom,
@@ -26,29 +20,22 @@ import {
 import type {
   CallToolResult,
   ClientMessage,
-  ElicitRequest,
   ElicitResult,
   GetPromptResult,
-  Metadata,
-  ProtocolVersion,
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
-import { TransportClosedError, type WithRequestOptions } from '@mokei/context-rpc'
-import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
-import {
-  type ConnectionEvent,
-  type FetchMiddleware,
-  type HTTPAuthOptions,
-  HTTPTransport,
-  type Runtime,
-  SessionExpiredError,
-} from '@mokei/http-client'
-import { ROOT_CONTEXT, type SpanContext, SpanKind } from '@opentelemetry/api'
+import { TransportClosedError } from '@mokei/context-rpc'
+import { ContextServer, type JSONValue } from '@mokei/context-server'
+import { type ConnectionEvent, HTTPTransport, SessionExpiredError } from '@mokei/http-client'
+import { type SpanContext, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 
+import { startContextSpan } from './context-span.js'
 import { ContextUnavailableError } from './errors.js'
+import { type GatedSend, runGated } from './gate.js'
+import { createHostedContext, type HostedContext } from './hosted-context.js'
 import {
   createLocalToolID,
   createToolFromDefinition,
@@ -61,269 +48,38 @@ import {
   type ContextConnectivity,
   type ContextFactory,
   ReconnectController,
-  type ReconnectEvents,
   type ReconnectOptions,
   resolveReconnectOptions,
 } from './reconnect.js'
-
-type ContextTransport = 'stdio' | 'http' | 'direct'
-
-/** The protocol revision is unresolved (and the getter throws) while an `'auto'` probe is pending. */
-function currentProtocolVersion(client: ContextClient): string | undefined {
-  try {
-    return client.protocolVersion
-  } catch {
-    return undefined
-  }
-}
-
-function networkInfo(transport: ContextTransport, url?: string): NetworkInfo | undefined {
-  if (transport === 'stdio') return { transport: 'pipe' }
-  if (transport !== 'http') return undefined
-  const info: NetworkInfo = { transport: 'tcp', protocolName: 'http' }
-  if (url === undefined) return info
-  try {
-    const parsed = new URL(url)
-    info.serverAddress = parsed.hostname.replace(/^\[|\]$/g, '')
-    info.serverPort =
-      parsed.port === '' ? (parsed.protocol === 'https:' ? 443 : 80) : Number(parsed.port)
-  } catch {
-    // Unparseable URL: keep transport-level attributes only.
-  }
-  return info
-}
-
-export type EnableTools = boolean | Array<string>
-export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
-export type EnableToolsArg = EnableTools | EnableToolsFn
-
-export function getContextToolID(contextKey: string, toolName: string): string {
-  return `${contextKey}:${toolName}`
-}
-
-export function getContextToolInfo(id: string): [string, string] {
-  const index = id.indexOf(':')
-  if (index === -1) {
-    throw new Error(`Invalid context tool ID: ${id}`)
-  }
-  return [id.slice(0, index), id.slice(index + 1)]
-}
-
-/**
- * Parameters for setting up a context: which tools to enable, plus the options for the
- * `tools/list` request the setup issues.
- */
-export type SetupParams = ListParams<{
-  key: string
-  /** Which of the context's tools to enable. Defaults to all of them. */
-  enableTools?: EnableToolsArg
-}>
-
-/** Parameters for replacing a context's tools wholesale. */
-export type SetContextToolsParams = {
-  key: string
-  tools: Array<ContextTool>
-}
-
-/** Parameters for the tool-enablement methods, which act on a context's tools by name. */
-export type ContextToolNamesParams = {
-  key: string
-  toolNames: Array<string>
-}
-
-/**
- * A per-call elicitation handler. On `2026-07-28` it answers the call's `elicitation/create` input
- * requests (MRTR, SEP-2322) ahead of any {@link ContextHost.handleElicitation} override; `fallback`
- * hands the request to the host-wide path. It never enables elicitation for a context added with
- * `elicit: false` or a host without elicitation. On `2025-11-25` it is ignored: a server-initiated
- * `elicitation/create` has no link to its call, so the host-wide path answers.
- */
-export type PerCallElicit = { elicit?: HostElicitOverride }
-
-/** Parameters for getting a prompt from a context, keyed by context. */
-export type ContextPromptParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
-  PromptParams<T>
-> &
-  PerCallElicit & { key: string }
-
-/** Parameters for calling a tool on a context, keyed by context. */
-export type ContextToolParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
-  ToolParams<T>
-> &
-  PerCallElicit & { key: string }
-
-/** Parameters for calling a tool by its namespaced ID (`contextKey:toolName` or `local:toolName`). */
-export type NamespacedToolParams = WithRequestOptions<{
-  id: string
-  arguments?: Record<string, unknown>
-  _meta?: Metadata
-}> &
-  PerCallElicit
-
-/** Parameters for calling a local tool. Local tools run in-process, so they take no `timeout`. */
-export type LocalToolParams = {
-  name: string
-  arguments?: Record<string, unknown>
-  _meta?: Record<string, JSONValue>
-  signal?: AbortSignal
-  /** Attributes added to the `execute_tool` span; never sent anywhere else. */
-  traceAttributes?: Record<string, string>
-}
-
-export type AllowToolCalls = 'always' | 'ask' | 'never'
-
-export type ContextTool = {
-  id: string
-  tool: Tool
-  enabled: boolean
-  allow?: AllowToolCalls
-}
-
-export type HostedContext<T extends ContextTypes = UnknownContextTypes> = {
-  client: ContextClient<T>
-  disposer: Disposer
-  tools: Array<ContextTool>
-}
-
-export type CreateHostedContextParams = {
-  transport: ClientTransport
-  tools?: Array<ContextTool>
-  elicit?: ElicitHandler
-  dispose?: () => void | Promise<void>
-  /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
-   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
-   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
-   */
-  protocolVersion?: ProtocolVersion | 'auto'
-}
-
-export type CreateContextParams = Omit<CreateHostedContextParams, 'elicit'> & {
-  key: string
-  elicit?: false
-}
-
-export type HostElicitRequest = {
-  key: string
-  params: ElicitRequest['params']
-  signal: AbortSignal
-}
-
-export type HostElicitHandler = (request: HostElicitRequest) => ElicitResult | Promise<ElicitResult>
-
-export type ElicitFallback = (options?: { signal?: AbortSignal }) => Promise<ElicitResult>
-
-export type HostElicitOverride = (
-  request: HostElicitRequest,
-  fallback: ElicitFallback,
-) => ElicitResult | Promise<ElicitResult>
-
-export type ContextHostParams = {
-  /** Subclass teardown, run after every context is removed. */
-  dispose?: () => Promise<void>
-  elicit?: HostElicitHandler | true
-  /** MCP payload capture defaults to 'off'. */
-  tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
-  /**
-   * Reports whether the network is reachable. A reconnect waits while offline without spending
-   * attempts; a missing or throwing hook counts as online.
-   */
-  connectivity?: ContextConnectivity
-}
-
-export type HasContextParams = { key: string }
-
-/** Parameters of {@link ContextHost.subscribeResource} and `unsubscribeResource`. */
-export type ContextResourceSubscriptionParams = {
-  key: string
-  uri: string
-  /** Aborts the change before the server acknowledges it. */
-  signal?: AbortSignal
-}
-
-export type RegisterHostedContextParams = {
-  key: string
-  context: HostedContext
-  transport?: ContextTransport
-  /** Rebuilds the context after a loss once `setup()` has run. Omit to remove it on loss. */
-  reconnect?: { options: ReconnectOptions; factory: ContextFactory }
-}
-
-export type HostEvents = {
-  'context:added': { key: string }
-  'context:removed': { key: string }
-  'context:failed': { key: string; error: Error }
-  /** A reconnect attempt for a lost context is about to start. `error` is why the last one ended. */
-  'context:reconnecting': ReconnectEvents['context:reconnecting']
-  /** A lost context was rebuilt; `getContext(key).client` is the new client. */
-  'context:reconnected': ReconnectEvents['context:reconnected']
-  /** A resource subscription could not be restored after a reconnect and was dropped. */
-  'resource:subscription-lost': { key: string; uri: string; error: Error }
-  /**
-   * A `2026-07-28` context's server signalled its tools list changed (SEP-1391). The host has
-   * already re-listed the context and refreshed its namespaced tool aggregate before emitting.
-   */
-  'tools:changed': { key: string }
-  /**
-   * A `2026-07-28` context's server signalled its prompts list changed (SEP-1391). The host has
-   * already re-listed the context's prompts before emitting.
-   */
-  'prompts:changed': { key: string }
-  /**
-   * A `2026-07-28` context's server signalled its resources list changed (SEP-1391). The host has
-   * already re-listed the context's resources before emitting.
-   */
-  'resources:changed': { key: string }
-  /**
-   * A `2026-07-28` context's server signalled a subscribed resource's content changed (SEP-1391),
-   * carrying the resource URI. The host forwards it as-is and does not re-read the resource --
-   * reacting is the consumer's policy.
-   */
-  'resource:updated': { key: string; uri: string }
-  /**
-   * A `2025-11-25` context's server completed a URL-mode elicitation
-   * (`notifications/elicitation/complete`). An application can close the matching URL prompt.
-   */
-  'elicitation:complete': { key: string; elicitationId: string }
-}
-
-/**
- * Merges a fresh tool list into a context's tools: each surviving tool keeps its
- * `enabled`/`allow` state by name, new tools are enabled, vanished tools are dropped.
- */
-function mergeContextTools(
-  key: string,
-  previous: Array<ContextTool>,
-  tools: Array<Tool>,
-): Array<ContextTool> {
-  const byName = new Map(previous.map((ct) => [ct.tool.name, ct]))
-  return tools.map((tool: Tool) => {
-    const prior = byName.get(tool.name)
-    const contextTool: ContextTool = {
-      id: getContextToolID(key, tool.name),
-      tool,
-      enabled: prior?.enabled ?? true,
-    }
-    if (prior?.allow != null) {
-      contextTool.allow = prior.allow
-    }
-    return contextTool
-  })
-}
-
-function sameToolDefinitions(a: Array<ContextTool>, b: Array<ContextTool>): boolean {
-  return JSON.stringify(a.map((ct) => ct.tool)) === JSON.stringify(b.map((ct) => ct.tool))
-}
-
-/**
- * A registration's resource subscriptions made through the host: the URIs the consumer wants,
- * and the one queue that serialises subscribe, unsubscribe and restoration.
- */
-type ResourceSubscriptions = {
-  desired: Set<string>
-  /** Settles when the last queued change has; never rejects. */
-  tail: Promise<void>
-}
+import { ContextSubscriptions, type ResourceSubscriptions } from './subscriptions.js'
+import {
+  type ContextTool,
+  getContextToolID,
+  getContextToolInfo,
+  mergeContextTools,
+  sameToolDefinitions,
+} from './tools.js'
+import type {
+  AddDirectContextParams,
+  ContextHostParams,
+  ContextPromptParams,
+  ContextResourceSubscriptionParams,
+  ContextToolNamesParams,
+  ContextToolParams,
+  ContextTransport,
+  CreateContextParams,
+  HasContextParams,
+  HostElicitHandler,
+  HostElicitOverride,
+  HostElicitRequest,
+  HostEvents,
+  HTTPContextParams,
+  LocalToolParams,
+  NamespacedToolParams,
+  RegisterHostedContextParams,
+  SetContextToolsParams,
+  SetupParams,
+} from './types.js'
 
 /** Host-side state of one registration (one `add*Context` call), kept across reconnects. */
 type RegistrationState = {
@@ -344,21 +100,6 @@ type RegisterParams = {
   reconnect?: { options: ReconnectOptions; factory: ContextFactory }
 }
 
-/** Sends one gated request on `client`, with the time left (`undefined`: no deadline). */
-type GatedSend<R> = (client: ContextClient, timeout: number | undefined) => Promise<R>
-
-/** The request failed with the loss of its connection, not with anything the server said. */
-function isLossError(error: unknown): boolean {
-  if (error instanceof TransportClosedError) return true
-  const kind = transportFailureOf(error)?.kind
-  return kind === 'network' || kind === 'session-expired'
-}
-
-/** Whether `client`'s acknowledged listen filter carries `uri`. */
-function hasResourceSubscription(client: ContextClient, uri: string): boolean {
-  return client.subscriptionFilter?.resourceSubscriptions?.includes(uri) === true
-}
-
 /** The loss was the server dropping the session: there is no session left to terminate. */
 function isSessionExpiry(error: unknown): boolean {
   return (
@@ -369,83 +110,6 @@ function isSessionExpiry(error: unknown): boolean {
 /** The error a transport connection event reports to the host. */
 function connectionLossError(event: ConnectionEvent): Error {
   return event.type === 'failed' ? event.error : new SessionExpiredError()
-}
-
-export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
-  params: CreateHostedContextParams,
-): HostedContext<T> {
-  // `'auto'` rather than the newest revision: a host points at arbitrary third-party servers,
-  // most of which serve `'2025-11-25'` only, and a `'2026-07-28'` pin rejects those with
-  // `-32022` instead of negotiating down. Callers that know their server pin explicitly.
-  const { transport, tools = [], dispose, protocolVersion = 'auto', elicit } = params
-  const client = new ContextClient<T>({ protocolVersion, transport, elicit })
-  const disposer = new Disposer({
-    dispose: async () => {
-      // Via the client, not the transport: `client.dispose()` runs `_beforeTransportClose` (tears
-      // down the subscription driver, suppresses reconnect) then disposes the transport. Disposing
-      // the transport directly would skip that and could leave a reconnect firing after teardown.
-      await client.dispose()
-      await dispose?.()
-    },
-  })
-  return { client, disposer, tools }
-}
-
-export type AddDirectContextParams = {
-  key: string
-  config: ServerConfig
-  tools?: Array<ContextTool>
-  elicit?: false
-  /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
-   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
-   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
-   */
-  protocolVersion?: ProtocolVersion | 'auto'
-  /**
-   * Rebuild the context when its connection is lost, instead of removing it (`true` = defaults).
-   * Applies once `setup()` has committed the context's tools. Clients returned by `add*Context`
-   * or read from `getContext(key).client` earlier are not gated and go stale after a reconnect;
-   * `getContext(key).client` always returns the current one.
-   */
-  reconnect?: boolean | ReconnectOptions
-}
-
-export type HTTPContextParams = {
-  /** Unique identifier for this context */
-  key: string
-  elicit?: false
-  /** URL of the MCP HTTP endpoint */
-  url: string
-  /** Optional custom headers to include in requests */
-  headers?: Record<string, string>
-  /** Optional authentication configuration */
-  auth?: HTTPAuthOptions
-  /** Request timeout in milliseconds (default: 30000) */
-  timeout?: number
-  /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
-   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
-   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
-   */
-  protocolVersion?: ProtocolVersion | 'auto'
-  /** Fetch middleware (e.g. OAuth from createOAuthMiddleware) applied to the transport. */
-  fetchMiddleware?: FetchMiddleware
-  /**
-   * Fetch and random-value implementations for the HTTP transport (default `createRuntime()`
-   * from `@sozai/runtime`). React Native passes `@sozai/runtime-expo`'s `createRuntime({ fetch })`.
-   */
-  runtime?: Runtime
-  /**
-   * Rebuild the context when its connection is lost, instead of removing it (`true` = defaults):
-   * a network failure, an expired session, or a GET stream that fails twice in a row. Each
-   * attempt uses a new transport from these params, and never opens a sign-in: a server that
-   * wants one ends the reconnect with `context:failed` (an `AuthRequiredError`).
-   * Applies once `setup()` has committed the context's tools. Clients returned by `add*Context`
-   * or read from `getContext(key).client` earlier are not gated and go stale after a reconnect;
-   * `getContext(key).client` always returns the current one.
-   */
-  reconnect?: boolean | ReconnectOptions
 }
 
 export class ContextHost extends Disposer {
@@ -462,6 +126,16 @@ export class ContextHost extends Disposer {
   #subscriptionUnsubscribes: Map<string, Array<() => void>> = new Map()
   #elicit: HostElicitHandler | true | undefined
   #elicitOverride: { handler: HostElicitOverride } | undefined
+  #subscriptions = new ContextSubscriptions({
+    isRegistered: (key, registration) => this.#contexts[key] === registration,
+    owns: (key, registration, client, generation) => {
+      return this.#owns(key, registration, client, generation)
+    },
+    stateOf: (registration) => this.#stateOf(registration),
+    onLost: (event) => {
+      void this.#events.emit('resource:subscription-lost', event).catch(() => {})
+    },
+  })
 
   /** Observe context lifecycle and subscription events. */
   get events(): EventEmitter<HostEvents> {
@@ -648,7 +322,7 @@ export class ContextHost extends Disposer {
             { link: lostSpanContext, attempt },
           )
           lostSpanContext = undefined
-          this.#restoreSubscriptions(key, registration, state, parts.client, generation)
+          this.#subscriptions.restore(key, registration, state, parts.client, generation)
           return { toolsChanged }
         },
         fail: (error) => {
@@ -700,6 +374,11 @@ export class ContextHost extends Disposer {
       registration.client === client &&
       this.#generationOf(registration) === generation
     )
+  }
+
+  #stateOf(registration: HostedContext): RegistrationState {
+    // Every registration gets its state in `#register`.
+    return this.#registrations.get(registration) as RegistrationState
   }
 
   /**
@@ -1040,82 +719,19 @@ export class ContextHost extends Disposer {
     url?: string,
     reconnect?: { link?: SpanContext; attempt: number },
   ): SpanContext {
-    const network = networkInfo(transport, url)
-    const span = getMokeiTracer('host').startSpan(
-      'mcp.context',
-      {
-        ...(reconnect?.link == null ? {} : { links: [{ context: reconnect.link }] }),
-        attributes: {
-          ...(reconnect == null ? {} : { 'mokei.context.reconnect.attempt': reconnect.attempt }),
-          'mokei.kind': 'context',
-          'mokei.root': true,
-          'mokei.context.id': key,
-          'mokei.context.transport': transport,
-          ...(network === undefined
-            ? {}
-            : {
-                'network.transport': network.transport,
-                ...(network.protocolName === undefined
-                  ? {}
-                  : { 'network.protocol.name': network.protocolName }),
-                ...(network.serverAddress === undefined
-                  ? {}
-                  : { 'server.address': network.serverAddress }),
-                ...(network.serverPort === undefined ? {} : { 'server.port': network.serverPort }),
-              }),
-        },
-      },
-      ROOT_CONTEXT,
-    )
-    client.setTracing({
-      contextID: key,
-      contextSpan: span,
+    const span = startContextSpan({
+      key,
+      client,
+      transport,
+      httpTransport,
+      url,
       payloads: this.#payloads,
-      ...(this.#parentFrom === undefined ? {} : { parentFrom: this.#parentFrom }),
-      getSessionID: () => httpTransport?.sessionID ?? undefined,
-      getProtocolVersion: () => currentProtocolVersion(client),
-      network,
+      parentFrom: this.#parentFrom,
+      reconnect,
     })
-    const initialVersion = currentProtocolVersion(client)
-    if (initialVersion !== undefined) span.setAttribute('mcp.protocol.version', initialVersion)
-    if (client.initializationResult != null)
-      span.setAttribute('mokei.server.name', client.initializationResult.serverInfo.name)
-    let settled = false
-    const startedAt = performance.now()
-    this.#contextSettlers.set(key, (reason) => {
-      if (settled) return
-      settled = true
-      client.endTracing(reason)
-      if (mcpMetricsEnabled())
-        recordMCPSession({
-          durationS: (performance.now() - startedAt) / 1000,
-          attributes: metricAttributes({
-            ...(network === undefined
-              ? {}
-              : {
-                  'network.transport': network.transport,
-                  'network.protocol.name': network.protocolName,
-                  'server.address': network.serverAddress,
-                  'server.port': network.serverPort,
-                }),
-            'mcp.protocol.version': currentProtocolVersion(client),
-            ...(reason === 'lost' ? { 'error.type': 'context.lost' } : {}),
-          }),
-        })
-      if (httpTransport?.sessionID != null)
-        span.setAttribute('mcp.session.id', httpTransport.sessionID)
-      if (reason === 'lost') endSpanError(span, 'context.lost')
-      else span.end()
-    })
+    this.#contextSettlers.set(key, span.settle)
     const unsubscribes = [
-      client.events.on('initialized', ({ serverInfo }) => {
-        if (settled) return
-        span.setAttribute('mokei.server.name', serverInfo.name)
-        const version = currentProtocolVersion(client)
-        if (version !== undefined) span.setAttribute('mcp.protocol.version', version)
-        if (httpTransport?.sessionID != null)
-          span.setAttribute('mcp.session.id', httpTransport.sessionID)
-      }),
+      client.events.on('initialized', span.onInitialized),
       client.events.on('closed', ({ error }) => {
         this.reportLoss(
           key,
@@ -1147,7 +763,7 @@ export class ContextHost extends Disposer {
       )
     }
     this.#subscriptionUnsubscribes.set(key, unsubscribes)
-    return span.spanContext()
+    return span.spanContext
   }
 
   /**
@@ -1302,16 +918,7 @@ export class ContextHost extends Disposer {
    */
   subscribeResource(params: ContextResourceSubscriptionParams): Promise<void> {
     const { key, uri, signal } = params
-    const registration = this.getContext(key)
-    const { subscriptions } = this.#stateOf(registration)
-    return this.#enqueueSubscription(subscriptions, async () => {
-      await this.#sendSubscriptionChange(key, registration, signal, (client, timeout) =>
-        client.subscribeResource({ uri, signal, timeout }),
-      )
-      if (this.#contexts[key] === registration) {
-        subscriptions.desired.add(uri)
-      }
-    })
+    return this.#subscriptions.subscribe(key, this.getContext(key), uri, signal)
   }
 
   /**
@@ -1321,154 +928,7 @@ export class ContextHost extends Disposer {
    */
   unsubscribeResource(params: ContextResourceSubscriptionParams): Promise<void> {
     const { key, uri, signal } = params
-    const registration = this.getContext(key)
-    const { subscriptions } = this.#stateOf(registration)
-    // Removed now rather than when the queue reaches this change, so a restoration ahead of it
-    // in the queue skips the URI.
-    let wasDesired = subscriptions.desired.delete(uri)
-    return this.#enqueueSubscription(subscriptions, async () => {
-      // A subscribe queued ahead of this change may have recorded it since.
-      wasDesired = subscriptions.desired.delete(uri) || wasDesired
-      try {
-        await this.#sendSubscriptionChange(key, registration, signal, (client, timeout) =>
-          client.unsubscribeResource({ uri, signal, timeout }),
-        )
-      } catch (error) {
-        if (wasDesired && this.#contexts[key] === registration) {
-          // The unsubscribe did not happen: the URI is still wanted.
-          subscriptions.desired.add(uri)
-          await this.#reconcileSubscription(key, registration, uri)
-        }
-        throw error
-      }
-    })
-  }
-
-  #stateOf(registration: HostedContext): RegistrationState {
-    // Every registration gets its state in `#register`.
-    return this.#registrations.get(registration) as RegistrationState
-  }
-
-  #enqueueSubscription(
-    subscriptions: ResourceSubscriptions,
-    task: () => Promise<void>,
-  ): Promise<void> {
-    const run = subscriptions.tail.then(task)
-    subscriptions.tail = run.then(
-      () => {},
-      () => {},
-    )
-    return run
-  }
-
-  /** Sends a subscription change, through the gate when the context can reconnect. */
-  async #sendSubscriptionChange(
-    key: string,
-    registration: HostedContext,
-    signal: AbortSignal | undefined,
-    send: GatedSend<void>,
-  ): Promise<void> {
-    if (this.#contexts[key] !== registration) {
-      throw new ContextUnavailableError({
-        key,
-        cause: new Error(`Context ${key} was removed while the change waited`),
-      })
-    }
-    const controller = this.#stateOf(registration).controller
-    if (controller == null) {
-      await send(registration.client, undefined)
-      return
-    }
-    await this.#gated(key, registration, controller, { signal }, { send })
-  }
-
-  /**
-   * Re-subscribes a desired URI that the current client's acknowledged filter lacks (a restoration
-   * skipped it while its unsubscribe was pending). Runs inside the subscription queue. Waits for
-   * nothing during a reconnect: the coming restoration covers the URI.
-   */
-  async #reconcileSubscription(
-    key: string,
-    registration: HostedContext,
-    uri: string,
-  ): Promise<void> {
-    const state = this.#stateOf(registration)
-    if (state.controller?.state === 'reconnecting') return
-    const client = registration.client
-    if (hasResourceSubscription(client, uri)) return
-    await this.#resubscribe(key, registration, state, client, state.controller?.generation, uri)
-  }
-
-  /**
-   * Subscribes `client` to a desired `uri` on the host's behalf, with no caller signal (over HTTP,
-   * `subscriptions/listen` is always sent non-interactive, so this never opens a sign-in). A
-   * refusal drops the URI with `resource:subscription-lost`; a loss keeps it for the next
-   * connection. Returns `false` when `client` stopped being current.
-   */
-  async #resubscribe(
-    key: string,
-    registration: HostedContext,
-    state: RegistrationState,
-    client: ContextClient,
-    generation: number | undefined,
-    uri: string,
-  ): Promise<boolean> {
-    try {
-      await client.subscribeResource({ uri })
-      return this.#owns(key, registration, client, generation)
-    } catch (cause) {
-      if (!this.#owns(key, registration, client, generation)) return false
-      const error = cause instanceof Error ? cause : new Error(String(cause))
-      if (isLossError(cause)) {
-        if (generation != null) state.controller?.lose(generation, error)
-        return false
-      }
-      this.#dropSubscription(key, state, uri, error)
-      return true
-    }
-  }
-
-  #dropSubscription(key: string, state: RegistrationState, uri: string, error: Error): void {
-    state.subscriptions.desired.delete(uri)
-    void this.#events.emit('resource:subscription-lost', { key, uri, error }).catch(() => {})
-  }
-
-  /**
-   * Subscribes the new client of a reconnected context to the desired URIs, one at a time, in the
-   * subscription queue. The gate is already open: calls never wait for this. URIs unsubscribed
-   * meanwhile are skipped, and it stops when the client stops being current. A URI the new server
-   * refuses (or cannot subscribe to) is dropped with `resource:subscription-lost`. Restoration
-   * never opens a sign-in: the HTTP transport always sends `subscriptions/listen` non-interactive.
-   */
-  #restoreSubscriptions(
-    key: string,
-    registration: HostedContext,
-    state: RegistrationState,
-    client: ContextClient,
-    generation: number,
-  ): void {
-    const { subscriptions } = state
-    void this.#enqueueSubscription(subscriptions, async () => {
-      // Read from the discovery snapshot, not a request: a request here could open a sign-in.
-      // `null` (not discovered yet, or invalidated by a list change) is unknown, not unsupported:
-      // each URI is then tried, and a refusal drops only that URI.
-      const capabilities = client.discoveredCapabilities
-      const unsupported = capabilities != null && capabilities.resources?.subscribe !== true
-      for (const uri of Array.from(subscriptions.desired)) {
-        if (!this.#owns(key, registration, client, generation)) return
-        if (!subscriptions.desired.has(uri)) continue
-        if (unsupported) {
-          this.#dropSubscription(
-            key,
-            state,
-            uri,
-            new Error(`Context ${key}'s server does not support resource subscriptions`),
-          )
-          continue
-        }
-        if (!(await this.#resubscribe(key, registration, state, client, generation, uri))) return
-      }
-    })
+    return this.#subscriptions.unsubscribe(key, this.getContext(key), uri, signal)
   }
 
   getPrompt<T extends ContextTypes = UnknownContextTypes>(
@@ -1512,75 +972,22 @@ export class ContextHost extends Disposer {
     })
   }
 
-  /**
-   * Runs a request on a context that can reconnect. One deadline is taken at entry (from
-   * `timeout`; none without one): a reconnect is waited out at the gate within it, and the request
-   * then runs with what is left. The registration is re-read before dispatch and must still be the
-   * one the call started on. A read-only tool call (`toolName`) lost in flight with its
-   * generation is retried once on the new client.
-   */
-  async #gated<R>(
+  /** Runs a request through the reconnect gate (see `runGated`). */
+  #gated<R>(
     key: string,
     registration: HostedContext,
     controller: ReconnectController,
     options: { signal?: AbortSignal; timeout?: number },
     request: { send: GatedSend<R>; toolName?: string },
   ): Promise<R> {
-    const { signal, timeout } = options
-    const deadline = timeout == null ? Number.POSITIVE_INFINITY : Date.now() + timeout
-    let retried = false
-    for (;;) {
-      if (signal?.aborted) throw signal.reason
-      // Aborts are checked again on wake inside `waitForGate`, where an abort wins the race.
-      await controller.waitForGate({ signal, deadline })
-      if (signal?.aborted) throw signal.reason
-      if (this.#contexts[key] !== registration) {
-        throw new ContextUnavailableError({
-          key,
-          cause: new Error(`Context ${key} was removed while the request waited`),
-        })
-      }
-      // Lost again between the gate opening and this wake: wait for the next gate, same deadline.
-      if (controller.state === 'reconnecting') continue
-      const client = registration.client
-      const generation = controller.generation
-      // Read from the generation the call is sent on: a retry trusts the lost one's listing.
-      const readOnly =
-        request.toolName != null &&
-        registration.tools.find((ct) => ct.tool.name === request.toolName)?.tool.annotations
-          ?.readOnlyHint === true
-      // One clock read: the budget checked is the budget sent.
-      const remaining = deadline - Date.now()
-      if (remaining <= 0) {
-        throw new ContextUnavailableError({
-          key,
-          cause: new Error(`Context ${key} reconnected after the request's deadline`),
-        })
-      }
-      try {
-        return await request.send(client, timeout == null ? undefined : remaining)
-      } catch (error) {
-        if (!isLossError(error)) {
-          throw error
-        }
-        // The loss may surface on the call before the transport or client reports it. Ignored
-        // when it was already reported or the context is not armed (never removes an unarmed
-        // context).
-        controller.lose(generation, error as Error)
-        if (
-          retried ||
-          !readOnly ||
-          signal?.aborted ||
-          // The server accepted a task: running the call again would run it twice.
-          error instanceof TaskInterruptedError ||
-          controller.generation === generation ||
-          deadline - Date.now() <= 0
-        ) {
-          throw error
-        }
-        retried = true
-      }
-    }
+    return runGated({
+      key,
+      registration,
+      controller,
+      isRegistered: () => this.#contexts[key] === registration,
+      options,
+      request,
+    })
   }
 
   callNamespacedTool(params: NamespacedToolParams): Promise<CallToolResult> {
