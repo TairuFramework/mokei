@@ -1,5 +1,6 @@
 ---
 "@mokei/context-client": patch
+"@mokei/context-rpc": patch
 "@mokei/http-client": patch
 "@mokei/host": patch
 "@mokei/host-node": patch
