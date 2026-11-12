@@ -1,5 +1,6 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ElicitResult, ServerMessage } from '@mokei/context-protocol'
+import { TransportClosedError } from '@mokei/context-rpc'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
@@ -137,7 +138,7 @@ function setup(params: {
     elicit: clientElicit,
   })
   disposables.push(client, server)
-  return { client, clientElicit, gate }
+  return { client, server, clientElicit, gate }
 }
 
 const accept = (by: string): ElicitResult => ({ action: 'accept', content: { by } })
@@ -246,5 +247,52 @@ describe('per-request elicit', () => {
     expect(hB).toHaveBeenCalledTimes(1)
     expect(clientElicit).not.toHaveBeenCalled()
     expect(textOf(result)).toBe(JSON.stringify(accept('B')))
+  })
+
+  describe('closing while a handler waits', () => {
+    // Answers only once its signal aborts, so the flow settles only if closing aborts it.
+    function pendingElicit() {
+      const received = Promise.withResolvers<AbortSignal>()
+      const elicit: ElicitHandler = ({ signal }) => {
+        received.resolve(signal)
+        return new Promise<ElicitResult>((resolve) => {
+          signal.addEventListener('abort', () => resolve({ action: 'cancel' }), { once: true })
+        })
+      }
+      return { elicit, received: received.promise }
+    }
+
+    test('client dispose aborts the handler and rejects the call', async () => {
+      const { client } = setup({})
+      const { elicit, received } = pendingElicit()
+      const call = client.callTool({ name: 'ask', arguments: { who: 'a' }, elicit })
+      const signal = await received
+      await client.dispose()
+      expect(signal.aborted).toBe(true)
+      await expect(call).rejects.toBeInstanceOf(TransportClosedError)
+    })
+
+    test('transport close aborts the handler and rejects the call', async () => {
+      const { client, server } = setup({})
+      const { elicit, received } = pendingElicit()
+      const call = client.callTool({ name: 'ask', arguments: { who: 'a' }, elicit })
+      const signal = await received
+      await server.dispose()
+      await expect(call).rejects.toBeInstanceOf(TransportClosedError)
+      expect(signal.aborted).toBe(true)
+    })
+
+    test('a handler ignoring its signal does not hold the call', async () => {
+      const { client } = setup({})
+      const received = Promise.withResolvers<void>()
+      const elicit: ElicitHandler = () => {
+        received.resolve()
+        return new Promise<ElicitResult>(() => {})
+      }
+      const call = client.callTool({ name: 'ask', arguments: { who: 'a' }, elicit })
+      await received.promise
+      await client.dispose()
+      await expect(call).rejects.toBeInstanceOf(TransportClosedError)
+    })
   })
 })
