@@ -12,11 +12,6 @@ verbatim). Transport URLs come from `new URL()` and fetch sets the name, so neit
 built-in transports; a custom `fetch` could trigger them. Fix: redact by parsing every `scheme:`
 token, and take the cause name from an allowlist.
 
-## Code structure
-
-`packages/host/src/host.ts` is about 1,600 lines; move subscription and gate code into their own
-files.
-
 ## Behaviour
 
 - `HTTPTransport.write()` serialises sends, so a cancel can queue behind a hanging POST
