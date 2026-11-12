@@ -63,4 +63,41 @@ describe('Session.addHTTPContext reconnect', () => {
 
     expect(removeSpy).not.toHaveBeenCalled()
   })
+
+  test('setup failure does not remove a registration replaced before capture', async () => {
+    session = new Session()
+    const clientA = { id: 'A' }
+    const replacement = { client: { id: 'B' } } as unknown as HostedContext
+    vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue(clientA as never)
+    vi.spyOn(session.contextHost, 'getContext').mockReturnValue(replacement as never)
+    vi.spyOn(session.contextHost, 'setup').mockRejectedValue(new Error('setup failed'))
+    const removeSpy = vi.spyOn(session.contextHost, 'remove').mockResolvedValue(undefined)
+
+    await expect(
+      session.addHTTPContext({ key: 'remote', url: 'https://mcp.example.com/mcp' }),
+    ).rejects.toThrow('setup failed')
+
+    expect(removeSpy).not.toHaveBeenCalled()
+  })
+
+  test('late abort after setup and a reconnect leaves the context', async () => {
+    session = new Session()
+    const registration = { client: { id: 'first' } } as unknown as HostedContext
+    vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue(registration.client as never)
+    vi.spyOn(session.contextHost, 'getContext').mockReturnValue(registration as never)
+    vi.spyOn(session.contextHost, 'setup').mockResolvedValue([])
+    const removeSpy = vi.spyOn(session.contextHost, 'remove').mockResolvedValue(undefined)
+    const controller = new AbortController()
+
+    await session.addHTTPContext({
+      key: 'remote',
+      url: 'https://mcp.example.com/mcp',
+      signal: controller.signal,
+    })
+    registration.client = { id: 'second' } as never
+    controller.abort()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(removeSpy).not.toHaveBeenCalled()
+  })
 })

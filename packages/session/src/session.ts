@@ -279,7 +279,7 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
     // BEFORE registering anything. Awaiting it outside the try means a duplicate-key rejection
     // never enters the catch below, so it can never remove a pre-existing context.
-    await this.#contextHost.addHTTPContext({
+    const client = await this.#contextHost.addHTTPContext({
       key,
       url,
       headers,
@@ -291,10 +291,13 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       runtime,
       reconnect,
     })
-    // Captured once: a reconnect swaps `.client` in place but keeps this registration.
+    // Captured once: a reconnect swaps `.client` in place but keeps this registration. Claimed
+    // only when it still holds the client this call registered: a remove + re-add in the await
+    // above leaves a replacement registration that is not ours.
     let registration: HostedContext | undefined
     try {
-      registration = this.#contextHost.getContext(key)
+      const registered = this.#contextHost.getContext(key)
+      registration = registered.client === client ? registered : undefined
     } catch {
       registration = undefined
     }

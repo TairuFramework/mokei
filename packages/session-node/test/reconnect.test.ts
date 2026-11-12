@@ -51,4 +51,18 @@ describe('NodeSession.addContext reconnect', () => {
 
     expect(host.getContextKeys()).toContain('echo')
   })
+
+  test('late abort after setup and a reconnect leaves the context', async () => {
+    session = new NodeSession()
+    const controller = new AbortController()
+
+    await session.addContext({ key: 'echo', ...server, signal: controller.signal })
+    const registration = session.contextHost.getContext('echo')
+    registration.client = { id: 'swapped' } as never
+    controller.abort()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(session.contextHost.getContextKeys()).toContain('echo')
+    expect(session.contextHost.getContext('echo')).toBe(registration)
+  })
 })
