@@ -9,6 +9,7 @@ import type {
   ContextTool,
   EnableToolsArg,
   HostElicitHandler,
+  HostedContext,
   HTTPContextParams,
   LocalToolDefinition,
 } from '@mokei/host'
@@ -272,12 +273,13 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       enableTools,
       elicit,
       runtime,
+      reconnect,
     } = params
     // `ContextHost.addHTTPContext` registers the context synchronously (unlike stdio's
     // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
     // BEFORE registering anything. Awaiting it outside the try means a duplicate-key rejection
     // never enters the catch below, so it can never remove a pre-existing context.
-    const client = await this.#contextHost.addHTTPContext({
+    await this.#contextHost.addHTTPContext({
       key,
       url,
       headers,
@@ -287,7 +289,15 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       fetchMiddleware,
       elicit,
       runtime,
+      reconnect,
     })
+    // Captured once: a reconnect swaps `.client` in place but keeps this registration.
+    let registration: HostedContext | undefined
+    try {
+      registration = this.#contextHost.getContext(key)
+    } catch {
+      registration = undefined
+    }
     try {
       const tools = await this.#contextHost.setup({ key, enableTools, signal: params.signal })
       this.#events.emit('context-added', { key, tools })
@@ -296,11 +306,11 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
       // Remove only the context THIS call registered. On abort, `raceSignal` can reject to the
       // caller before this catch runs; if the caller removes and re-adds the same key in that
       // window, a plain `remove(key)` here would delete the NEW context instead of ours. Compare
-      // client identity against whatever is currently registered under `key` -- `getContext`
+      // registration identity against whatever is currently registered under `key` -- `getContext`
       // throws when the key is missing (already removed), which also means "not ours" here.
       let stillOurs = false
       try {
-        stillOurs = this.#contextHost.getContext(key).client === client
+        stillOurs = registration != null && this.#contextHost.getContext(key) === registration
       } catch {
         stillOurs = false
       }
