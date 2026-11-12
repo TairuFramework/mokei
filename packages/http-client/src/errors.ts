@@ -49,32 +49,63 @@ export class AuthRequiredError extends Error {
 }
 export type AuthRequiredErrorParams = { message?: string; cause?: unknown }
 
-/** The origin of a URL, or a placeholder when it does not parse. Never the path or query. */
+const REDACTED_URL = '<redacted-url>'
+
+/** The origin of an http(s)/ws(s) URL, else a fixed placeholder. Never the path or query. */
 function redactURL(url: string): string {
   try {
-    return new URL(url).origin
+    const { origin } = new URL(url)
+    return origin === 'null' ? REDACTED_URL : origin
   } catch {
-    return '<url>'
+    return REDACTED_URL
   }
 }
+
+// Schemes that can carry a path or payload. A known list keeps text like `connect failed: x` or
+// `127.0.0.1:8080` readable; the `//` is not required (`https:host/path`, `https:/host/path`).
+const URL_TOKEN =
+  /\b(?:https?|wss?|ftps?|file|data|blob|javascript|mailto|about|ssh|git|sftp|tel|urn):\S+/gi
 
 /** Replaces every URL in a message with its origin: paths and queries can carry credentials. */
 function redactURLs(message: string): string {
   // Everything up to whitespace belongs to the URL: apostrophes, quotes and brackets are valid
   // in a path or query, so no character is trusted as a boundary.
-  return message.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, redactURL)
+  return message.replace(URL_TOKEN, redactURL)
 }
 
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'ReferenceError',
+  'EvalError',
+  'URIError',
+  'AggregateError',
+  'AbortError',
+  'TimeoutError',
+  'NetworkError',
+  'NotAllowedError',
+  'NotFoundError',
+  'InvalidStateError',
+  'SecurityError',
+  'DataCloneError',
+  'RequestTimeoutError',
+  'SessionExpiredError',
+  'AuthRequiredError',
+])
+
 /**
- * A copy of `cause` safe to keep: same name, redacted message, a stack that is only the header,
- * and no nested cause. The raw error can hold the full URL in its message, stack or cause chain.
+ * A copy of `cause` safe to keep: allowlisted name, redacted message, a stack that is only the
+ * header, and no nested cause. The raw error can hold the full URL in its name, message, stack or
+ * cause chain.
  */
 function sanitizeCause(cause: unknown): unknown {
   if (!(cause instanceof Error))
     return cause == null ? undefined : new Error(redactURLs(String(cause)))
   const copy = new Error(redactURLs(cause.message))
-  copy.name = cause.name
-  copy.stack = `${copy.name}: ${copy.message}`
+  copy.name = SAFE_ERROR_NAMES.has(cause.name) ? cause.name : 'Error'
+  copy.stack = redactURLs(`${copy.name}: ${copy.message}`)
   return copy
 }
 

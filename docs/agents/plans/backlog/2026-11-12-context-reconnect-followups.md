@@ -3,15 +3,6 @@
 Low-priority items left after opt-in context reconnect
 (`docs/agents/plans/completed/2026-11-12-context-reconnect.complete.md`).
 
-## Error redaction edge cases
-
-`NetworkError` reduces `scheme://…` URLs in messages to their origin and replaces its cause with a
-sanitized copy. Two inputs still escape: URL forms without `//` (`https:host/path`,
-`https:/host/path`, `data:`), and a cause whose `name` contains a URL (the name is copied
-verbatim). Transport URLs come from `new URL()` and fetch sets the name, so neither occurs with the
-built-in transports; a custom `fetch` could trigger them. Fix: redact by parsing every `scheme:`
-token, and take the cause name from an allowlist.
-
 ## Behaviour
 
 - `HTTPTransport.write()` serialises sends, so a cancel can queue behind a hanging POST

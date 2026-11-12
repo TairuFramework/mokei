@@ -250,6 +250,56 @@ describe('connection loss detection', () => {
     expect(error.url).toBe(url)
   })
 
+  test.each([
+    ['https:example.test/SECRET?token=SECRET'],
+    ['https:/example.test/SECRET?token=SECRET'],
+    ['data:text/plain;base64,SECRET'],
+    ['wss:example.test/SECRET?token=SECRET'],
+    ['https://example.test/SECRET?token=SECRET'],
+  ])('URL form %s is redacted everywhere', async (form) => {
+    const util = 'node:util'
+    const { inspect } = (await import(util)) as {
+      inspect: (value: unknown, opts: object) => string
+    }
+    const error = new NetworkError({
+      url: 'https://example.test/mcp',
+      cause: new TypeError(`fetch failed ${form} (retry)`),
+    })
+    expect(error.message).not.toContain('SECRET')
+    expect(String(error)).not.toContain('SECRET')
+    expect((error.cause as Error).message).not.toContain('SECRET')
+    expect((error.cause as Error).stack).not.toContain('SECRET')
+    expect(inspect(error, { depth: 10 })).not.toContain('SECRET')
+    expect(error.message).toContain('(retry)')
+  })
+
+  test('plain text with a colon is not over-redacted', () => {
+    const error = new NetworkError({
+      url: 'https://example.test/mcp',
+      cause: new Error('connect failed: ECONNREFUSED at 127.0.0.1:8080'),
+    })
+    expect(error.message).toContain('connect failed: ECONNREFUSED at 127.0.0.1:8080')
+  })
+
+  test('the cause name comes from an allowlist', async () => {
+    const util = 'node:util'
+    const { inspect } = (await import(util)) as {
+      inspect: (value: unknown, opts: object) => string
+    }
+    const bad = new Error('boom')
+    bad.name = 'https://example.test/SECRET?token=SECRET'
+    const error = new NetworkError({ url: 'https://example.test/mcp', cause: bad })
+    const cause = error.cause as Error
+    expect(cause.name).toBe('Error')
+    expect(cause.stack).not.toContain('SECRET')
+    expect(inspect(error, { depth: 10 })).not.toContain('SECRET')
+    const abort = new Error('x')
+    abort.name = 'AbortError'
+    expect((new NetworkError({ url: 'https://e.test', cause: abort }).cause as Error).name).toBe(
+      'AbortError',
+    )
+  })
+
   test('the MCP URL secret never reaches the error message or the JSON-RPC error text', async () => {
     const secretURL = 'https://example.test/api/s/SECRETPATH/mcp?api_key=SECRETQUERY'
     const transport = new HTTPTransport({
