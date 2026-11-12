@@ -611,6 +611,29 @@ describe('ContextServer', () => {
   })
 
   describe('Deterministic list ordering', () => {
+    test('tools/list preserves an optional tool title', async () => {
+      const echo: GenericToolDefinition = {
+        title: 'Echo',
+        description: 'Echo the input',
+        inputSchema: { type: 'object' },
+        handler: async () => ({ content: [] }),
+      }
+      await expectServerResult(
+        { protocolVersions: ['2025-11-25'], tools: { echo } },
+        { method: 'tools/list', params: {} },
+        {
+          tools: [
+            {
+              name: 'echo',
+              title: 'Echo',
+              description: 'Echo the input',
+              inputSchema: { type: 'object' },
+            },
+          ],
+        },
+      )
+    })
+
     test('tools/list returns tools sorted by name', async () => {
       const noop = async () => ({ content: [] as [] })
       const { transports } = createTestContext({
