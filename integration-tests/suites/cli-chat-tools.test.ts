@@ -34,7 +34,8 @@ describe.skipIf(!hasChatBackend)('CLI chat — tools', () => {
     expect(await driver.waitForApproval()).toBe(true)
     driver.deny() // n
     expect(await driver.waitFor(UI.denied, 10_000)).toBe(true)
-    expect(await driver.waitForIdle(90_000)).toBe(true)
+    // A model may ask for the same call again after the denial; each repeat is denied too.
+    expect(await driver.waitForIdleDenying(90_000)).toBe(true)
     expect(driver.screen()).not.toContain(UI.aborted)
   })
 
