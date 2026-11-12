@@ -96,6 +96,17 @@ Most applications connect HTTP contexts through the host via `contextHost.addHTT
 or `session.contextHost.addHTTPContext(...)` rather than constructing the client directly.
 Those take a `protocolVersion` too, defaulting to `'auto'`.
 
+## Connection events and reconnect
+
+`HTTPTransport.connectionEvents` fires `connection` with `{ type: 'failed', error }` when the
+network fails (including a GET stream that fails twice in a row) or `{ type: 'session-expired' }`
+when the server drops the session. The host uses these to reconnect contexts opted in with
+`reconnect`. `transportFailureOf(error)` (also exported from `@mokei/context-client`) reads the
+`TRANSPORT_FAILURE` brand that marks an error as a transport loss. `transport.dispose({ terminateSession: false })`
+skips the session-terminating `DELETE`, for a connection already lost. Reconnect attempts run in
+non-interactive mode: they never call the OAuth `authorize` handler, and a server that wants a
+sign-in surfaces `AuthRequiredError`.
+
 ## OAuth
 
 `createOAuthMiddleware({ clientID, scopes, resource, handler, store })` gives `HTTPTransport` an
