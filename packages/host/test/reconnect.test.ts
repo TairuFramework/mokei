@@ -508,7 +508,7 @@ describe('ReconnectController gate', () => {
   })
 
   test('a declining factory gives up at once with attempts 0', async () => {
-    const declined = new ReconnectDeclinedError('respawn declined')
+    const declined = new ReconnectDeclinedError({ message: 'respawn declined' })
     const factory = vi.fn(() => Promise.reject(declined))
     const fail = vi.fn()
     const ctl = new ReconnectController({

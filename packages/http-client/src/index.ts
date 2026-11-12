@@ -16,8 +16,10 @@ export type { Runtime } from '@sozai/runtime'
 export { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 export {
   AuthRequiredError,
+  type AuthRequiredErrorParams,
   isSessionExpiredCode,
   NetworkError,
+  type NetworkErrorParams,
   SESSION_EXPIRED_CODE,
   SESSION_EXPIRED_MESSAGE,
   SessionExpiredError,

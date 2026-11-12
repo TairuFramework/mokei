@@ -338,7 +338,10 @@ export class ReconnectController {
           this.#giveUp(
             cause instanceof AuthRequiredError
               ? cause
-              : new AuthRequiredError(`Context ${this.#key} requires authorization`, { cause }),
+              : new AuthRequiredError({
+                  message: `Context ${this.#key} requires authorization`,
+                  cause,
+                }),
           )
           return
         }

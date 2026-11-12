@@ -91,7 +91,8 @@ takes `respawn`) to rebuild a lost context. Calls wait at a gate while it reconn
 waiting at the gate also reject with `ContextUnavailableError`, whose `cause` is the terminal error:
 `ReconnectExhaustedError` once attempts run out (or a respawn is declined), or an `AuthRequiredError`
 when the server wants a sign-in. That same terminal error is what `context:failed` carries.
-`callNamespacedTool` turns `ContextUnavailableError` into an error tool result instead of throwing. The host emits `context:reconnecting`, `context:reconnected`, `context:failed` then
+`callNamespacedTool` turns `ContextUnavailableError` into an error tool result instead of
+throwing. The host emits `context:reconnecting`, `context:reconnected`, `context:failed` then
 `context:removed` (terminal), and `resource:subscription-lost` for a subscription the new server
 refuses. Subscriptions made with `subscribeResource` are restored. Reconnects never open a
 sign-in: a server that wants one ends them with `context:failed` (`AuthRequiredError`). A client

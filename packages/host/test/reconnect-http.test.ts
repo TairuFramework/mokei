@@ -33,6 +33,7 @@ const FAST = { initialDelayMs: 1, maxDelayMs: 1 }
 type Incoming = {
   httpMethod: string
   method?: string
+  id?: number
   session: string | null
   authorization: string | null
 }
@@ -69,6 +70,7 @@ function server() {
     const request: Incoming = {
       httpMethod: init?.method ?? 'GET',
       method: body?.method,
+      id: body?.id,
       session: headers.get('Mcp-Session-Id'),
       authorization: headers.get('Authorization'),
     }
@@ -256,6 +258,33 @@ describe('HTTP context reconnect', () => {
     expect(events.filter((event) => event.name === 'context:reconnecting')).toHaveLength(1)
     expect(events.filter((event) => event.name === 'context:failed')).toHaveLength(1)
     expect(events.filter((event) => event.name === 'context:removed')).toHaveLength(1)
+  })
+
+  test('a 401 with a JSON-RPC body ends the reconnect at once with AuthRequiredError', async () => {
+    const env = server()
+    const { host, events } = await connect(env)
+    let revoked = false
+    env.always((request) => {
+      if (request.method === 'tools/call') {
+        revoked = true
+        return 'reject'
+      }
+      if (!revoked) return undefined
+      if (request.httpMethod !== 'POST') return new Response(null, { status: 204 })
+      return json(
+        { jsonrpc: '2.0', id: request.id, error: { code: -32000, message: 'revoked' } },
+        401,
+      )
+    })
+
+    const failed = nextEvent(host, 'context:failed')
+    const removed = nextEvent(host, 'context:removed')
+    await expect(host.callTool({ key: 'remote', name: 'write', arguments: {} })).rejects.toThrow()
+    const { error } = await failed
+    await removed
+
+    expect(error).toBeInstanceOf(AuthRequiredError)
+    expect(events.filter((event) => event.name === 'context:reconnecting')).toHaveLength(1)
   })
 
   test('5xx does not reconnect', async () => {

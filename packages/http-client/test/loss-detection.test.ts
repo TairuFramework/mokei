@@ -87,7 +87,7 @@ describe('connection loss detection', () => {
 
   test('an AuthRequiredError from a middleware brands auth-required without an event', async () => {
     const middleware: FetchMiddleware = () => async () => {
-      throw new AuthRequiredError('sign in needed')
+      throw new AuthRequiredError({ message: 'sign in needed' })
     }
     const { transport, events, send, frame } = setup(reject, { fetchMiddleware: middleware })
     await send(1)
@@ -189,6 +189,44 @@ describe('connection loss detection', () => {
     const value = await frame()
     expect(transportFailureOf(value.error)).toBeUndefined()
     expect(events).toEqual([])
+    await transport.dispose()
+  })
+
+  test('a 401 carrying a JSON-RPC error brands http 401 and keeps the server error', async () => {
+    const { transport, events, send, frame } = setup(async () =>
+      json(
+        { jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'revoked', data: { a: 1 } } },
+        401,
+      ),
+    )
+    await send(1)
+    const value = await frame()
+    expect(transportFailureOf(value.error)).toEqual({ kind: 'http', status: 401 })
+    expect(value.error).toMatchObject({ code: -32000, message: 'revoked', data: { a: 1 } })
+    expect(events).toEqual([])
+    await transport.dispose()
+  })
+
+  test('the MCP URL secret never reaches the error message or the JSON-RPC error text', async () => {
+    const secretURL = 'https://example.test/api/s/SECRETPATH/mcp?api_key=SECRETQUERY'
+    const transport = new HTTPTransport({
+      url: secretURL,
+      runtime: createRuntime({
+        fetch: (async () => {
+          throw new TypeError(`fetch failed for ${secretURL}`)
+        }) as typeof globalThis.fetch,
+      }),
+    })
+    const errors: Array<Error> = []
+    transport.connectionEvents.on('connection', (event) => {
+      if (event.type === 'failed') errors.push(event.error)
+    })
+    await transport.write({ jsonrpc: '2.0', id: 1, method: 'tools/list' } as never)
+    const value = (await transport.read()).value as Frame
+    const text = JSON.stringify(value.error) + errors.map((e) => e.message).join()
+    expect(errors).toHaveLength(1)
+    expect(text).not.toContain('SECRET')
+    expect(errors[0]?.message).toContain('https://example.test')
     await transport.dispose()
   })
 

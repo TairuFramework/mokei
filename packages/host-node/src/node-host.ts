@@ -310,7 +310,7 @@ export class NodeContextHost extends ContextHost {
       const params = await paramsFor(lost)
       if (params === false) {
         // The controller gives up: `context:failed` (attempts 0, this as cause), then removal.
-        throw new ReconnectDeclinedError('respawn declined')
+        throw new ReconnectDeclinedError({ message: 'respawn declined' })
       }
       // A removal since the decision ends this loss: spawn nothing.
       if (!this.#isRegistration(key, registration) || registration.client !== lost) {

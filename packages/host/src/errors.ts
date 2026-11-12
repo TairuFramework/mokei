@@ -48,8 +48,9 @@ export class ReconnectExhaustedError extends Error {
  * ends with a {@link ReconnectExhaustedError} (`attempts: 0`) whose `cause` is this error.
  */
 export class ReconnectDeclinedError extends Error {
-  constructor(message = 'reconnect declined', options?: ErrorOptions) {
-    super(message, options)
+  constructor(params: ReconnectDeclinedErrorParams = {}) {
+    super(params.message ?? 'reconnect declined', { cause: params.cause })
     this.name = 'ReconnectDeclinedError'
   }
 }
+export type ReconnectDeclinedErrorParams = { message?: string; cause?: unknown }

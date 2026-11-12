@@ -58,6 +58,24 @@ const INTERNAL_ERROR_CODE = -32603
  * forever; a stricter check would discard the code and `data` needed by `'auto'` clients.
  * JSON-RPC leaves `error.data` unconstrained.
  */
+/**
+ * Brands a copy of a carried JSON-RPC error with local transport evidence (the HTTP status). The
+ * server's `code`, `message` and `data` are kept; the brand is a symbol key no server can send.
+ */
+function brandCarriedError(
+  carried: Record<string, unknown>,
+  failure: TransportFailure,
+): Record<string, unknown> {
+  const error = carried.error as Record<string, unknown>
+  const data =
+    error.data == null
+      ? {}
+      : typeof error.data === 'object' && !Array.isArray(error.data)
+        ? { ...(error.data as Record<string, unknown>) }
+        : { value: error.data }
+  return { ...carried, error: { ...error, data: brandTransportFailure(data, failure) } }
+}
+
 function parseJSONRPCError(
   body: string,
   requestID: string | number | null,
@@ -546,7 +564,8 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       return await fetch(url, init)
     } catch (error) {
       if (!this.#disposed && init?.signal?.aborted !== true && isSameURL(url, this.#url)) {
-        throw new NetworkError(this.#url, { cause: error })
+        // biome-ignore lint/style/useErrorCause: the cause travels in the params object
+        throw new NetworkError({ url: this.#url, cause: error })
       }
       throw error
     }
@@ -855,7 +874,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           return
         }
         try {
-          this.#controller?.enqueue(carried as unknown as ServerMessage)
+          this.#controller?.enqueue(
+            (response.status === 401
+              ? brandCarriedError(carried, { kind: 'http', status: 401 })
+              : carried) as unknown as ServerMessage,
+          )
         } catch {
           // Controller may already be closed by a concurrent dispose(); nothing to surface.
           // Throwing here would reject the sink and permanently error the writable stream.

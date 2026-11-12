@@ -33,6 +33,7 @@ export {
   ContextUnavailableError,
   type ContextUnavailableErrorParams,
   ReconnectDeclinedError,
+  type ReconnectDeclinedErrorParams,
   ReconnectExhaustedError,
   type ReconnectExhaustedErrorParams,
 } from './errors.js'

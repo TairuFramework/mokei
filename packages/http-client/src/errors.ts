@@ -42,23 +42,43 @@ export function isSessionExpiredCode(code: unknown): boolean {
 
 /** Thrown by a fetch middleware when a request needs a sign-in it may not start. */
 export class AuthRequiredError extends Error {
-  constructor(message = 'Authorization required', options?: { cause?: unknown }) {
-    super(message, options)
+  constructor(params: AuthRequiredErrorParams = {}) {
+    super(params.message ?? 'Authorization required', { cause: params.cause })
     this.name = 'AuthRequiredError'
   }
+}
+export type AuthRequiredErrorParams = { message?: string; cause?: unknown }
+
+/** The origin of a URL, or a placeholder when it does not parse. Never the path or query. */
+function redactURL(url: string): string {
+  try {
+    return new URL(url).origin
+  } catch {
+    return '<url>'
+  }
+}
+
+/** Replaces every URL in a message with its origin: paths and queries can carry credentials. */
+function redactURLs(message: string): string {
+  return message.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, redactURL)
 }
 
 /**
  * Raised by the raw fetch when the network call to the MCP URL itself fails: no response, not
  * an abort, not a timeout. Requests a middleware makes elsewhere (an OAuth server) never raise it.
+ *
+ * The message carries the origin only: MCP URLs can hold credentials in the path or query, and
+ * the message reaches JSON-RPC errors, tool results, spans and logs. The full `url` stays a
+ * getter (not enumerable) for code that needs it.
  */
 export class NetworkError extends Error {
   #url: string
 
-  constructor(url: string, options?: { cause?: unknown }) {
+  constructor(params: NetworkErrorParams) {
+    const { url, cause } = params
     super(
-      `Network request to ${url} failed${options?.cause instanceof Error ? `: ${options.cause.message}` : ''}`,
-      options,
+      `Network request to ${redactURL(url)} failed${cause instanceof Error ? `: ${redactURLs(cause.message)}` : ''}`,
+      { cause },
     )
     this.name = 'NetworkError'
     this.#url = url
@@ -68,3 +88,4 @@ export class NetworkError extends Error {
     return this.#url
   }
 }
+export type NetworkErrorParams = { url: string; cause?: unknown }
