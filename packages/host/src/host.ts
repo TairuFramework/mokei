@@ -354,6 +354,11 @@ function isLossError(error: unknown): boolean {
   return kind === 'network' || kind === 'session-expired'
 }
 
+/** Whether `client`'s acknowledged listen filter carries `uri`. */
+function hasResourceSubscription(client: ContextClient, uri: string): boolean {
+  return client.subscriptionFilter?.resourceSubscriptions?.includes(uri) === true
+}
+
 /** The loss was the server dropping the session: there is no session left to terminate. */
 function isSessionExpiry(error: unknown): boolean {
   return (
@@ -1319,9 +1324,14 @@ export class ContextHost extends Disposer {
           client.unsubscribeResource({ uri, signal, timeout }),
         )
       } catch (error) {
-        // The client commits only acknowledged filters, so it still has the URI: keep it here
-        // too, and a reconnect restores it.
-        if (wasDesired && this.#contexts[key] === registration) {
+        // The client commits only acknowledged filters, so it keeps whatever it had: keep the URI
+        // here only if the current client still has it (a restoration may have skipped it), and a
+        // reconnect restores it.
+        if (
+          wasDesired &&
+          this.#contexts[key] === registration &&
+          hasResourceSubscription(registration.client, uri)
+        ) {
           subscriptions.desired.add(uri)
         }
         throw error
@@ -1383,9 +1393,17 @@ export class ContextHost extends Disposer {
   ): void {
     const { subscriptions } = state
     void this.#enqueueSubscription(subscriptions, async () => {
+      // Read from the discovery snapshot, not a request: a request here could open a sign-in.
+      const supported = client.discoveredCapabilities?.resources?.subscribe === true
       for (const uri of Array.from(subscriptions.desired)) {
         if (!this.#owns(key, registration, client, generation)) return
         if (!subscriptions.desired.has(uri)) continue
+        if (!supported) {
+          subscriptions.desired.delete(uri)
+          const error = new Error(`Context ${key}'s server does not support resource subscriptions`)
+          void this.#events.emit('resource:subscription-lost', { key, uri, error }).catch(() => {})
+          continue
+        }
         try {
           await client.subscribeResource({ uri })
         } catch (cause) {

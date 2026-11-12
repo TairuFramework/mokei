@@ -1259,6 +1259,14 @@ export class ContextClient<
     }
   }
 
+  /**
+   * The server capabilities discovered on this connection (`2026-07-28`, read without a request),
+   * or `null` before discovery and on revisions with a handshake (see `initializationResult`).
+   */
+  get discoveredCapabilities(): ServerCapabilities | null {
+    return this.#serverCapabilitySnapshot
+  }
+
   /** The notification filter the server acknowledged on the current listen, or `null`. */
   get subscriptionFilter(): SubscriptionFilter | null {
     return this.#honoredFilter

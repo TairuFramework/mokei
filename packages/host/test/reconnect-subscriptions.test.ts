@@ -225,6 +225,36 @@ describe('resource subscriptions through the host', () => {
     expect(lost.map((entry) => entry.uri)).toEqual([B])
   })
 
+  test('a failed unsubscribe during restoration keeps host and client intent the same', async () => {
+    const host = await connect()
+    await host.subscribeResource({ key: KEY, uri: A })
+    await host.subscribeResource({ key: KEY, uri: B })
+    const first = host.getContext(KEY).client
+
+    const entered = deferred()
+    const release = deferred()
+    hooks.beforeSubscribe = async (client, uri) => {
+      if (client === first || uri !== A) return
+      entered.resolve()
+      await release.promise
+    }
+    const pair = await reconnect(host)
+    await entered.promise
+
+    const aborted = AbortSignal.abort(new Error('cancelled'))
+    const unsubscribed = host.unsubscribeResource({ key: KEY, uri: B, signal: aborted })
+    release.resolve()
+    await expect(unsubscribed).rejects.toThrow('cancelled')
+    hooks.beforeSubscribe = undefined
+
+    // The new client never subscribed to B (restoration skipped it), so the host dropped it too.
+    expect(lastListen(pair)).toEqual([A])
+    expect(host.getContext(KEY).client.subscriptionFilter?.resourceSubscriptions).toEqual([A])
+    const next = await reconnect(host)
+    await vi.waitFor(() => expect(lastListen(next)).toEqual([A]))
+    expect(everListened(next).has(B)).toBe(false)
+  })
+
   test('calls are not blocked by restoration', async () => {
     const host = await connect()
     await host.subscribeResource({ key: KEY, uri: A })
@@ -325,8 +355,8 @@ function httpServer() {
       case 'tools/call':
         return reply({ resultType: 'complete', content: [] })
       case 'subscriptions/listen':
-        if (state.subscribe) return acknowledge(body)
-        return json({ jsonrpc: '2.0', id: body.id, error: { code: -32601, message: 'none' } })
+        // Acknowledged whatever the advertised capability: the host must not trust the ack alone.
+        return acknowledge(body)
       default:
         return json({ jsonrpc: '2.0', id: body.id, error: { code: -32601, message: 'none' } })
     }
@@ -418,6 +448,7 @@ describe('resource subscriptions over HTTP', () => {
     await host.subscribeResource({ key: KEY, uri: B })
 
     env.state.subscribe = false
+    const before = env.listens.length
     await reconnectHTTP(host, env)
 
     await vi.waitFor(() => expect(lost.map((entry) => entry.uri).sort()).toEqual([A, B]))
@@ -425,5 +456,7 @@ describe('resource subscriptions over HTTP', () => {
       expect(entry.key).toBe(KEY)
       expect(entry.error).toBeInstanceOf(Error)
     }
+    // Not restored: the new server was never asked for either URI.
+    expect(env.listens.slice(before).flat()).toEqual([])
   })
 })
