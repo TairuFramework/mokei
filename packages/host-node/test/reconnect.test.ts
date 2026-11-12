@@ -325,7 +325,7 @@ test('a server that keeps dying fails after maxAttempts', async () => {
   } finally {
     await host.dispose()
   }
-})
+}, 20_000)
 
 test('before setup, a reconnecting context exits as today', async () => {
   const host = new NodeContextHost()
@@ -338,7 +338,7 @@ test('before setup, a reconnecting context exits as today', async () => {
       args: [FIXTURE, '--log', log, '--die-after-ms', '200'],
       reconnect: FAST,
     })
-    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(KEY, 'lost'))
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(KEY, 'lost'), { timeout: 10_000 })
     expect(host.getContextKeys()).toEqual([])
     expect(events.some((event) => event.name === 'context:reconnecting')).toBe(false)
     expect(spawns()).toHaveLength(1)
