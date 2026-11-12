@@ -1334,15 +1334,10 @@ export class ContextHost extends Disposer {
           client.unsubscribeResource({ uri, signal, timeout }),
         )
       } catch (error) {
-        // The client commits only acknowledged filters, so it keeps whatever it had: keep the URI
-        // here only if the current client still has it (a restoration may have skipped it), and a
-        // reconnect restores it.
-        if (
-          wasDesired &&
-          this.#contexts[key] === registration &&
-          hasResourceSubscription(registration.client, uri)
-        ) {
+        if (wasDesired && this.#contexts[key] === registration) {
+          // The unsubscribe did not happen: the URI is still wanted.
           subscriptions.desired.add(uri)
+          await this.#reconcileSubscription(key, registration, uri)
         }
         throw error
       }
@@ -1388,6 +1383,57 @@ export class ContextHost extends Disposer {
   }
 
   /**
+   * Re-subscribes a desired URI that the current client's acknowledged filter lacks (a restoration
+   * skipped it while its unsubscribe was pending). Runs inside the subscription queue. Waits for
+   * nothing during a reconnect: the coming restoration covers the URI.
+   */
+  async #reconcileSubscription(
+    key: string,
+    registration: HostedContext,
+    uri: string,
+  ): Promise<void> {
+    const state = this.#stateOf(registration)
+    if (state.controller?.state === 'reconnecting') return
+    const client = registration.client
+    if (hasResourceSubscription(client, uri)) return
+    await this.#resubscribe(key, registration, state, client, state.controller?.generation, uri)
+  }
+
+  /**
+   * Subscribes `client` to a desired `uri` on the host's behalf, with no caller signal (over HTTP,
+   * `subscriptions/listen` is always sent non-interactive, so this never opens a sign-in). A
+   * refusal drops the URI with `resource:subscription-lost`; a loss keeps it for the next
+   * connection. Returns `false` when `client` stopped being current.
+   */
+  async #resubscribe(
+    key: string,
+    registration: HostedContext,
+    state: RegistrationState,
+    client: ContextClient,
+    generation: number | undefined,
+    uri: string,
+  ): Promise<boolean> {
+    try {
+      await client.subscribeResource({ uri })
+      return this.#owns(key, registration, client, generation)
+    } catch (cause) {
+      if (!this.#owns(key, registration, client, generation)) return false
+      const error = cause instanceof Error ? cause : new Error(String(cause))
+      if (isLossError(cause)) {
+        if (generation != null) state.controller?.lose(generation, error)
+        return false
+      }
+      this.#dropSubscription(key, state, uri, error)
+      return true
+    }
+  }
+
+  #dropSubscription(key: string, state: RegistrationState, uri: string, error: Error): void {
+    state.subscriptions.desired.delete(uri)
+    void this.#events.emit('resource:subscription-lost', { key, uri, error }).catch(() => {})
+  }
+
+  /**
    * Subscribes the new client of a reconnected context to the desired URIs, one at a time, in the
    * subscription queue. The gate is already open: calls never wait for this. URIs unsubscribed
    * meanwhile are skipped, and it stops when the client stops being current. A URI the new server
@@ -1404,29 +1450,23 @@ export class ContextHost extends Disposer {
     const { subscriptions } = state
     void this.#enqueueSubscription(subscriptions, async () => {
       // Read from the discovery snapshot, not a request: a request here could open a sign-in.
-      const supported = client.discoveredCapabilities?.resources?.subscribe === true
+      // `null` (not discovered yet, or invalidated by a list change) is unknown, not unsupported:
+      // each URI is then tried, and a refusal drops only that URI.
+      const capabilities = client.discoveredCapabilities
+      const unsupported = capabilities != null && capabilities.resources?.subscribe !== true
       for (const uri of Array.from(subscriptions.desired)) {
         if (!this.#owns(key, registration, client, generation)) return
         if (!subscriptions.desired.has(uri)) continue
-        if (!supported) {
-          subscriptions.desired.delete(uri)
-          const error = new Error(`Context ${key}'s server does not support resource subscriptions`)
-          void this.#events.emit('resource:subscription-lost', { key, uri, error }).catch(() => {})
+        if (unsupported) {
+          this.#dropSubscription(
+            key,
+            state,
+            uri,
+            new Error(`Context ${key}'s server does not support resource subscriptions`),
+          )
           continue
         }
-        try {
-          await client.subscribeResource({ uri })
-        } catch (cause) {
-          if (!this.#owns(key, registration, client, generation)) return
-          const error = cause instanceof Error ? cause : new Error(String(cause))
-          if (isLossError(cause)) {
-            // Lost again: the URI stays desired for the next connection.
-            state.controller?.lose(generation, error)
-            return
-          }
-          subscriptions.desired.delete(uri)
-          void this.#events.emit('resource:subscription-lost', { key, uri, error }).catch(() => {})
-        }
+        if (!(await this.#resubscribe(key, registration, state, client, generation, uri))) return
       }
     })
   }

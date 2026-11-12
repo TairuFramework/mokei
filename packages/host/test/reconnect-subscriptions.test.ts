@@ -26,7 +26,7 @@ const hooks = vi.hoisted(() => ({
   /** Runs before a client's `subscribeResource` reaches the wire. */
   beforeSubscribe: undefined as ((client: unknown, uri: string) => Promise<void>) | undefined,
   /** Every `subscriptions/listen` a direct server received, with the pair it arrived on. */
-  listens: [] as Array<{ pair: unknown; uris: Array<string>; served: boolean }>,
+  listens: [] as Array<{ pair: unknown; id: unknown; uris: Array<string>; served: boolean }>,
   /** Answers a direct server's `subscriptions/listen` with this error instead of serving it. */
   rejectListen: undefined as
     | ((pair: unknown, uris: Array<string>) => { code: number; message: string } | undefined)
@@ -54,7 +54,7 @@ vi.mock('@enkaku/transport', async (importOriginal) => {
           if (message.method !== 'subscriptions/listen') return next
           const uris = message.params?.notifications?.resourceSubscriptions ?? []
           const error = hooks.rejectListen?.(this, uris)
-          hooks.listens.push({ pair: this, uris, served: error == null })
+          hooks.listens.push({ pair: this, id: message.id, uris, served: error == null })
           if (error == null) return next
           await server.write({ jsonrpc: '2.0', id: message.id, error })
         }
@@ -225,7 +225,7 @@ describe('resource subscriptions through the host', () => {
     expect(lost.map((entry) => entry.uri)).toEqual([B])
   })
 
-  test('a failed unsubscribe during restoration keeps host and client intent the same', async () => {
+  test('a failed unsubscribe during restoration re-subscribes the URI', async () => {
     const host = await connect()
     await host.subscribeResource({ key: KEY, uri: A })
     await host.subscribeResource({ key: KEY, uri: B })
@@ -247,12 +247,49 @@ describe('resource subscriptions through the host', () => {
     await expect(unsubscribed).rejects.toThrow('cancelled')
     hooks.beforeSubscribe = undefined
 
-    // The new client never subscribed to B (restoration skipped it), so the host dropped it too.
-    expect(lastListen(pair)).toEqual([A])
-    expect(host.getContext(KEY).client.subscriptionFilter?.resourceSubscriptions).toEqual([A])
+    // Restoration skipped B; the failed unsubscribe put it back and subscribed the current client.
+    expect(lastListen(pair)).toEqual([A, B])
+    expect(host.getContext(KEY).client.subscriptionFilter?.resourceSubscriptions).toEqual([A, B])
     const next = await reconnect(host)
-    await vi.waitFor(() => expect(lastListen(next)).toEqual([A]))
-    expect(everListened(next).has(B)).toBe(false)
+    await vi.waitFor(() => expect(lastListen(next)).toEqual([A, B]))
+  })
+
+  test('an invalidated capability snapshot still restores subscriptions', async () => {
+    const host = await connect()
+    const lost = lostEvents(host)
+    await host.subscribeResource({ key: KEY, uri: A })
+    const first = host.getContext(KEY).client
+
+    // A subscribe made during the reconnect runs on the new client ahead of the restoration.
+    const entered = deferred()
+    const release = deferred()
+    hooks.beforeSubscribe = async (client, uri) => {
+      if (client === first || uri !== C) return
+      entered.resolve()
+      await release.promise
+    }
+    const reconnected = nextEvent(host, 'context:reconnected')
+    await loseServer(host, KEY)
+    const subscribed = host.subscribeResource({ key: KEY, uri: C })
+    await reconnected
+    await entered.promise
+    const pair = currentPair(host)
+    const client = host.getContext(KEY).client
+
+    // A list change invalidates the discovery snapshot before the restoration reads it.
+    await vi.waitFor(() => expect(client.subscriptionFilter).not.toBeNull())
+    const listen = hooks.listens.filter((entry) => entry.pair === pair && entry.served).at(-1)
+    await (pair as { server: { write(message: unknown): Promise<void> } }).server.write({
+      jsonrpc: '2.0',
+      method: 'notifications/resources/list_changed',
+      params: { _meta: { [META_SUBSCRIPTION_ID]: listen?.id } },
+    })
+    await vi.waitFor(() => expect(client.discoveredCapabilities).toBeNull())
+    release.resolve()
+    await subscribed
+
+    await vi.waitFor(() => expect(lastListen(pair)).toEqual([A, C]))
+    expect(lost).toEqual([])
   })
 
   test('calls are not blocked by restoration', async () => {
