@@ -4,7 +4,8 @@ import { serveProcess } from '@mokei/context-server-node'
 
 // Stdio MCP server that can be made to die, for the reconnect tests.
 // - `--log <file>`: appends one JSON line `{ pid, args }` per start, so a test counts spawns.
-// - `--die-after-ms <ms>`: exits with code 1 that long after starting.
+// - `--die-after-ms <ms>`: never answers (initialize included) and exits with code 1 that long
+//   after starting, so a spawn with it always fails, however fast the host is.
 // - `crash` tool: exits with code 1 without answering.
 // - `garble` tool: writes a line of invalid JSON to stdout without answering.
 // - `pid` tool: answers with the process id, so a test tells generations apart.
@@ -21,9 +22,6 @@ if (log != null) {
 }
 
 const dieAfterMs = option('--die-after-ms')
-if (dieAfterMs != null) {
-  setTimeout(() => process.exit(1), Number(dieAfterMs))
-}
 
 const config = {
   name: 'flaky',
@@ -53,4 +51,10 @@ const config = {
   },
 }
 
-serveProcess(config)
+if (dieAfterMs == null) {
+  serveProcess(config)
+} else {
+  // Drain stdin without answering, then die.
+  process.stdin.resume()
+  setTimeout(() => process.exit(1), Number(dieAfterMs))
+}

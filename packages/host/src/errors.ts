@@ -42,3 +42,14 @@ export class ReconnectExhaustedError extends Error {
     return this.#attempts
   }
 }
+
+/**
+ * Thrown by a reconnect factory to give up on the loss without spending attempts: the reconnect
+ * ends with a {@link ReconnectExhaustedError} (`attempts: 0`) whose `cause` is this error.
+ */
+export class ReconnectDeclinedError extends Error {
+  constructor(message = 'reconnect declined', options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'ReconnectDeclinedError'
+  }
+}

@@ -2,7 +2,11 @@ import type { ServerConfig } from '@mokei/context-server'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { ContextUnavailableError, ReconnectExhaustedError } from '../src/errors.js'
+import {
+  ContextUnavailableError,
+  ReconnectDeclinedError,
+  ReconnectExhaustedError,
+} from '../src/errors.js'
 import { ContextHost } from '../src/host.js'
 import { ReconnectController } from '../src/reconnect.js'
 import { useTestTracing } from './support/otel.js'
@@ -501,6 +505,29 @@ describe('ReconnectController gate', () => {
     aborter.abort(reason)
     await expect(wait).rejects.toBe(reason)
     ctl.abort(new Error('done'))
+  })
+
+  test('a declining factory gives up at once with attempts 0', async () => {
+    const declined = new ReconnectDeclinedError('respawn declined')
+    const factory = vi.fn(() => Promise.reject(declined))
+    const fail = vi.fn()
+    const ctl = new ReconnectController({
+      key: 'k',
+      options: { initialDelayMs: 1, maxDelayMs: 1 },
+      factory,
+      hooks: { commit: () => null, fail, quiesce: () => {}, emit: () => {} },
+    })
+    ctl.arm()
+    ctl.lose(ctl.generation, new Error('lost'))
+    const error = await ctl.waitForGate({ deadline: Date.now() + 10_000 }).catch((e: unknown) => e)
+    expect(factory).toHaveBeenCalledTimes(1)
+    expect(fail).toHaveBeenCalledTimes(1)
+    const failure = fail.mock.calls[0]?.[0] as ReconnectExhaustedError
+    expect(failure).toBeInstanceOf(ReconnectExhaustedError)
+    expect(failure.attempts).toBe(0)
+    expect(failure.cause).toBe(declined)
+    expect(error).toBeInstanceOf(ContextUnavailableError)
+    expect((error as ContextUnavailableError).cause).toBe(failure)
   })
 
   test('abort fails waiters with ContextUnavailableError carrying the removal', async () => {

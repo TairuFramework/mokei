@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ReconnectExhaustedError } from '@mokei/host'
+import { ContextUnavailableError, ReconnectExhaustedError } from '@mokei/host'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { NodeContextHost } from '../src/node-host.js'
@@ -220,7 +220,13 @@ test('the params respawn returns are the previous params of the next loss', asyn
 test('respawn false fails the context', async () => {
   const host = new NodeContextHost()
   const events = record(host)
-  const respawn = vi.fn(() => false as const)
+  let decline: () => void = () => {}
+  const respawn = vi.fn(
+    () =>
+      new Promise<false>((resolve) => {
+        decline = () => resolve(false)
+      }),
+  )
   try {
     await host.addLocalContext({
       key: KEY,
@@ -232,6 +238,10 @@ test('respawn false fails the context', async () => {
 
     const removed = nextEvent(host, 'context:removed')
     await crash(host)
+    await vi.waitFor(() => expect(respawn).toHaveBeenCalledTimes(1))
+    // Waits at the gate while the decision is pending.
+    const waiting = host.callTool({ key: KEY, name: 'pid', arguments: {} }).catch((e) => e)
+    decline()
     await removed
 
     expect(respawn).toHaveBeenCalledTimes(1)
@@ -243,8 +253,44 @@ test('respawn false fails the context', async () => {
     const { error } = failure(events)
     expect(error).toBeInstanceOf(ReconnectExhaustedError)
     expect((error as ReconnectExhaustedError).attempts).toBe(0)
-    expect(error.cause).toEqual(new Error('respawn declined'))
+    expect(error.cause).toBeInstanceOf(Error)
+    expect((error.cause as Error).message).toBe('respawn declined')
+    const rejection = await waiting
+    expect(rejection).toBeInstanceOf(ContextUnavailableError)
+    expect((rejection as ContextUnavailableError).cause).toBe(error)
     expect(host.getContextKeys()).toEqual([])
+  } finally {
+    await host.dispose()
+  }
+})
+
+test('a throwing respawn is asked once and exhausts the attempts with its error', async () => {
+  const host = new NodeContextHost()
+  const events = record(host)
+  const thrown = new Error('no respawn')
+  const respawn = vi.fn(() => {
+    throw thrown
+  })
+  try {
+    await host.addLocalContext({
+      key: KEY,
+      command: process.execPath,
+      args: [FIXTURE, '--log', log],
+      reconnect: { ...FAST, maxAttempts: 3, respawn },
+    })
+    await host.setup({ key: KEY })
+
+    const removed = nextEvent(host, 'context:removed')
+    await crash(host)
+    await removed
+
+    expect(respawn).toHaveBeenCalledTimes(1)
+    expect(spawns()).toHaveLength(1)
+    const { error } = failure(events)
+    expect(error).toBeInstanceOf(ReconnectExhaustedError)
+    expect((error as ReconnectExhaustedError).attempts).toBe(3)
+    expect(error.cause).toBe(thrown)
+    expect(events.filter((event) => event.name === 'context:reconnecting')).toHaveLength(3)
   } finally {
     await host.dispose()
   }

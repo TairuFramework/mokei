@@ -12,10 +12,9 @@ import { isSupportedProtocolVersion } from '@mokei/context-protocol'
 import {
   type ContextFactory,
   ContextHost,
-  type ContextTool,
   createHostedContext,
   type HostedContext,
-  ReconnectExhaustedError,
+  ReconnectDeclinedError,
   type ReconnectOptions,
 } from '@mokei/host'
 
@@ -160,20 +159,6 @@ export type AddLocalContextParams = SpawnContextServerParams & {
 
 export class NodeContextHost extends ContextHost {
   #pendingKeys = new Set<string>()
-  /** Registrations added with `reconnect`. */
-  #reconnecting = new WeakSet<HostedContext>()
-  /** Registrations whose reconnect is armed: `setup()` committed tools while they were current. */
-  #armed = new WeakSet<HostedContext>()
-
-  override async setup(params: Parameters<ContextHost['setup']>[0]): Promise<Array<ContextTool>> {
-    const registration = this.getContext(params.key)
-    const tools = await super.setup(params)
-    // The host arms reconnect when setup commits tools on the still-current registration.
-    if (this.#reconnecting.has(registration) && this.#isRegistration(params.key, registration)) {
-      this.#armed.add(registration)
-    }
-    return tools
-  }
 
   #isRegistration(key: string, registration: HostedContext): boolean {
     return this.hasContext({ key }) && this.getContext(key) === registration
@@ -209,7 +194,6 @@ export class NodeContextHost extends ContextHost {
         }
         return registration.client === (client as unknown as ContextClient)
       }
-      const isArmed = () => registration != null && this.#armed.has(registration)
       // Set once when a framing fault is handled, so the follow-up `onExit` (from
       // the kill during reap) doesn't report the loss a second time.
       let framingError: Error | null = null
@@ -236,7 +220,7 @@ export class NodeContextHost extends ContextHost {
             return
           }
           framingError = error
-          if (isArmed()) {
+          if (this.isReconnectArmed(key)) {
             this.reportLoss(key, client as unknown as ContextClient, error)
             return
           }
@@ -247,7 +231,7 @@ export class NodeContextHost extends ContextHost {
           if (framingError != null || client == null || !isCurrent()) {
             return
           }
-          if (isArmed()) {
+          if (this.isReconnectArmed(key)) {
             this.reportLoss(
               key,
               client as unknown as ContextClient,
@@ -281,9 +265,6 @@ export class NodeContextHost extends ContextHost {
       } catch (error) {
         await context.disposer.dispose()
         throw error
-      }
-      if (reconnect != null && reconnect !== false) {
-        this.#reconnecting.add(registration)
       }
       void this.events.emit('context:added', { key }).catch(() => {})
       return context.client
@@ -327,21 +308,12 @@ export class NodeContextHost extends ContextHost {
     const factory: ContextFactory = async () => {
       const lost = registration.client
       const params = await paramsFor(lost)
-      // A removal since the decision ends this loss: publish nothing, spawn nothing.
-      const owned = this.#isRegistration(key, registration) && registration.client === lost
       if (params === false) {
-        const cause = new Error('respawn declined')
-        if (owned) {
-          const error = new ReconnectExhaustedError({ key, attempts: 0, cause })
-          void this.events.emit('context:failed', { key, error }).catch(() => {})
-          // Listeners run synchronously and may have removed (and re-added) the key.
-          if (this.#isRegistration(key, registration)) {
-            void this.remove(key, 'lost').catch(() => {})
-          }
-        }
-        throw cause
+        // The controller gives up: `context:failed` (attempts 0, this as cause), then removal.
+        throw new ReconnectDeclinedError('respawn declined')
       }
-      if (!owned) {
+      // A removal since the decision ends this loss: spawn nothing.
+      if (!this.#isRegistration(key, registration) || registration.client !== lost) {
         throw new Error(`Context ${key} was removed during reconnect`)
       }
       const { client, disposer } = await spawn(params)

@@ -3,7 +3,11 @@ import type { Tool } from '@mokei/context-protocol'
 import { AuthRequiredError, type HTTPTransport, transportFailureOf } from '@mokei/http-client'
 import { assertRetryPolicy, type Disposer, getRetryDelay, type RetryPolicy } from '@sozai/async'
 
-import { ContextUnavailableError, ReconnectExhaustedError } from './errors.js'
+import {
+  ContextUnavailableError,
+  ReconnectDeclinedError,
+  ReconnectExhaustedError,
+} from './errors.js'
 
 export type ReconnectOptions = {
   /** Attempts before giving up (default 5). */
@@ -53,7 +57,10 @@ export type HostedContextParts = {
   transport?: HTTPTransport
 }
 
-/** Builds a fresh, non-interactive generation of a context. */
+/**
+ * Builds a fresh, non-interactive generation of a context. Throwing a
+ * {@link ReconnectDeclinedError} gives up on the loss at once.
+ */
 export type ContextFactory = () => Promise<HostedContextParts>
 
 export type ReconnectEvents = {
@@ -322,6 +329,10 @@ export class ReconnectController {
         this.#disposeCandidate(parts)
         if (!this.#owns(generation)) return
         lastError = toError(cause)
+        if (cause instanceof ReconnectDeclinedError) {
+          this.#giveUp(new ReconnectExhaustedError({ key: this.#key, attempts: 0, cause }))
+          return
+        }
         if (isAuthFailure(cause)) {
           // Consumers see why it ended as one type, whatever layer reported the 401.
           this.#giveUp(

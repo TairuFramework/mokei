@@ -725,6 +725,16 @@ export class ContextHost extends Disposer {
   }
 
   /**
+   * Whether `key`'s reconnect is armed: added with `reconnect` and set up, so a loss reported
+   * through {@link reportLoss} rebuilds it instead of removing it.
+   */
+  // biome-ignore lint/style/useConsistentMemberAccessibility: subclasses must access this protected hook
+  protected isReconnectArmed(key: string): boolean {
+    const registration = this.#contexts[key]
+    return registration != null && this.#registrations.get(registration)?.controller?.armed === true
+  }
+
+  /**
    * A transport reported its connection lost. Only a context armed for reconnect acts on it;
    * any other keeps today's behaviour (the next request fails on its own).
    */

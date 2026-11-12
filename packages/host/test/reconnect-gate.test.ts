@@ -31,6 +31,10 @@ class TestHost extends ContextHost {
   loseNow(key: string): void {
     this.reportLoss(key, this.getContext(key).client, new Error('lost again'))
   }
+
+  armed(key: string): boolean {
+    return this.isReconnectArmed(key)
+  }
 }
 
 const hosts: Array<ContextHost> = []
@@ -86,6 +90,22 @@ function lossTools(annotations?: { readOnlyHint?: boolean }) {
   const tools = { r: blocking, a: tool('a') } as unknown as ServerConfig['tools']
   return { tools, entered: entered.promise, calls: () => calls }
 }
+
+describe('isReconnectArmed', () => {
+  test('is true only once setup armed a reconnecting context', async () => {
+    const host = makeHost()
+    expect(host.armed('k')).toBe(false)
+    host.addDirectContext({ key: 'k', config: makeConfig(), reconnect: true })
+    host.addDirectContext({ key: 'plain', config: makeConfig() })
+    expect(host.armed('k')).toBe(false)
+    await host.setup({ key: 'k' })
+    await host.setup({ key: 'plain' })
+    expect(host.armed('k')).toBe(true)
+    expect(host.armed('plain')).toBe(false)
+    await host.remove('k')
+    expect(host.armed('k')).toBe(false)
+  })
+})
 
 describe('call gate', () => {
   test('a call during reconnect waits and runs on the new client', async () => {
