@@ -64,6 +64,14 @@ owns attachment tracking, tab liveness and inbox delivery policy. The default st
 does not register monitor presence handlers. The composed Mokei daemon connects them to its
 monitor server and flow surfaces.
 
+## Local contexts
+
+`addLocalContext` spawns a stdio server. An explicit `env` is the child's whole environment; omit it
+to inherit the parent's. On Windows, libuv still adds a few non-sensitive system variables (`PATH`, `TEMP`,
+`USERPROFILE`, `USERNAME`, `SYSTEMROOT`), and `env` keys that differ only by case can collide.
+Pass `reconnect: true | LocalReconnectOptions` to respawn a lost server; `respawn(previous)` may
+return new spawn params for the loss, or `false` to end the reconnect with `context:failed`.
+
 ## Elicitation
 
 Enable elicitation when constructing a host. The capability is fixed when each client is built,

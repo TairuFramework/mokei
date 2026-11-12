@@ -10,16 +10,22 @@
  * @module http-client
  */
 
+export { TRANSPORT_FAILURE, transportFailureOf } from '@mokei/context-client'
 export type { Runtime } from '@sozai/runtime'
 
 export { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
 export {
+  AuthRequiredError,
+  type AuthRequiredErrorParams,
   isSessionExpiredCode,
+  NetworkError,
+  type NetworkErrorParams,
   SESSION_EXPIRED_CODE,
   SESSION_EXPIRED_MESSAGE,
   SessionExpiredError,
   type SessionExpiredErrorParams,
 } from './errors.js'
+export { interactionOf, REQUEST_INTERACTION, type RequestInteraction } from './interaction.js'
 export { parseBearerChallenge } from './oauth/challenge.js'
 export {
   type AuthorizationHandler,
@@ -41,10 +47,12 @@ export {
 } from './oauth/store.js'
 export { createMemoryStore, type KeyValueStore } from './store.js'
 export {
+  type ConnectionEvent,
   type CreateHTTPClientParams,
   createHTTPClient,
   DEFAULT_HTTP_REFRESH_TIMEOUT,
   DEFAULT_HTTP_TIMEOUT,
+  type DisposeHTTPTransportParams,
   type FetchLike,
   type FetchMiddleware,
   HTTPTransport,

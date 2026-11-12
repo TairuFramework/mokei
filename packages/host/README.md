@@ -81,6 +81,23 @@ enables elicitation for a context added with `elicit: false`. On `2025-11-25` it
 server-initiated `elicitation/create` has no link to the call that caused it, so the host-wide
 path answers.
 
+## Reconnect
+
+Contexts do not reconnect by default. Pass `reconnect: true` or a `ReconnectOptions`
+(`maxAttempts` 5, `initialDelayMs` 250, `maxDelayMs` 5 000, `gateTimeoutMs` 10 000) to
+`addHTTPContext`, `addDirectContext` (or `addLocalContext` from `@mokei/host-node`, which also
+takes `respawn`) to rebuild a lost context. Calls wait at a gate while it reconnects and fail with
+`ContextUnavailableError` after `gateTimeoutMs`. When the reconnect ends for good, calls still
+waiting at the gate also reject with `ContextUnavailableError`, whose `cause` is the terminal error:
+`ReconnectExhaustedError` once attempts run out (or a respawn is declined), or an `AuthRequiredError`
+when the server wants a sign-in. That same terminal error is what `context:failed` carries.
+`callNamespacedTool` turns `ContextUnavailableError` into an error tool result instead of
+throwing. The host emits `context:reconnecting`, `context:reconnected`, `context:failed` then
+`context:removed` (terminal), and `resource:subscription-lost` for a subscription the new server
+refuses. Subscriptions made with `subscribeResource` are restored. Reconnects never open a
+sign-in: a server that wants one ends them with `context:failed` (`AuthRequiredError`). A client
+captured before a reconnect goes stale; `getContext(key).client` is always current.
+
 ## Security
 
 The daemon control socket exposes a `spawn` channel that runs arbitrary

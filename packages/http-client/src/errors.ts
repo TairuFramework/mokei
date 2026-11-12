@@ -39,3 +39,68 @@ export type SessionExpiredErrorParams = { cause?: unknown }
 export function isSessionExpiredCode(code: unknown): boolean {
   return code === SESSION_EXPIRED_CODE
 }
+
+/** Thrown by a fetch middleware when a request needs a sign-in it may not start. */
+export class AuthRequiredError extends Error {
+  constructor(params: AuthRequiredErrorParams = {}) {
+    super(params.message ?? 'Authorization required', { cause: params.cause })
+    this.name = 'AuthRequiredError'
+  }
+}
+export type AuthRequiredErrorParams = { message?: string; cause?: unknown }
+
+/** The origin of a URL, or a placeholder when it does not parse. Never the path or query. */
+function redactURL(url: string): string {
+  try {
+    return new URL(url).origin
+  } catch {
+    return '<url>'
+  }
+}
+
+/** Replaces every URL in a message with its origin: paths and queries can carry credentials. */
+function redactURLs(message: string): string {
+  // Everything up to whitespace belongs to the URL: apostrophes, quotes and brackets are valid
+  // in a path or query, so no character is trusted as a boundary.
+  return message.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, redactURL)
+}
+
+/**
+ * A copy of `cause` safe to keep: same name, redacted message, a stack that is only the header,
+ * and no nested cause. The raw error can hold the full URL in its message, stack or cause chain.
+ */
+function sanitizeCause(cause: unknown): unknown {
+  if (!(cause instanceof Error))
+    return cause == null ? undefined : new Error(redactURLs(String(cause)))
+  const copy = new Error(redactURLs(cause.message))
+  copy.name = cause.name
+  copy.stack = `${copy.name}: ${copy.message}`
+  return copy
+}
+
+/**
+ * Raised by the raw fetch when the network call to the MCP URL itself fails: no response, not
+ * an abort, not a timeout. Requests a middleware makes elsewhere (an OAuth server) never raise it.
+ *
+ * The message carries the origin only: MCP URLs can hold credentials in the path or query, and
+ * the message reaches JSON-RPC errors, tool results, spans and logs. The full `url` stays a
+ * getter (not enumerable) for code that needs it.
+ */
+export class NetworkError extends Error {
+  #url: string
+
+  constructor(params: NetworkErrorParams) {
+    const { url, cause } = params
+    super(
+      `Network request to ${redactURL(url)} failed${cause instanceof Error ? `: ${redactURLs(cause.message)}` : ''}`,
+      { cause: sanitizeCause(cause) },
+    )
+    this.name = 'NetworkError'
+    this.#url = url
+  }
+
+  get url(): string {
+    return this.#url
+  }
+}
+export type NetworkErrorParams = { url: string; cause?: unknown }

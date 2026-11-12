@@ -90,6 +90,7 @@ import {
   MethodNotInRevisionError,
   MRTRNotSupportedError,
   StructuredContentValidationError,
+  TaskInterruptedError,
   UnsupportedProtocolVersionError,
 } from './errors.js'
 import {
@@ -112,6 +113,7 @@ import {
 } from './subscriptions.js'
 import { TaskWaiter, type WaitForTaskParams } from './task-waiter.js'
 import { currentTraceMeta } from './trace.js'
+import { transportFailureOf } from './transport-failure.js'
 import {
   type ClientParams,
   type ContextTypes,
@@ -1257,6 +1259,14 @@ export class ContextClient<
     }
   }
 
+  /**
+   * The server capabilities discovered on this connection (`2026-07-28`, read without a request),
+   * or `null` before discovery and on revisions with a handshake (see `initializationResult`).
+   */
+  get discoveredCapabilities(): ServerCapabilities | null {
+    return this.#serverCapabilitySnapshot
+  }
+
   /** The notification filter the server acknowledged on the current listen, or `null`. */
   get subscriptionFilter(): SubscriptionFilter | null {
     return this.#honoredFilter
@@ -1986,13 +1996,27 @@ export class ContextClient<
       if (isInputRequiredResult(result)) return result
       if (isCreateTaskResult(result)) {
         if (task === 'handle') return result
-        return await this.waitForTask({
-          taskID: result.taskId,
-          signal,
-          toolName: params.name,
-          cancelOnAbort: true,
-          elicit,
-        })
+        try {
+          return await this.waitForTask({
+            taskID: result.taskId,
+            signal,
+            toolName: params.name,
+            cancelOnAbort: true,
+            elicit,
+          })
+        } catch (error) {
+          // The connection went away after the server accepted the task: never replay it.
+          const failure = transportFailureOf(error)?.kind
+          if (
+            error instanceof TransportClosedError ||
+            failure === 'network' ||
+            failure === 'session-expired'
+          ) {
+            // biome-ignore lint/style/useErrorCause: the cause is passed through the params object
+            throw new TaskInterruptedError({ taskID: result.taskId, cause: error })
+          }
+          throw error
+        }
       }
       return this.#validateToolOutput(result, params.name)
     } finally {

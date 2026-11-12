@@ -30,29 +30,19 @@ export {
   type RequestedSchema,
 } from './elicit-content.js'
 export {
-  type AddDirectContextParams,
-  type AllowToolCalls,
-  ContextHost,
-  type ContextHostParams,
-  type ContextTool,
-  type CreateContextParams,
+  ContextUnavailableError,
+  type ContextUnavailableErrorParams,
+  ReconnectDeclinedError,
+  type ReconnectDeclinedErrorParams,
+  ReconnectExhaustedError,
+  type ReconnectExhaustedErrorParams,
+} from './errors.js'
+export { ContextHost } from './host.js'
+export {
   type CreateHostedContextParams,
   createHostedContext,
-  type ElicitFallback,
-  type EnableTools,
-  type EnableToolsArg,
-  type EnableToolsFn,
-  getContextToolID,
-  getContextToolInfo,
-  type HasContextParams,
-  type HostElicitHandler,
-  type HostElicitOverride,
-  type HostElicitRequest,
   type HostedContext,
-  type HTTPContextParams,
-  type PerCallElicit,
-  type RegisterHostedContextParams,
-} from './host.js'
+} from './hosted-context.js'
 export {
   createLocalToolID,
   createToolFromDefinition,
@@ -66,3 +56,32 @@ export {
   toolsToLocalTools,
   toolToLocalTool,
 } from './local-tools.js'
+export type {
+  ContextConnectivity,
+  ContextFactory,
+  HostedContextParts,
+  ReconnectOptions,
+} from './reconnect.js'
+export {
+  type AllowToolCalls,
+  type ContextTool,
+  type EnableTools,
+  type EnableToolsArg,
+  type EnableToolsFn,
+  getContextToolID,
+  getContextToolInfo,
+} from './tools.js'
+export type {
+  AddDirectContextParams,
+  ContextHostParams,
+  ContextResourceSubscriptionParams,
+  CreateContextParams,
+  ElicitFallback,
+  HasContextParams,
+  HostElicitHandler,
+  HostElicitOverride,
+  HostElicitRequest,
+  HTTPContextParams,
+  PerCallElicit,
+  RegisterHostedContextParams,
+} from './types.js'

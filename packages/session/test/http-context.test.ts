@@ -160,7 +160,7 @@ describe('Session.addHTTPContext', () => {
     expect(removeSpy).not.toHaveBeenCalledWith('dup')
   })
 
-  test('I1: does not remove a concurrently re-added context when the registered client differs', async () => {
+  test('I1: does not remove a concurrently re-added context when the registration differs', async () => {
     session = new Session()
     const clientA = { id: 'A' }
     const clientB = { id: 'B' }
@@ -168,7 +168,9 @@ describe('Session.addHTTPContext', () => {
     // fiction this simulates) the caller removed key 'k' and re-added it with a different
     // client, B -- so by the time our catch runs, `getContext('k')` reports B, not A.
     vi.spyOn(session.contextHost, 'addHTTPContext').mockResolvedValue(clientA as never)
-    vi.spyOn(session.contextHost, 'getContext').mockReturnValue({ client: clientB } as never)
+    vi.spyOn(session.contextHost, 'getContext')
+      .mockReturnValueOnce({ client: clientA } as never)
+      .mockReturnValue({ client: clientB } as never)
     vi.spyOn(session.contextHost, 'setup').mockRejectedValue(new Error('setup failed'))
     const removeSpy = vi.spyOn(session.contextHost, 'remove')
 

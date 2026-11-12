@@ -36,6 +36,7 @@ export {
   TaskExpiredError,
   TaskInputUnavailableError,
   TaskInputWithdrawnError,
+  TaskInterruptedError,
   UnsupportedProtocolVersionError,
   type UnsupportedProtocolVersionErrorParams,
   type ValidationIssue,
@@ -105,6 +106,13 @@ export {
 } from './subscriptions.js'
 export type { WaitForTaskParams } from './task-waiter.js'
 export { currentTraceMeta, type TraceMeta, traceMetaFromContext } from './trace.js'
+export {
+  brandTransportFailure,
+  TRANSPORT_FAILURE,
+  type TransportFailure,
+  type TransportFailureKind,
+  transportFailureOf,
+} from './transport-failure.js'
 export type {
   ClientHandlerRequest,
   ClientParams,

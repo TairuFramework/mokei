@@ -19,9 +19,14 @@ export function useSession(session: SessionLike) {
     const offRemove = session.events.on('context-removed', (e) => {
       setContexts((prev) => prev.filter((k) => k !== e.key))
     })
+    // The host removes a context on its own when a reconnect gives up.
+    const offHostRemove = session.contextHost.events.on('context:removed', (e) => {
+      setContexts((prev) => prev.filter((k) => k !== e.key))
+    })
     return () => {
       offAdd()
       offRemove()
+      offHostRemove()
     }
   }, [session])
 

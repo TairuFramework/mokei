@@ -1,6 +1,8 @@
 import type { ServerNotification, SubscriptionFilter } from '@mokei/context-protocol'
 import { type Deferred, defer } from '@sozai/async'
 
+import { transportFailureOf } from './transport-failure.js'
+
 /** JSON-RPC method of the `acknowledged` control frame (2026-07-28). */
 export const ACKNOWLEDGED_METHOD = 'notifications/subscriptions/acknowledged'
 
@@ -508,7 +510,10 @@ function isAcknowledged(notification: SubscriptionNotification): boolean {
 }
 
 function isRetryable(error: Error): boolean {
-  return error instanceof SubscriptionStreamError && error.retryable
+  if (error instanceof SubscriptionStreamError) {
+    return error.retryable
+  }
+  return transportFailureOf(error)?.kind === 'network'
 }
 
 function settleErrorBeforeAck(settle: ListenSettle): Error {

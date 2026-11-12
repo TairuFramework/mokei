@@ -1,6 +1,13 @@
 import { Transport } from '@enkaku/transport'
 import type { ClientParams, ClientTransport } from '@mokei/context-client'
-import { ContextClient, type ContextTypes, type UnknownContextTypes } from '@mokei/context-client'
+import {
+  brandTransportFailure,
+  ContextClient,
+  type ContextTypes,
+  TRANSPORT_FAILURE,
+  type TransportFailure,
+  type UnknownContextTypes,
+} from '@mokei/context-client'
 import type {
   ClientMessage,
   ProtocolVersion,
@@ -22,7 +29,13 @@ import { createReadable, writeTo } from '@sozai/stream'
 import { parseServerSentEvents } from 'parse-sse'
 
 import { buildHTTPHeaders, type HTTPAuthOptions } from './auth.js'
-import { SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE } from './errors.js'
+import {
+  AuthRequiredError,
+  NetworkError,
+  SESSION_EXPIRED_CODE,
+  SESSION_EXPIRED_MESSAGE,
+} from './errors.js'
+import { REQUEST_INTERACTION, type RequestInteraction } from './interaction.js'
 import { withCredentialRedirectGuard } from './redirect-guard.js'
 import {
   REQUEST_TIMEOUT,
@@ -46,6 +59,20 @@ const INTERNAL_ERROR_CODE = -32603
  * forever; a stricter check would discard the code and `data` needed by `'auto'` clients.
  * JSON-RPC leaves `error.data` unconstrained.
  */
+/**
+ * Brands a copy of a carried JSON-RPC error with local transport evidence (the HTTP status). The
+ * server's `code`, `message` and `data` are kept exactly as sent; the brand is a symbol key on
+ * the error object itself, which no server can send and which never touches `data`.
+ */
+function brandCarriedError(
+  carried: Record<string, unknown>,
+  failure: TransportFailure,
+): Record<string, unknown> {
+  const error = { ...(carried.error as Record<string, unknown>) }
+  Object.defineProperty(error, TRANSPORT_FAILURE, { value: failure, enumerable: true })
+  return { ...carried, error }
+}
+
 function parseJSONRPCError(
   body: string,
   requestID: string | number | null,
@@ -181,6 +208,12 @@ export type HTTPTransportParams = {
    */
   fetchMiddleware?: FetchMiddleware
   /**
+   * Whether requests may open an interactive sign-in (default `true`). When `false`, a request
+   * that needs one fails with {@link AuthRequiredError} instead; change it later with
+   * {@link HTTPTransport.setInteractive}. The GET stream and `subscriptions/listen` never sign in.
+   */
+  interactive?: boolean
+  /**
    * Platform services: `fetch` for every request. Defaults to `createRuntime()` from
    * `@sozai/runtime` (the globals). React Native passes `@sozai/runtime-expo`'s
    * `createRuntime({ fetch })`, for example with `expo/fetch` for streaming responses.
@@ -223,6 +256,23 @@ export const MAX_GET_RECONNECT_MS = 30_000
 /** Timeout for the session-termination DELETE issued on dispose. */
 export const DEFAULT_DISPOSE_TIMEOUT = 5_000
 
+/** {@link HTTPTransport.dispose} parameters. */
+export type DisposeHTTPTransportParams = {
+  /** Send the session-terminating `DELETE` (default `true`). */
+  terminateSession?: boolean
+}
+
+/** Loss of the connection to the server, as seen by the transport. */
+export type ConnectionEvent = { type: 'failed'; error: NetworkError } | { type: 'session-expired' }
+
+function isSameURL(candidate: string, url: string): boolean {
+  try {
+    return new URL(candidate).href === new URL(url).href
+  } catch {
+    return false
+  }
+}
+
 /**
  * MCP Streamable HTTP client transport.
  *
@@ -264,6 +314,11 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * can reconnect. Graceful terminals and deliberate cancellations must not fire it.
    */
   #streamEvents = new EventEmitter<{ closed: { requestID: RequestID; error?: Error } }>()
+  /** Loss of the connection to the server, for a host that wants to reconnect. */
+  #connectionEvents = new EventEmitter<{ connection: ConnectionEvent }>()
+  /** Consecutive network failures of `subscriptions/listen` POSTs and of the GET stream. */
+  #listenFailures = 0
+  #getFailures = 0
 
   #clearExchange(requestID: string | number): void {
     this.#pendingMethods.delete(requestID)
@@ -345,7 +400,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#untrackedControllers.add(controller)
     const refreshID = `mokei-internal:tools/list:${++this.#internalRequestCount}`
     try {
-      const response = await this.#fetch(this.#url, {
+      const response = await this.#send({
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -436,6 +491,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   #protocolVersion: string | null
   #logger: Logger
   #fetch: FetchLike
+  #interactive: boolean
 
   constructor(params: HTTPTransportParams) {
     // OAuth middleware and static `Authorization` must not compete. Check bearer/basic,
@@ -467,15 +523,54 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     this.#timeout = params.timeout ?? DEFAULT_HTTP_TIMEOUT
     this.#refreshTimeout = params.refreshTimeout ?? DEFAULT_HTTP_REFRESH_TIMEOUT
     this.#protocolVersion = params.protocolVersionHeader ?? null
+    this.#interactive = params.interactive ?? true
     this.#logger = params.logger ?? getMokeiLogger('http-client')
     const runtime = params.runtime ?? createRuntime()
     const baseFetch = withRequestTimeout(
       withCredentialRedirectGuard(
-        (url, init) => runtime.fetch(url, init),
+        (url, init) => this.#rawFetch(runtime.fetch, url, init),
         Object.keys(this.#headers),
       ),
     )
     this.#fetch = params.fetchMiddleware ? params.fetchMiddleware(baseFetch) : baseFetch
+  }
+
+  /** Whether requests may open an interactive sign-in. Takes effect from the next request. */
+  setInteractive(value: boolean): void {
+    this.#interactive = value
+  }
+
+  /** Sends to the MCP URL, stamped with the interaction mode current now; `background` traffic
+   * is `'never'` whatever the mode. */
+  #send(init: RequestInit, background = false): Promise<Response> {
+    const interaction: RequestInteraction = background || !this.#interactive ? 'never' : 'allowed'
+    return this.#fetch(this.#url, { ...init, [REQUEST_INTERACTION]: interaction } as RequestInit)
+  }
+
+  /**
+   * The innermost fetch. A rejection becomes a {@link NetworkError} only when it is the MCP URL
+   * itself that failed and nothing local caused it: not a caller abort or timeout (signal
+   * aborted), not disposal. Anything else (an OAuth server, a middleware) stays as it was.
+   */
+  async #rawFetch(
+    fetch: (url: string, init?: RequestInit) => Promise<Response>,
+    url: string,
+    init?: RequestInit,
+  ): Promise<Response> {
+    try {
+      return await fetch(url, init)
+    } catch (error) {
+      if (!this.#disposed && init?.signal?.aborted !== true && isSameURL(url, this.#url)) {
+        // biome-ignore lint/style/useErrorCause: the cause travels in the params object
+        throw new NetworkError({ url: this.#url, cause: error })
+      }
+      throw error
+    }
+  }
+
+  /** Connection loss events (see {@link ConnectionEvent}). */
+  get connectionEvents(): EventEmitter<{ connection: ConnectionEvent }> {
+    return this.#connectionEvents
   }
 
   /**
@@ -512,7 +607,12 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
    * A rejected sink poisons its shared writer and all later requests. Enqueue a
    * correlated error instead; log failures for notifications without an id.
    */
-  #failRequest(requestID: string | number | null, code: number, errorMessage: string): void {
+  #failRequest(
+    requestID: string | number | null,
+    code: number,
+    errorMessage: string,
+    failure?: TransportFailure,
+  ): void {
     if (requestID == null) {
       this.#logger.warn('Outgoing frame without a tracked exchange failed', { error: errorMessage })
       return
@@ -524,7 +624,10 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       this.#controller.enqueue({
         jsonrpc: '2.0',
         id: requestID,
-        error: { code, message: errorMessage },
+        error:
+          failure == null
+            ? { code, message: errorMessage }
+            : { code, message: errorMessage, data: brandTransportFailure({}, failure) },
       } as unknown as ServerMessage)
     } catch {
       // Controller may already be closed by a concurrent dispose(); nothing to surface.
@@ -679,13 +782,17 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
 
     let response: Response
     try {
-      response = await this.#fetch(this.#url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(message),
-        signal: controller.signal,
-        [REQUEST_TIMEOUT]: this.#timeout,
-      } as TimedRequestInit)
+      response = await this.#send(
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(message),
+          signal: controller.signal,
+          [REQUEST_TIMEOUT]: this.#timeout,
+        } as TimedRequestInit,
+        // `subscriptions/listen` is background traffic: it never opens a sign-in.
+        'method' in message && message.method === 'subscriptions/listen',
+      )
     } catch (error) {
       const entry = trackedID == null ? undefined : this.#exchangeControllers.get(trackedID)
       this.#releaseController(trackedID, controller)
@@ -694,14 +801,29 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         // settled id is noise.
         return
       }
+      const isListen = 'method' in message && message.method === 'subscriptions/listen'
+      let failure: TransportFailure | undefined
+      if (error instanceof NetworkError) {
+        failure = { kind: 'network' }
+        // A listen stream re-opens on its own: one blip is not loss, two in a row are.
+        this.#listenFailures = isListen ? this.#listenFailures + 1 : 0
+        if (!isListen || this.#listenFailures >= 2) {
+          this.#connectionEvents.fire('connection', { type: 'failed', error })
+        }
+      } else if (error instanceof RequestTimeoutError) {
+        failure = { kind: 'timeout' }
+      } else if (error instanceof AuthRequiredError) {
+        failure = { kind: 'auth-required' }
+      }
       const reason =
         error instanceof RequestTimeoutError || controller.signal.aborted
           ? `Request timed out after ${this.#timeout}ms`
           : `Request failed: ${error instanceof Error ? error.message : String(error)}`
-      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, reason)
+      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, reason, failure)
       return
     }
 
+    this.#listenFailures = 0
     // Capture session ID from response
     const newSessionID = response.headers.get('Mcp-Session-Id')
     if (newSessionID) {
@@ -713,7 +835,10 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       // a coded error so the client can detect it (isSessionExpiredCode) and re-initialize.
       this.#sessionID = null
       this.#releaseController(trackedID, controller)
-      this.#failRequest(trackedID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE)
+      this.#failRequest(trackedID, SESSION_EXPIRED_CODE, SESSION_EXPIRED_MESSAGE, {
+        kind: 'session-expired',
+      })
+      this.#connectionEvents.fire('connection', { type: 'session-expired' })
       return
     }
 
@@ -746,14 +871,21 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           return
         }
         try {
-          this.#controller?.enqueue(carried as unknown as ServerMessage)
+          this.#controller?.enqueue(
+            (response.status === 401
+              ? brandCarriedError(carried, { kind: 'http', status: 401 })
+              : carried) as unknown as ServerMessage,
+          )
         } catch {
           // Controller may already be closed by a concurrent dispose(); nothing to surface.
           // Throwing here would reject the sink and permanently error the writable stream.
         }
         return
       }
-      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`)
+      this.#failRequest(trackedID, INTERNAL_ERROR_CODE, `HTTP ${response.status}: ${errorText}`, {
+        kind: 'http',
+        status: response.status,
+      })
       return
     }
 
@@ -953,11 +1085,16 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
           headers['Last-Event-ID'] = this.#lastEventID
         }
 
-        const response = await this.#fetch(this.#url, { method: 'GET', headers, signal })
+        const response = await this.#send({ method: 'GET', headers, signal }, true)
+        this.#getFailures = 0
 
         if (response.status === 405 || response.status === 404) {
           // 405: server does not offer a GET notification stream. 404: session gone.
-          // Either way reconnecting cannot help -- stop quietly.
+          // Either way reconnecting cannot help -- stop (a live session's 404 is reported).
+          if (response.status === 404 && this.#sessionID != null) {
+            this.#sessionID = null
+            this.#connectionEvents.fire('connection', { type: 'session-expired' })
+          }
           return
         }
         if (!response.ok) {
@@ -971,6 +1108,12 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
       } catch (error) {
         if (this.#disposed || signal.aborted) {
           return
+        }
+        if (error instanceof NetworkError) {
+          this.#getFailures += 1
+          if (this.#getFailures === 2) {
+            this.#connectionEvents.fire('connection', { type: 'failed', error })
+          }
         }
         this.#logger.warn('GET notification stream disconnected; will reconnect', {
           error: error instanceof Error ? error.message : String(error),
@@ -1011,10 +1154,14 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
   }
 
   /**
-   * Dispose of the transport.
+   * Dispose of the transport. Terminates the session with a `DELETE` unless `terminateSession`
+   * is `false` (for a session the server already reported gone).
    */
-  async dispose(): Promise<void> {
+  async dispose(params?: DisposeHTTPTransportParams): Promise<void> {
     if (this.#disposed) return
+    // `Disposer` may pass an arbitrary abort reason here: only an explicit `false` skips it.
+    const terminateSession =
+      (params as DisposeHTTPTransportParams | null | undefined)?.terminateSession !== false
     this.#disposed = true
 
     // Cancel the GET stream
@@ -1037,7 +1184,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
     }
 
     // Terminate session with DELETE, bounded so a hung server can't stall shutdown.
-    if (this.#sessionID) {
+    if (this.#sessionID && terminateSession) {
       try {
         const headers: Record<string, string> = {
           ...this.#headers,
@@ -1046,7 +1193,7 @@ export class HTTPTransport extends Transport<ServerMessage, ClientMessage> {
         if (this.#protocolVersion != null) {
           headers['MCP-Protocol-Version'] = this.#protocolVersion
         }
-        await this.#fetch(this.#url, {
+        await this.#send({
           method: 'DELETE',
           headers,
           signal: AbortSignal.timeout(DEFAULT_DISPOSE_TIMEOUT),
@@ -1100,6 +1247,7 @@ const HTTP_TRANSPORT_PARAM_KEYS = {
   logger: true,
   protocolVersionHeader: true,
   fetchMiddleware: true,
+  interactive: true,
   runtime: true,
 } satisfies Record<keyof HTTPTransportParams, true>
 

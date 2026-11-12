@@ -162,6 +162,22 @@ function startServer(
 }
 
 describe('ContextClient subscriptions wiring', () => {
+  test('discoveredCapabilities exposes the discovery snapshot without a request', async () => {
+    const transports = new DirectTransports<ServerMessage, ClientMessage>()
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      transport: transports.client,
+    })
+    const capabilities: ServerCapabilities = { resources: { listChanged: true } }
+    const sub = startServer(transports.server, { capabilities })
+
+    await client.listResources()
+    const discovered = sub.state.discoverCount
+    expect(client.discoveredCapabilities).toEqual(capabilities)
+    expect(sub.state.discoverCount).toBe(discovered)
+    await client.dispose()
+  })
+
   test('task acknowledgements preserve the active resource subscription filter', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({

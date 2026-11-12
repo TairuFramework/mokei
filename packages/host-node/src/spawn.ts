@@ -28,12 +28,26 @@ export type SpawnedContext = {
   subprocess: Subprocess
 }
 
+// nano-spawn always merges the given env over `process.env` and has no opt-out. Setting every
+// parent-only key to `undefined` overrides the merge: Node omits undefined env values, so the
+// child gets exactly `env`.
+function exactEnv(
+  env: Record<string, string | null | undefined>,
+): Record<string, string | undefined> {
+  const exact: Record<string, string | undefined> = {}
+  for (const key of Object.keys(process.env)) {
+    exact[key] = undefined
+  }
+  return Object.assign(exact, filterEnv(env))
+}
+
 export async function spawnContextServer(
   params: SpawnContextServerParams,
 ): Promise<SpawnedContext> {
   const subprocess = spawn(params.command, params.args ?? [], {
     stdio: ['pipe', 'pipe', params.stderr ?? 'ignore'],
-    env: filterEnv(params.env),
+    // Omitted env inherits `process.env` (nano-spawn merges `{}` over it).
+    env: params.env == null ? {} : exactEnv(params.env),
   })
   // Guard the subprocess promise so an abnormal exit or spawn failure is never an
   // unhandled rejection. Callers observe the real outcome via `subprocess` (see

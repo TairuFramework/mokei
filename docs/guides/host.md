@@ -58,6 +58,8 @@ const client = await host.addLocalContext({
 const tools = await host.setup({ key: 'myserver' })
 ```
 
+On Windows, libuv still adds a few non-sensitive system variables (`PATH`, `TEMP`, `USERPROFILE`, `USERNAME`, `SYSTEMROOT`), and `env` keys that differ only by case can collide.
+
 ### HTTP Context
 
 Connects to a server over the MCP Streamable HTTP transport:
@@ -253,6 +255,48 @@ const tools = await host.setup({ key: 'db', timeout: 10_000 })
 // Removes context and cleans up resources
 await host.remove('db')
 ```
+
+### Reconnect
+
+Reconnect is off by default. Pass `reconnect: true` (defaults) or `reconnect: ReconnectOptions` to
+`addLocalContext`, `addHTTPContext` or `addDirectContext` to rebuild a context whose connection is
+lost, instead of removing it:
+
+```typescript
+await host.addHTTPContext({
+  key: 'remote',
+  url: 'https://mcp.example.com/mcp',
+  reconnect: { maxAttempts: 5, initialDelayMs: 250, maxDelayMs: 5_000, gateTimeoutMs: 10_000 },
+})
+```
+
+The values shown are the defaults. Delays double with full jitter. The controller arms once
+`setup()` has committed the context's tools.
+
+- Calls made while a reconnect runs wait at a gate for up to `gateTimeoutMs`, then fail with
+  `ContextUnavailableError`. When the reconnect ends for good, waiting calls reject with
+  `ContextUnavailableError` whose `cause` is the terminal error: `ReconnectExhaustedError` once
+  every attempt is spent, or `AuthRequiredError`. `context:failed` carries that same error, and
+  `callNamespacedTool` turns `ContextUnavailableError` into an error tool result.
+- Events: `context:reconnecting` (`key`, `attempt`, `error`), `context:reconnected` (`key`,
+  `attempts`), then on a terminal failure `context:failed` once followed by `context:removed`
+  once. Reconnect off keeps today's behaviour; HTTP and direct contexts now emit `context:added`.
+- A client returned earlier by `add*Context` or `getContext(key).client` is not gated and goes
+  stale after a reconnect. `getContext(key).client` always returns the current client.
+- Reconnect attempts never open a sign-in: a server that wants one ends the reconnect with
+  `context:failed` carrying an `AuthRequiredError`.
+- A task created before the loss rejects with `TaskInterruptedError` (it carries `taskID`); the
+  task may still be running on the server.
+- `host.subscribeResource` and `host.unsubscribeResource` record the desired subscriptions, which
+  are restored on the new client. A URI the new server refuses, or cannot subscribe to because it
+  lacks `resources.subscribe`, is dropped with `resource:subscription-lost`.
+- Pass `connectivity` to the host (`isOnline()`, optional `subscribe()`) so a reconnect waits for
+  the network instead of burning attempts.
+
+For stdio contexts, `reconnect` also accepts `respawn`, called once per loss with the previous
+spawn params. Return new params (used for every attempt of that loss), or `false` to end the
+reconnect with `context:failed`. Throwing `ReconnectDeclinedError` from a custom factory does the
+same.
 
 ### List Contexts
 

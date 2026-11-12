@@ -1,49 +1,41 @@
 import { DirectTransports } from '@enkaku/transport'
 import {
   type ClientTransport,
-  ContextClient,
+  type ContextClient,
   type ContextTypes,
   capturePayload,
   type ElicitHandler,
   endSpanError,
   errorTypeOf,
   getMokeiTracer,
-  type ListParams,
-  mcpMetricsEnabled,
-  metricAttributes,
-  type NetworkInfo,
   type PayloadCapture,
   type PromptParams,
-  recordMCPSession,
   resolveContentCapture,
   type TerminationReason,
   type ToolParams,
   type TraceParentFrom,
+  transportFailureOf,
   type UnknownContextTypes,
 } from '@mokei/context-client'
 import type {
   CallToolResult,
   ClientMessage,
-  ElicitRequest,
   ElicitResult,
   GetPromptResult,
-  Metadata,
-  ProtocolVersion,
   ServerMessage,
   Tool,
 } from '@mokei/context-protocol'
-import type { WithRequestOptions } from '@mokei/context-rpc'
-import { ContextServer, type JSONValue, type ServerConfig } from '@mokei/context-server'
-import {
-  type FetchMiddleware,
-  type HTTPAuthOptions,
-  HTTPTransport,
-  type Runtime,
-} from '@mokei/http-client'
-import { ROOT_CONTEXT, SpanKind } from '@opentelemetry/api'
+import { TransportClosedError } from '@mokei/context-rpc'
+import { ContextServer, type JSONValue } from '@mokei/context-server'
+import { type ConnectionEvent, HTTPTransport, SessionExpiredError } from '@mokei/http-client'
+import { type SpanContext, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
 
+import { startContextSpan } from './context-span.js'
+import { ContextUnavailableError } from './errors.js'
+import { type GatedSend, runGated } from './gate.js'
+import { createHostedContext, type HostedContext } from './hosted-context.js'
 import {
   createLocalToolID,
   createToolFromDefinition,
@@ -52,268 +44,78 @@ import {
   type LocalTool,
   type LocalToolDefinition,
 } from './local-tools.js'
+import {
+  type ContextConnectivity,
+  type ContextFactory,
+  ReconnectController,
+  type ReconnectOptions,
+  resolveReconnectOptions,
+} from './reconnect.js'
+import { ContextSubscriptions, type ResourceSubscriptions } from './subscriptions.js'
+import {
+  type ContextTool,
+  getContextToolID,
+  getContextToolInfo,
+  mergeContextTools,
+  sameToolDefinitions,
+} from './tools.js'
+import type {
+  AddDirectContextParams,
+  ContextHostParams,
+  ContextPromptParams,
+  ContextResourceSubscriptionParams,
+  ContextToolNamesParams,
+  ContextToolParams,
+  ContextTransport,
+  CreateContextParams,
+  HasContextParams,
+  HostElicitHandler,
+  HostElicitOverride,
+  HostElicitRequest,
+  HostEvents,
+  HTTPContextParams,
+  LocalToolParams,
+  NamespacedToolParams,
+  RegisterHostedContextParams,
+  SetContextToolsParams,
+  SetupParams,
+} from './types.js'
 
-type ContextTransport = 'stdio' | 'http' | 'direct'
-
-/** The protocol revision is unresolved (and the getter throws) while an `'auto'` probe is pending. */
-function currentProtocolVersion(client: ContextClient): string | undefined {
-  try {
-    return client.protocolVersion
-  } catch {
-    return undefined
-  }
+/** Host-side state of one registration (one `add*Context` call), kept across reconnects. */
+type RegistrationState = {
+  transport: ContextTransport
+  subscriptions: ResourceSubscriptions
+  url?: string
+  /** The current client's HTTP transport, set non-interactive when its generation is lost. */
+  httpTransport?: HTTPTransport
+  controller?: ReconnectController
+  /** The current client's `mcp.context` span; the next client's span links to it after a loss. */
+  spanContext?: SpanContext
 }
 
-function networkInfo(transport: ContextTransport, url?: string): NetworkInfo | undefined {
-  if (transport === 'stdio') return { transport: 'pipe' }
-  if (transport !== 'http') return undefined
-  const info: NetworkInfo = { transport: 'tcp', protocolName: 'http' }
-  if (url === undefined) return info
-  try {
-    const parsed = new URL(url)
-    info.serverAddress = parsed.hostname.replace(/^\[|\]$/g, '')
-    info.serverPort =
-      parsed.port === '' ? (parsed.protocol === 'https:' ? 443 : 80) : Number(parsed.port)
-  } catch {
-    // Unparseable URL: keep transport-level attributes only.
-  }
-  return info
+type RegisterParams = {
+  transport: ContextTransport
+  httpTransport?: HTTPTransport
+  url?: string
+  reconnect?: { options: ReconnectOptions; factory: ContextFactory }
 }
 
-export type EnableTools = boolean | Array<string>
-export type EnableToolsFn = (tools: Array<Tool>) => EnableTools | Promise<EnableTools>
-export type EnableToolsArg = EnableTools | EnableToolsFn
-
-export function getContextToolID(contextKey: string, toolName: string): string {
-  return `${contextKey}:${toolName}`
+/** The loss was the server dropping the session: there is no session left to terminate. */
+function isSessionExpiry(error: unknown): boolean {
+  return (
+    error instanceof SessionExpiredError || transportFailureOf(error)?.kind === 'session-expired'
+  )
 }
 
-export function getContextToolInfo(id: string): [string, string] {
-  const index = id.indexOf(':')
-  if (index === -1) {
-    throw new Error(`Invalid context tool ID: ${id}`)
-  }
-  return [id.slice(0, index), id.slice(index + 1)]
-}
-
-/**
- * Parameters for setting up a context: which tools to enable, plus the options for the
- * `tools/list` request the setup issues.
- */
-export type SetupParams = ListParams<{
-  key: string
-  /** Which of the context's tools to enable. Defaults to all of them. */
-  enableTools?: EnableToolsArg
-}>
-
-/** Parameters for replacing a context's tools wholesale. */
-export type SetContextToolsParams = {
-  key: string
-  tools: Array<ContextTool>
-}
-
-/** Parameters for the tool-enablement methods, which act on a context's tools by name. */
-export type ContextToolNamesParams = {
-  key: string
-  toolNames: Array<string>
-}
-
-/**
- * A per-call elicitation handler. On `2026-07-28` it answers the call's `elicitation/create` input
- * requests (MRTR, SEP-2322) ahead of any {@link ContextHost.handleElicitation} override; `fallback`
- * hands the request to the host-wide path. It never enables elicitation for a context added with
- * `elicit: false` or a host without elicitation. On `2025-11-25` it is ignored: a server-initiated
- * `elicitation/create` has no link to its call, so the host-wide path answers.
- */
-export type PerCallElicit = { elicit?: HostElicitOverride }
-
-/** Parameters for getting a prompt from a context, keyed by context. */
-export type ContextPromptParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
-  PromptParams<T>
-> &
-  PerCallElicit & { key: string }
-
-/** Parameters for calling a tool on a context, keyed by context. */
-export type ContextToolParams<T extends ContextTypes = UnknownContextTypes> = WithRequestOptions<
-  ToolParams<T>
-> &
-  PerCallElicit & { key: string }
-
-/** Parameters for calling a tool by its namespaced ID (`contextKey:toolName` or `local:toolName`). */
-export type NamespacedToolParams = WithRequestOptions<{
-  id: string
-  arguments?: Record<string, unknown>
-  _meta?: Metadata
-}> &
-  PerCallElicit
-
-/** Parameters for calling a local tool. Local tools run in-process, so they take no `timeout`. */
-export type LocalToolParams = {
-  name: string
-  arguments?: Record<string, unknown>
-  _meta?: Record<string, JSONValue>
-  signal?: AbortSignal
-  /** Attributes added to the `execute_tool` span; never sent anywhere else. */
-  traceAttributes?: Record<string, string>
-}
-
-export type AllowToolCalls = 'always' | 'ask' | 'never'
-
-export type ContextTool = {
-  id: string
-  tool: Tool
-  enabled: boolean
-  allow?: AllowToolCalls
-}
-
-export type HostedContext<T extends ContextTypes = UnknownContextTypes> = {
-  client: ContextClient<T>
-  disposer: Disposer
-  tools: Array<ContextTool>
-}
-
-export type CreateHostedContextParams = {
-  transport: ClientTransport
-  tools?: Array<ContextTool>
-  elicit?: ElicitHandler
-  dispose?: () => void | Promise<void>
-  /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
-   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
-   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
-   */
-  protocolVersion?: ProtocolVersion | 'auto'
-}
-
-export type CreateContextParams = Omit<CreateHostedContextParams, 'elicit'> & {
-  key: string
-  elicit?: false
-}
-
-export type HostElicitRequest = {
-  key: string
-  params: ElicitRequest['params']
-  signal: AbortSignal
-}
-
-export type HostElicitHandler = (request: HostElicitRequest) => ElicitResult | Promise<ElicitResult>
-
-export type ElicitFallback = (options?: { signal?: AbortSignal }) => Promise<ElicitResult>
-
-export type HostElicitOverride = (
-  request: HostElicitRequest,
-  fallback: ElicitFallback,
-) => ElicitResult | Promise<ElicitResult>
-
-export type ContextHostParams = {
-  /** Subclass teardown, run after every context is removed. */
-  dispose?: () => Promise<void>
-  elicit?: HostElicitHandler | true
-  /** MCP payload capture defaults to 'off'. */
-  tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
-}
-
-export type HasContextParams = { key: string }
-export type RegisterHostedContextParams = {
-  key: string
-  context: HostedContext
-  transport?: ContextTransport
-}
-
-export type HostEvents = {
-  'context:added': { key: string }
-  'context:removed': { key: string }
-  'context:failed': { key: string; error: Error }
-  /**
-   * A `2026-07-28` context's server signalled its tools list changed (SEP-1391). The host has
-   * already re-listed the context and refreshed its namespaced tool aggregate before emitting.
-   */
-  'tools:changed': { key: string }
-  /**
-   * A `2026-07-28` context's server signalled its prompts list changed (SEP-1391). The host has
-   * already re-listed the context's prompts before emitting.
-   */
-  'prompts:changed': { key: string }
-  /**
-   * A `2026-07-28` context's server signalled its resources list changed (SEP-1391). The host has
-   * already re-listed the context's resources before emitting.
-   */
-  'resources:changed': { key: string }
-  /**
-   * A `2026-07-28` context's server signalled a subscribed resource's content changed (SEP-1391),
-   * carrying the resource URI. The host forwards it as-is and does not re-read the resource --
-   * reacting is the consumer's policy.
-   */
-  'resource:updated': { key: string; uri: string }
-  /**
-   * A `2025-11-25` context's server completed a URL-mode elicitation
-   * (`notifications/elicitation/complete`). An application can close the matching URL prompt.
-   */
-  'elicitation:complete': { key: string; elicitationId: string }
-}
-
-export function createHostedContext<T extends ContextTypes = UnknownContextTypes>(
-  params: CreateHostedContextParams,
-): HostedContext<T> {
-  // `'auto'` rather than the newest revision: a host points at arbitrary third-party servers,
-  // most of which serve `'2025-11-25'` only, and a `'2026-07-28'` pin rejects those with
-  // `-32022` instead of negotiating down. Callers that know their server pin explicitly.
-  const { transport, tools = [], dispose, protocolVersion = 'auto', elicit } = params
-  const client = new ContextClient<T>({ protocolVersion, transport, elicit })
-  const disposer = new Disposer({
-    dispose: async () => {
-      // Via the client, not the transport: `client.dispose()` runs `_beforeTransportClose` (tears
-      // down the subscription driver, suppresses reconnect) then disposes the transport. Disposing
-      // the transport directly would skip that and could leave a reconnect firing after teardown.
-      await client.dispose()
-      await dispose?.()
-    },
-  })
-  return { client, disposer, tools }
-}
-
-export type AddDirectContextParams = {
-  key: string
-  config: ServerConfig
-  tools?: Array<ContextTool>
-  elicit?: false
-  /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
-   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
-   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
-   */
-  protocolVersion?: ProtocolVersion | 'auto'
-}
-
-export type HTTPContextParams = {
-  /** Unique identifier for this context */
-  key: string
-  elicit?: false
-  /** URL of the MCP HTTP endpoint */
-  url: string
-  /** Optional custom headers to include in requests */
-  headers?: Record<string, string>
-  /** Optional authentication configuration */
-  auth?: HTTPAuthOptions
-  /** Request timeout in milliseconds (default: 30000) */
-  timeout?: number
-  /**
-   * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
-   * the probe resolves `'2026-07-28'` when the server serves it and falls back to
-   * `'2025-11-25'` otherwise. Pin a revision to skip the probe's extra round trip.
-   */
-  protocolVersion?: ProtocolVersion | 'auto'
-  /** Fetch middleware (e.g. OAuth from createOAuthMiddleware) applied to the transport. */
-  fetchMiddleware?: FetchMiddleware
-  /**
-   * Fetch and random-value implementations for the HTTP transport (default `createRuntime()`
-   * from `@sozai/runtime`). React Native passes `@sozai/runtime-expo`'s `createRuntime({ fetch })`.
-   */
-  runtime?: Runtime
+/** The error a transport connection event reports to the host. */
+function connectionLossError(event: ConnectionEvent): Error {
+  return event.type === 'failed' ? event.error : new SessionExpiredError()
 }
 
 export class ContextHost extends Disposer {
   #contexts: Record<string, HostedContext> = {}
+  #registrations: WeakMap<HostedContext, RegistrationState> = new WeakMap()
+  #connectivity?: ContextConnectivity
   #payloads?: PayloadCapture
   #parentFrom?: TraceParentFrom
   #contextSettlers = new Map<string, (reason: TerminationReason) => void>()
@@ -324,6 +126,16 @@ export class ContextHost extends Disposer {
   #subscriptionUnsubscribes: Map<string, Array<() => void>> = new Map()
   #elicit: HostElicitHandler | true | undefined
   #elicitOverride: { handler: HostElicitOverride } | undefined
+  #subscriptions = new ContextSubscriptions({
+    isRegistered: (key, registration) => this.#contexts[key] === registration,
+    owns: (key, registration, client, generation) => {
+      return this.#owns(key, registration, client, generation)
+    },
+    stateOf: (registration) => this.#stateOf(registration),
+    onLost: (event) => {
+      void this.#events.emit('resource:subscription-lost', event).catch(() => {})
+    },
+  })
 
   /** Observe context lifecycle and subscription events. */
   get events(): EventEmitter<HostEvents> {
@@ -341,6 +153,7 @@ export class ContextHost extends Disposer {
     this.#elicit = params.elicit
     this.#payloads = params.tracing?.payloads ?? 'off'
     this.#parentFrom = params.tracing?.parentFrom
+    this.#connectivity = params.connectivity
   }
 
   get contexts(): Record<string, HostedContext> {
@@ -433,8 +246,185 @@ export class ContextHost extends Disposer {
     if (this.hasContext({ key: params.key })) {
       throw new Error(`Context ${params.key} already exists`)
     }
-    this.#contexts[params.key] = params.context
-    this.#wireContextSubscriptions(params.key, params.context.client, params.transport)
+    this.#register(params.key, params.context, {
+      transport: params.transport ?? 'direct',
+      reconnect: params.reconnect,
+    })
+  }
+
+  /** Stores a registration and wires its first client. */
+  #register(key: string, context: HostedContext, params: RegisterParams): void {
+    const state: RegistrationState = {
+      transport: params.transport,
+      subscriptions: { desired: new Set(), tail: Promise.resolve() },
+      url: params.url,
+      httpTransport: params.httpTransport,
+    }
+    if (params.reconnect != null) {
+      state.controller = this.#createController(key, context, state, params.reconnect)
+    }
+    this.#contexts[key] = context
+    this.#registrations.set(context, state)
+    state.spanContext = this.#wireContextSubscriptions(
+      key,
+      context.client,
+      params.transport,
+      params.httpTransport,
+      params.url,
+    )
+  }
+
+  #createController(
+    key: string,
+    registration: HostedContext,
+    state: RegistrationState,
+    reconnect: { options: ReconnectOptions; factory: ContextFactory },
+  ): ReconnectController {
+    let lostSpanContext: SpanContext | undefined
+    return new ReconnectController({
+      key,
+      options: reconnect.options,
+      factory: reconnect.factory,
+      connectivity: this.#connectivity,
+      hooks: {
+        quiesce: (error) => {
+          lostSpanContext = state.spanContext
+          state.spanContext = undefined
+          this.#detachClient(key, 'lost')
+          const transport = state.httpTransport
+          // Teardown of a lost generation never opens a sign-in.
+          transport?.setInteractive(false)
+          if (transport != null && isSessionExpiry(error)) {
+            // The server already dropped the session: no `DELETE` for it. Disposed ahead of the
+            // client so the client's own transport dispose below finds it done.
+            void transport.dispose({ terminateSession: false }).catch(() => {})
+          }
+          // In the background: disposal never waits on, or depends on, a replacement.
+          void registration.disposer.dispose().catch(() => {})
+        },
+        commit: (parts, tools, generation, attempt) => {
+          if (this.#contexts[key] !== registration) {
+            return null
+          }
+          const merged = mergeContextTools(key, registration.tools, tools)
+          const toolsChanged = !sameToolDefinitions(registration.tools, merged)
+          registration.client = parts.client
+          registration.disposer = parts.disposer
+          registration.tools = merged
+          state.httpTransport = parts.transport
+          parts.transport?.setInteractive(true)
+          state.spanContext = this.#wireContextSubscriptions(
+            key,
+            parts.client,
+            state.transport,
+            parts.transport,
+            state.url,
+            { link: lostSpanContext, attempt },
+          )
+          lostSpanContext = undefined
+          this.#subscriptions.restore(key, registration, state, parts.client, generation)
+          return { toolsChanged }
+        },
+        fail: (error) => {
+          if (this.#contexts[key] !== registration) {
+            return
+          }
+          void this.#events.emit('context:failed', { key, error }).catch(() => {})
+          // Listeners run synchronously and may have removed (and re-added) the key.
+          if (this.#contexts[key] !== registration) {
+            return
+          }
+          void this.remove(key, 'lost').catch(() => {})
+        },
+        emit: (name, payload) => {
+          // ReconnectEvents is a subset of HostEvents.
+          void this.#events.emit(name, payload as HostEvents[typeof name]).catch(() => {})
+        },
+      },
+    })
+  }
+
+  /** Ends the current client's context span and detaches its host listeners. */
+  #detachClient(key: string, reason: TerminationReason): void {
+    this.#contextSettlers.get(key)?.(reason)
+    this.#contextSettlers.delete(key)
+    for (const unsubscribe of this.#subscriptionUnsubscribes.get(key) ?? []) {
+      unsubscribe()
+    }
+    this.#subscriptionUnsubscribes.delete(key)
+  }
+
+  /** The reconnect generation of a registration (`undefined` without reconnect). */
+  #generationOf(registration: HostedContext): number | undefined {
+    return this.#registrations.get(registration)?.controller?.generation
+  }
+
+  /**
+   * Whether `registration` is still the key's, `client` still its current client and no loss
+   * happened since `generation` was read.
+   */
+  #owns(
+    key: string,
+    registration: HostedContext,
+    client: ContextClient,
+    generation: number | undefined,
+  ): boolean {
+    return (
+      this.#contexts[key] === registration &&
+      registration.client === client &&
+      this.#generationOf(registration) === generation
+    )
+  }
+
+  #stateOf(registration: HostedContext): RegistrationState {
+    // Every registration gets its state in `#register`.
+    return this.#registrations.get(registration) as RegistrationState
+  }
+
+  /**
+   * Reports that `client`, the current client of `key`, lost its connection. A context armed for
+   * reconnect is rebuilt; any other is removed. Reports for a client that is not current are
+   * ignored.
+   */
+  // biome-ignore lint/style/useConsistentMemberAccessibility: subclasses must access this protected hook
+  protected reportLoss(key: string, client: ContextClient, error: Error): void {
+    const registration = this.#contexts[key]
+    if (registration == null || registration.client !== client) {
+      return
+    }
+    const controller = this.#registrations.get(registration)?.controller
+    if (controller?.armed) {
+      controller.lose(controller.generation, error)
+      return
+    }
+    void this.remove(key, 'lost').catch((cause: unknown) => {
+      const failure = cause instanceof Error ? cause : new Error(String(cause))
+      void this.#events.emit('context:failed', { key, error: failure }).catch(() => {})
+    })
+  }
+
+  /**
+   * Whether `key`'s reconnect is armed: added with `reconnect` and set up, so a loss reported
+   * through {@link reportLoss} rebuilds it instead of removing it.
+   */
+  // biome-ignore lint/style/useConsistentMemberAccessibility: subclasses must access this protected hook
+  protected isReconnectArmed(key: string): boolean {
+    const registration = this.#contexts[key]
+    return registration != null && this.#registrations.get(registration)?.controller?.armed === true
+  }
+
+  /**
+   * A transport reported its connection lost. Only a context armed for reconnect acts on it;
+   * any other keeps today's behaviour (the next request fails on its own).
+   */
+  #reportConnectionLoss(key: string, client: ContextClient, error: Error): void {
+    const registration = this.#contexts[key]
+    if (registration == null || registration.client !== client) {
+      return
+    }
+    if (this.#registrations.get(registration)?.controller?.armed) {
+      this.reportLoss(key, client, error)
+    }
   }
 
   getContextKeys(): Array<string> {
@@ -578,13 +568,10 @@ export class ContextHost extends Disposer {
       ...hostedParams,
       elicit: this.createElicitHandler({ key, elicit }),
     })
-    this.#contexts[key] = context as unknown as HostedContext
-    this.#wireContextSubscriptions(
-      key,
-      context.client as unknown as ContextClient,
-      params.transport instanceof HTTPTransport ? 'http' : 'direct',
-      params.transport instanceof HTTPTransport ? params.transport : undefined,
-    )
+    this.#register(key, context as unknown as HostedContext, {
+      transport: params.transport instanceof HTTPTransport ? 'http' : 'direct',
+      httpTransport: params.transport instanceof HTTPTransport ? params.transport : undefined,
+    })
     return context.client
   }
 
@@ -596,18 +583,37 @@ export class ContextHost extends Disposer {
       throw new Error(`Context ${key} already exists`)
     }
 
-    const transports = new DirectTransports<ServerMessage, ClientMessage>()
-    const server = new ContextServer({ ...config, transport: transports.server })
-    return this.createContext({
-      key,
-      transport: transports.client,
-      tools,
-      protocolVersion,
-      elicit,
-      dispose: async () => {
-        await Promise.all([server.dispose(), transports.client.dispose()])
-      },
+    // One generation: a fresh transport pair and server from the same `config`.
+    const build = (initialTools?: Array<ContextTool>): HostedContext<T> => {
+      const transports = new DirectTransports<ServerMessage, ClientMessage>()
+      const server = new ContextServer({ ...config, transport: transports.server })
+      return createHostedContext<T>({
+        transport: transports.client,
+        tools: initialTools,
+        protocolVersion,
+        elicit: this.createElicitHandler({ key, elicit }),
+        dispose: async () => {
+          await Promise.all([server.dispose(), transports.client.dispose()])
+        },
+      })
+    }
+    const options = resolveReconnectOptions(params.reconnect)
+    const context = build(tools)
+    this.#register(key, context as unknown as HostedContext, {
+      transport: 'direct',
+      reconnect:
+        options == null
+          ? undefined
+          : {
+              options,
+              factory: async () => {
+                const { client, disposer } = build()
+                return { client: client as unknown as ContextClient, disposer }
+              },
+            },
     })
+    void this.#events.emit('context:added', { key }).catch(() => {})
+    return context.client
   }
 
   /**
@@ -650,28 +656,48 @@ export class ContextHost extends Disposer {
     // named in exactly one place. Spelling it a second time is the literal-as-capability
     // pattern this revision's work set out to remove, and a one-sided change to it would be a
     // behaviour difference between two entry points that read as siblings.
-    const transport = new HTTPTransport({
-      url,
-      headers,
-      auth,
-      timeout,
-      fetchMiddleware,
-      runtime,
-    })
-    const context = createHostedContext<T>({
-      transport: transport as ClientTransport,
-      protocolVersion,
-      elicit: this.createElicitHandler({ key, elicit }),
-    })
+    // One generation: a new transport and client from the same params (`'auto'` re-probes).
+    const build = (interactive?: boolean) => {
+      const transport = new HTTPTransport({
+        url,
+        headers,
+        auth,
+        timeout,
+        fetchMiddleware,
+        runtime,
+        interactive,
+      })
+      const context = createHostedContext<T>({
+        transport: transport as ClientTransport,
+        protocolVersion,
+        elicit: this.createElicitHandler({ key, elicit }),
+      })
+      return { transport, context }
+    }
+    const options = resolveReconnectOptions(params.reconnect)
+    const { transport, context } = build()
 
-    this.#contexts[key] = context as unknown as HostedContext
-    this.#wireContextSubscriptions(
-      key,
-      context.client as unknown as ContextClient,
-      'http',
-      transport,
+    this.#register(key, context as unknown as HostedContext, {
+      transport: 'http',
+      httpTransport: transport,
       url,
-    )
+      reconnect:
+        options == null
+          ? undefined
+          : {
+              options,
+              // Candidates never open a sign-in; the commit makes the winner interactive.
+              factory: async () => {
+                const candidate = build(false)
+                return {
+                  client: candidate.context.client as unknown as ContextClient,
+                  disposer: candidate.context.disposer,
+                  transport: candidate.transport,
+                }
+              },
+            },
+    })
+    void this.#events.emit('context:added', { key }).catch(() => {})
 
     return context.client
   }
@@ -691,87 +717,27 @@ export class ContextHost extends Disposer {
     transport: ContextTransport = 'direct',
     httpTransport?: HTTPTransport,
     url?: string,
-  ): void {
-    const network = networkInfo(transport, url)
-    const span = getMokeiTracer('host').startSpan(
-      'mcp.context',
-      {
-        attributes: {
-          'mokei.kind': 'context',
-          'mokei.root': true,
-          'mokei.context.id': key,
-          'mokei.context.transport': transport,
-          ...(network === undefined
-            ? {}
-            : {
-                'network.transport': network.transport,
-                ...(network.protocolName === undefined
-                  ? {}
-                  : { 'network.protocol.name': network.protocolName }),
-                ...(network.serverAddress === undefined
-                  ? {}
-                  : { 'server.address': network.serverAddress }),
-                ...(network.serverPort === undefined ? {} : { 'server.port': network.serverPort }),
-              }),
-        },
-      },
-      ROOT_CONTEXT,
-    )
-    client.setTracing({
-      contextID: key,
-      contextSpan: span,
+    reconnect?: { link?: SpanContext; attempt: number },
+  ): SpanContext {
+    const span = startContextSpan({
+      key,
+      client,
+      transport,
+      httpTransport,
+      url,
       payloads: this.#payloads,
-      ...(this.#parentFrom === undefined ? {} : { parentFrom: this.#parentFrom }),
-      getSessionID: () => httpTransport?.sessionID ?? undefined,
-      getProtocolVersion: () => currentProtocolVersion(client),
-      network,
+      parentFrom: this.#parentFrom,
+      reconnect,
     })
-    const initialVersion = currentProtocolVersion(client)
-    if (initialVersion !== undefined) span.setAttribute('mcp.protocol.version', initialVersion)
-    if (client.initializationResult != null)
-      span.setAttribute('mokei.server.name', client.initializationResult.serverInfo.name)
-    let settled = false
-    const startedAt = performance.now()
-    this.#contextSettlers.set(key, (reason) => {
-      if (settled) return
-      settled = true
-      client.endTracing(reason)
-      if (mcpMetricsEnabled())
-        recordMCPSession({
-          durationS: (performance.now() - startedAt) / 1000,
-          attributes: metricAttributes({
-            ...(network === undefined
-              ? {}
-              : {
-                  'network.transport': network.transport,
-                  'network.protocol.name': network.protocolName,
-                  'server.address': network.serverAddress,
-                  'server.port': network.serverPort,
-                }),
-            'mcp.protocol.version': currentProtocolVersion(client),
-            ...(reason === 'lost' ? { 'error.type': 'context.lost' } : {}),
-          }),
-        })
-      if (httpTransport?.sessionID != null)
-        span.setAttribute('mcp.session.id', httpTransport.sessionID)
-      if (reason === 'lost') endSpanError(span, 'context.lost')
-      else span.end()
-    })
+    this.#contextSettlers.set(key, span.settle)
     const unsubscribes = [
-      client.events.on('initialized', ({ serverInfo }) => {
-        if (settled) return
-        span.setAttribute('mokei.server.name', serverInfo.name)
-        const version = currentProtocolVersion(client)
-        if (version !== undefined) span.setAttribute('mcp.protocol.version', version)
-        if (httpTransport?.sessionID != null)
-          span.setAttribute('mcp.session.id', httpTransport.sessionID)
-      }),
-      client.events.on('closed', () => {
-        if (this.#contexts[key]?.client === client)
-          void this.remove(key, 'lost').catch((cause: unknown) => {
-            const error = cause instanceof Error ? cause : new Error(String(cause))
-            void this.#events.emit('context:failed', { key, error }).catch(() => {})
-          })
+      client.events.on('initialized', span.onInitialized),
+      client.events.on('closed', ({ error }) => {
+        this.reportLoss(
+          key,
+          client,
+          error ?? new TransportClosedError({ message: 'Context client closed' }),
+        )
       }),
       client.events.on('toolsListChanged', () => {
         void this.#onListChanged(key, 'tools')
@@ -789,7 +755,15 @@ export class ContextHost extends Disposer {
         void this.#events.emit('elicitation:complete', { key, elicitationId }).catch(() => {})
       }),
     ]
+    if (httpTransport != null) {
+      unsubscribes.push(
+        httpTransport.connectionEvents.on('connection', (event) => {
+          this.#reportConnectionLoss(key, client, connectionLossError(event))
+        }),
+      )
+    }
     this.#subscriptionUnsubscribes.set(key, unsubscribes)
+    return span.spanContext
   }
 
   /**
@@ -801,22 +775,25 @@ export class ContextHost extends Disposer {
    * a frame was in flight.
    */
   async #onListChanged(key: string, kind: 'tools' | 'prompts' | 'resources'): Promise<void> {
-    const ctx = this.#contexts[key]
-    if (ctx == null) {
+    const registration = this.#contexts[key]
+    if (registration == null) {
       return
     }
+    const client = registration.client
+    const generation = this.#generationOf(registration)
     try {
       if (kind === 'tools') {
         await this.#refreshContextTools(key)
       } else if (kind === 'prompts') {
-        await ctx.client.listPrompts()
+        await client.listPrompts()
       } else {
-        await ctx.client.listResources()
+        await client.listResources()
       }
     } catch {
       // Best-effort re-list; still emit the change signal below.
     }
-    if (this.#contexts[key] == null) {
+    // Removed, re-added or reconnected meanwhile: the signal belongs to a client that is gone.
+    if (!this.#owns(key, registration, client, generation)) {
       return
     }
     void this.#events.emit(`${kind}:changed`, { key }).catch(() => {})
@@ -828,39 +805,50 @@ export class ContextHost extends Disposer {
    * server no longer advertises.
    */
   async #refreshContextTools(key: string): Promise<void> {
-    const ctx = this.#contexts[key]
-    if (ctx == null) {
+    const registration = this.#contexts[key]
+    if (registration == null) {
       return
     }
-    const { tools } = await ctx.client.listTools()
-    if (this.#contexts[key] == null) {
+    const client = registration.client
+    const generation = this.#generationOf(registration)
+    const { tools } = await client.listTools()
+    if (!this.#owns(key, registration, client, generation)) {
       return
     }
-    const previous = new Map(ctx.tools.map((ct) => [ct.tool.name, ct]))
-    ctx.tools = tools.map((tool: Tool) => {
-      const prior = previous.get(tool.name)
-      const contextTool: ContextTool = {
-        id: getContextToolID(key, tool.name),
-        tool,
-        enabled: prior?.enabled ?? true,
-      }
-      if (prior?.allow != null) {
-        contextTool.allow = prior.allow
-      }
-      return contextTool
-    })
+    registration.tools = mergeContextTools(key, registration.tools, tools)
   }
 
   async setup(params: SetupParams): Promise<Array<ContextTool>> {
     const { key, enableTools = true, ...listOptions } = params
-    const context = this.getContext(key)
-    const { tools } = await context.client.listTools(listOptions).catch((err: unknown) => {
+    const registration = this.getContext(key)
+    const controller = this.#registrations.get(registration)?.controller
+    if (controller?.armed && controller.state === 'reconnecting') {
+      return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
+    }
+    const client = registration.client
+    const generation = controller?.generation
+    // Lost (and maybe rebuilt) while this setup awaited: its result belongs to a gone client.
+    const superseded = () => controller != null && controller.generation !== generation
+    let tools: Array<Tool>
+    try {
+      ;({ tools } = await client.listTools(listOptions))
+    } catch (err) {
       // If the context was removed while listTools was in flight, surface a clear error.
-      if (this.#contexts[key] !== context) {
-        throw new Error(`Context ${key} was removed during setup`)
+      if (this.#contexts[key] !== registration) {
+        throw new Error(`Context ${key} was removed during setup`, { cause: err })
+      }
+      if (superseded()) {
+        return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
       }
       throw err
-    })
+    }
+    // Check before handing consumer code the tools: a superseded discovery is never shown.
+    if (this.#contexts[key] !== registration) {
+      throw new Error(`Context ${key} was removed during setup`)
+    }
+    if (registration.client !== client || superseded()) {
+      return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
+    }
     const enabledTools = typeof enableTools === 'function' ? await enableTools(tools) : enableTools
     const contextTools = tools.map((tool: Tool) => {
       const enabled =
@@ -868,11 +856,39 @@ export class ContextHost extends Disposer {
       return { id: getContextToolID(key, tool.name), tool, enabled }
     })
     // The context may have been removed while listTools / enableTools awaited.
-    if (this.#contexts[key] !== context) {
+    if (this.#contexts[key] !== registration) {
       throw new Error(`Context ${key} was removed during setup`)
     }
-    context.tools = contextTools
+    if (registration.client !== client || superseded()) {
+      return await this.#currentToolsAfterReconnect(key, registration, controller, listOptions)
+    }
+    registration.tools = contextTools
+    controller?.arm()
     return contextTools
+  }
+
+  /** Waits out a reconnect, then returns the registration's tools as they are now. */
+  async #currentToolsAfterReconnect(
+    key: string,
+    registration: HostedContext,
+    controller: ReconnectController | undefined,
+    options: { signal?: AbortSignal; timeout?: number },
+  ): Promise<Array<ContextTool>> {
+    if (controller != null && controller.state === 'reconnecting') {
+      const budget = Math.min(controller.gateTimeoutMs, options.timeout ?? Number.POSITIVE_INFINITY)
+      try {
+        await controller.waitForGate({ signal: options.signal, deadline: Date.now() + budget })
+      } catch (err) {
+        if (this.#contexts[key] !== registration) {
+          throw new Error(`Context ${key} was removed during setup`, { cause: err })
+        }
+        throw err
+      }
+    }
+    if (this.#contexts[key] !== registration) {
+      throw new Error(`Context ${key} was removed during setup`)
+    }
+    return registration.tools
   }
 
   async remove(key: string, reason: TerminationReason = 'stopped'): Promise<void> {
@@ -883,26 +899,55 @@ export class ContextHost extends Disposer {
     // Delete before the async dispose so a concurrent remove/dispose (e.g. an
     // onExit reap racing a user remove) sees null and exits -- no double removal.
     delete this.#contexts[key]
-    this.#contextSettlers.get(key)?.(reason)
-    this.#contextSettlers.delete(key)
-
-    // Tear down the client subscription-event listeners (SEP-1391) before disposing the client.
-    for (const unsubscribe of this.#subscriptionUnsubscribes.get(key) ?? []) {
-      unsubscribe()
-    }
-    this.#subscriptionUnsubscribes.delete(key)
+    // Stops a reconnect in flight: no swap, no events, gate waiters fail.
+    this.#registrations
+      .get(ctx)
+      ?.controller?.abort(new Error(`Context ${key} was removed (${reason})`))
+    // Settle the context span and tear down the client subscription-event listeners (SEP-1391)
+    // before disposing the client. A context lost mid-reconnect has neither left.
+    this.#detachClient(key, reason)
 
     await ctx.disposer.dispose()
     void this.#events.emit('context:removed', { key }).catch(() => {})
+  }
+
+  /**
+   * Subscribes to a resource's updates (`2026-07-28`). Resolves once the server acknowledges it;
+   * only then is the URI recorded, so a context added with `reconnect` subscribes to it again on
+   * each new connection. Changes for one context run one at a time, in call order.
+   */
+  subscribeResource(params: ContextResourceSubscriptionParams): Promise<void> {
+    const { key, uri, signal } = params
+    return this.#subscriptions.subscribe(key, this.getContext(key), uri, signal)
+  }
+
+  /**
+   * Unsubscribes from a resource's updates. The URI stops being restored at once, even while a
+   * restoration is running; if the server refuses the change the URI is kept, as the client keeps
+   * it, and the call rejects.
+   */
+  unsubscribeResource(params: ContextResourceSubscriptionParams): Promise<void> {
+    const { key, uri, signal } = params
+    return this.#subscriptions.unsubscribe(key, this.getContext(key), uri, signal)
   }
 
   getPrompt<T extends ContextTypes = UnknownContextTypes>(
     params: ContextPromptParams<T>,
   ): Promise<GetPromptResult> {
     const { key, elicit, ...promptParams } = params
-    return this.getContext<T>(key).client.getPrompt({
-      ...(promptParams as PromptParams<T>),
-      elicit: this.#perCallElicit(key, elicit),
+    const registration = this.getContext<T>(key)
+    const send = (client: ContextClient<T>, timeout: number | undefined) =>
+      client.getPrompt({
+        ...(promptParams as PromptParams<T>),
+        ...(timeout === undefined ? {} : { timeout }),
+        elicit: this.#perCallElicit(key, elicit),
+      })
+    const controller = this.#registrations.get(registration as unknown as HostedContext)?.controller
+    if (controller == null) {
+      return send(registration.client, promptParams.timeout)
+    }
+    return this.#gated(key, registration as unknown as HostedContext, controller, promptParams, {
+      send: send as unknown as GatedSend<GetPromptResult>,
     })
   }
 
@@ -910,9 +955,38 @@ export class ContextHost extends Disposer {
     params: ContextToolParams<T>,
   ): Promise<CallToolResult> {
     const { key, elicit, ...toolParams } = params
-    return this.getContext<T>(key).client.callTool({
-      ...(toolParams as ToolParams<T>),
-      elicit: this.#perCallElicit(key, elicit),
+    const registration = this.getContext<T>(key)
+    const send = (client: ContextClient<T>, timeout: number | undefined) =>
+      client.callTool({
+        ...(toolParams as ToolParams<T>),
+        ...(timeout === undefined ? {} : { timeout }),
+        elicit: this.#perCallElicit(key, elicit),
+      })
+    const controller = this.#registrations.get(registration as unknown as HostedContext)?.controller
+    if (controller == null) {
+      return send(registration.client, toolParams.timeout)
+    }
+    return this.#gated(key, registration as unknown as HostedContext, controller, toolParams, {
+      send: send as unknown as GatedSend<CallToolResult>,
+      toolName: toolParams.name as string,
+    })
+  }
+
+  /** Runs a request through the reconnect gate (see `runGated`). */
+  #gated<R>(
+    key: string,
+    registration: HostedContext,
+    controller: ReconnectController,
+    options: { signal?: AbortSignal; timeout?: number },
+    request: { send: GatedSend<R>; toolName?: string },
+  ): Promise<R> {
+    return runGated({
+      key,
+      registration,
+      controller,
+      isRegistered: () => this.#contexts[key] === registration,
+      options,
+      request,
     })
   }
 
@@ -940,6 +1014,12 @@ export class ContextHost extends Disposer {
       timeout,
       traceAttributes,
       elicit,
+    }).catch((error: unknown) => {
+      // The agent path sees an unavailable context as a tool error, like a failing local tool.
+      if (error instanceof ContextUnavailableError) {
+        return { isError: true, content: [{ type: 'text' as const, text: error.message }] }
+      }
+      throw error
     })
   }
 

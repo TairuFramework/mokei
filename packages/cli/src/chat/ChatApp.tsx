@@ -147,6 +147,31 @@ export function ChatApp<T extends ProviderTypes>(props: ChatAppProps<T>) {
       },
       { signal: controller.signal },
     )
+    session.contextHost.events.on(
+      'context:reconnecting',
+      ({ key, attempt }) => {
+        pushEntry({
+          kind: 'notice',
+          variant: 'info',
+          text: `Reconnecting ${key} (attempt ${attempt})…`,
+        })
+      },
+      { signal: controller.signal },
+    )
+    session.contextHost.events.on(
+      'context:reconnected',
+      ({ key }) => {
+        pushEntry({ kind: 'notice', variant: 'success', text: `Reconnected ${key}` })
+      },
+      { signal: controller.signal },
+    )
+    session.contextHost.events.on(
+      'resource:subscription-lost',
+      ({ key, uri }) => {
+        pushEntry({ kind: 'notice', variant: 'error', text: `Lost subscription ${uri} on ${key}` })
+      },
+      { signal: controller.signal },
+    )
     return () => controller.abort()
   }, [session, pushEntry])
 

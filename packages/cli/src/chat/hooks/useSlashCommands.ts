@@ -129,7 +129,13 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
               break
             }
             try {
-              const tools = await addContext({ key, command, args: cmdArgs, protocolVersion })
+              const tools = await addContext({
+                key,
+                command,
+                args: cmdArgs,
+                protocolVersion,
+                reconnect: true,
+              })
               pushEntry({
                 kind: 'notice',
                 variant: 'success',
@@ -221,7 +227,13 @@ export function useSlashCommands(params: UseSlashCommandsParams): (raw: string) 
                   })
                 : undefined
             try {
-              const tools = await addHTTPContext({ key, url, protocolVersion, fetchMiddleware })
+              const tools = await addHTTPContext({
+                key,
+                url,
+                protocolVersion,
+                fetchMiddleware,
+                reconnect: true,
+              })
               pushEntry({
                 kind: 'notice',
                 variant: 'success',

@@ -216,6 +216,43 @@ never filtered by the caller's scopes, so step-up can unlock any entry. The clie
 union of configured, held and challenged scopes, then retries once. It records
 `StoredTokens.requestedScopes` so refreshes keep the wider set.
 
+### Context reconnect
+
+`reconnect?: boolean | ReconnectOptions` on `add*Context` (and the `Session` equivalents) opts a
+context in; off keeps today's behaviour, except HTTP and direct contexts now emit `context:added`.
+Defaults: `maxAttempts` 5, `initialDelayMs` 250, `maxDelayMs` 5 000 (doubling, full jitter),
+`gateTimeoutMs` 10 000. Stdio contexts take `LocalReconnectOptions` with `respawn`, which may
+return new spawn params or `false`; a `ReconnectDeclinedError` from the factory gives up at once.
+
+A `ReconnectController` per registration arms only when `setup()` commits tools on a still-current
+registration. Loss is classified only from the `TRANSPORT_FAILURE` brand (read with
+`transportFailureOf`, exported from `@mokei/context-client` and re-exported by
+`@mokei/http-client`), `TransportClosedError` and transport or stdio events, never from message
+text. `HTTPTransport` fires `connectionEvents` (`failed`, `session-expired`) and
+`dispose({ terminateSession })` sends the session `DELETE` by default; the host passes
+`{ terminateSession: false }` only when the loss is a session expiry, since the server already
+dropped the session. Every async step
+re-checks ownership (registration current, captured client current, generation unchanged) after
+each await; a step that lost ownership disposes what it built and publishes nothing.
+
+While a reconnect runs, host calls wait at a gate (`gateTimeoutMs`) and fail with
+`ContextUnavailableError`. When the reconnect ends for good, waiting calls reject with
+`ContextUnavailableError` whose `cause` is the terminal error (`ReconnectExhaustedError`, or
+`AuthRequiredError`), and that terminal error is what `context:failed` carries.
+`callNamespacedTool` turns `ContextUnavailableError` into an error tool result. Events:
+`context:reconnecting`, `context:reconnected`, `tools:changed` when the tool list differs, and
+terminally `context:failed` once then `context:removed` once. A client captured before a reconnect
+is stale and not gated; `getContext(key).client` is always current. Tasks in flight reject with
+`TaskInterruptedError`.
+
+The host records desired resource subscriptions (`subscribeResource`, `unsubscribeResource`) and
+restores them one at a time on the new client after the gate opens. A URI the server refuses, or
+whose server lacks `resources.subscribe`, is dropped with `resource:subscription-lost`.
+Reconnect attempts, restoration requests and lost-generation teardown are non-interactive: no
+`handler.authorize` and no scope step-up, so a server that needs sign-in ends the reconnect with
+`context:failed` (`AuthRequiredError`). The CLI chat prints notices for reconnecting, reconnected,
+failed and lost-subscription events.
+
 ---
 
 ## API Conventions
