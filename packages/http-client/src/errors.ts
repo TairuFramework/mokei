@@ -60,7 +60,22 @@ function redactURL(url: string): string {
 
 /** Replaces every URL in a message with its origin: paths and queries can carry credentials. */
 function redactURLs(message: string): string {
-  return message.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, redactURL)
+  // Everything up to whitespace belongs to the URL: apostrophes, quotes and brackets are valid
+  // in a path or query, so no character is trusted as a boundary.
+  return message.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, redactURL)
+}
+
+/**
+ * A copy of `cause` safe to keep: same name, redacted message, a stack that is only the header,
+ * and no nested cause. The raw error can hold the full URL in its message, stack or cause chain.
+ */
+function sanitizeCause(cause: unknown): unknown {
+  if (!(cause instanceof Error))
+    return cause == null ? undefined : new Error(redactURLs(String(cause)))
+  const copy = new Error(redactURLs(cause.message))
+  copy.name = cause.name
+  copy.stack = `${copy.name}: ${copy.message}`
+  return copy
 }
 
 /**
@@ -78,7 +93,7 @@ export class NetworkError extends Error {
     const { url, cause } = params
     super(
       `Network request to ${redactURL(url)} failed${cause instanceof Error ? `: ${redactURLs(cause.message)}` : ''}`,
-      { cause },
+      { cause: sanitizeCause(cause) },
     )
     this.name = 'NetworkError'
     this.#url = url

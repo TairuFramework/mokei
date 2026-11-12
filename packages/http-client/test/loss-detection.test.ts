@@ -2,7 +2,7 @@ import { transportFailureOf } from '@mokei/context-client'
 import { createRuntime } from '@sozai/runtime'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { AuthRequiredError } from '../src/errors.js'
+import { AuthRequiredError, NetworkError } from '../src/errors.js'
 import { type FetchLike, type FetchMiddleware, HTTPTransport } from '../src/transport.js'
 
 const URL_MCP = 'https://example.test/mcp'
@@ -205,6 +205,49 @@ describe('connection loss detection', () => {
     expect(value.error).toMatchObject({ code: -32000, message: 'revoked', data: { a: 1 } })
     expect(events).toEqual([])
     await transport.dispose()
+  })
+
+  test.each([
+    ['an array', [1, 'a']],
+    ['a string', 'text'],
+    ['a number', 5],
+    ['null', null],
+    ['an object', { a: 1 }],
+    ['absent', undefined],
+  ])('a 401 keeps %s server data exactly and still brands http 401', async (_name, data) => {
+    const error: Record<string, unknown> = { code: -32000, message: 'revoked' }
+    if (data !== undefined) error.data = data
+    const { transport, send, frame } = setup(async () =>
+      json({ jsonrpc: '2.0', id: 1, error }, 401),
+    )
+    await send(1)
+    const value = await frame()
+    expect(transportFailureOf(value.error)).toEqual({ kind: 'http', status: 401 })
+    if (data === undefined) expect(value.error).not.toHaveProperty('data')
+    else expect(value.error?.data).toEqual(data)
+    await transport.dispose()
+  })
+
+  test('URLs with apostrophes are redacted from the message and toString', () => {
+    const url = "https://example.test/api/s/'SECRETPATH/mcp?api_key=SECRETQUERY"
+    const error = new NetworkError({ url, cause: new TypeError(`fetch failed ${url}`) })
+    expect(error.message).not.toContain('SECRET')
+    expect(String(error)).not.toContain('SECRET')
+  })
+
+  test('inspecting the error never shows URL secrets, even in nested causes', async () => {
+    const util = 'node:util'
+    const { inspect } = (await import(util)) as {
+      inspect: (value: unknown, opts: object) => string
+    }
+    const url = 'https://example.test/api/s/SECRETPATH/mcp?api_key=SECRETQUERY'
+    const inner = new Error(`inner ${url}`)
+    const cause = new TypeError(`fetch failed ${url}`, { cause: inner })
+    const error = new NetworkError({ url, cause })
+    expect(inspect(error, { depth: 10 })).not.toContain('SECRET')
+    expect((error.cause as Error).name).toBe('TypeError')
+    expect((error.cause as Error).message).toContain('https://example.test')
+    expect(error.url).toBe(url)
   })
 
   test('the MCP URL secret never reaches the error message or the JSON-RPC error text', async () => {

@@ -25,6 +25,11 @@ export function brandTransportFailure<T extends Record<PropertyKey, unknown>>(
 }
 
 function readBrand(error: unknown): TransportFailure | undefined {
+  // A brand on the error body itself (carried server errors keep their `data` untouched).
+  const own = (error as Record<PropertyKey, unknown> | null | undefined)?.[TRANSPORT_FAILURE]
+  if (own != null) {
+    return own as TransportFailure
+  }
   const data = (error as RPCError | null | undefined)?.data
   if (typeof data !== 'object' || data == null) {
     return undefined

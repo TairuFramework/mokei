@@ -4,6 +4,7 @@ import {
   brandTransportFailure,
   ContextClient,
   type ContextTypes,
+  TRANSPORT_FAILURE,
   type TransportFailure,
   type UnknownContextTypes,
 } from '@mokei/context-client'
@@ -60,20 +61,16 @@ const INTERNAL_ERROR_CODE = -32603
  */
 /**
  * Brands a copy of a carried JSON-RPC error with local transport evidence (the HTTP status). The
- * server's `code`, `message` and `data` are kept; the brand is a symbol key no server can send.
+ * server's `code`, `message` and `data` are kept exactly as sent; the brand is a symbol key on
+ * the error object itself, which no server can send and which never touches `data`.
  */
 function brandCarriedError(
   carried: Record<string, unknown>,
   failure: TransportFailure,
 ): Record<string, unknown> {
-  const error = carried.error as Record<string, unknown>
-  const data =
-    error.data == null
-      ? {}
-      : typeof error.data === 'object' && !Array.isArray(error.data)
-        ? { ...(error.data as Record<string, unknown>) }
-        : { value: error.data }
-  return { ...carried, error: { ...error, data: brandTransportFailure(data, failure) } }
+  const error = { ...(carried.error as Record<string, unknown>) }
+  Object.defineProperty(error, TRANSPORT_FAILURE, { value: failure, enumerable: true })
+  return { ...carried, error }
 }
 
 function parseJSONRPCError(

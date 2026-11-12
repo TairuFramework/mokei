@@ -25,13 +25,22 @@ export function isErrorResponse(response: Response): response is ErrorResponse {
   )
 }
 
+/** Same key as `TRANSPORT_FAILURE` in `@mokei/context-client`. */
+const TRANSPORT_FAILURE_KEY = Symbol.for('dev.mokei/transport-failure')
+
 export class RPCError extends Error {
   static fromResponse(response: ErrorResponse): RPCError {
-    return new RPCError({
+    const error = new RPCError({
       code: response.error.code,
       message: response.error.message,
       data: response.error.data,
     })
+    // A local transport brands the error body (not its `data`, which stays as the server sent it).
+    const brand = (response.error as Record<PropertyKey, unknown>)[TRANSPORT_FAILURE_KEY]
+    if (brand != null) {
+      Object.defineProperty(error, TRANSPORT_FAILURE_KEY, { value: brand, enumerable: false })
+    }
+    return error
   }
 
   #code: number
