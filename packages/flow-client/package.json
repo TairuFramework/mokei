@@ -1,6 +1,6 @@
 {
   "name": "@mokei/flow-client",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Mokei flow client: portable flow control interface, types and errors for the flow daemon",
   "keywords": [
     "model",

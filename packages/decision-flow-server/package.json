@@ -1,6 +1,6 @@
 {
   "name": "@mokei/decision-flow-server",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Mokei decision flow MCP server",
   "keywords": [
     "model",

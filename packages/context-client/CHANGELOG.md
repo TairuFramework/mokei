@@ -1,5 +1,15 @@
 # @mokei/context-client
 
+## 0.16.1
+
+### Patch Changes
+
+- Reconnect lost contexts. `reconnect: true | ReconnectOptions` on `addLocalContext`, `addHTTPContext`, `addDirectContext` and the session equivalents rebuilds a context after a transport loss, with backoff, a call gate (`ContextUnavailableError`, whose `cause` is the terminal `ReconnectExhaustedError` or `AuthRequiredError`), `context:reconnecting`, `context:reconnected`, `context:failed`, `context:removed` and `resource:subscription-lost` events, and restoration of resource subscriptions. Stdio contexts accept `respawn` to change spawn params per loss. `HTTPTransport` emits connection events and `dispose({ terminateSession })`, an interrupted task rejects with `TaskInterruptedError`, and the CLI chat shows reconnect notices. Reconnect is off by default; HTTP and direct contexts now emit `context:added`.
+
+- Route `2026-07-28` elicitations to a per-call handler (`callTool`, `getPrompt`, `readResource`, `waitForTask`; host `callTool`, `callNamespacedTool`, `getPrompt`).
+
+- React Native support and safer HTTP auth: `HTTPTransport`, `addHTTPContext` and `createOAuthMiddleware` take a `@sozai/runtime` `runtime` for `fetch` and random values. An interactive OAuth sign-in no longer runs under the request timeout (new `authorizationTimeout`, default 10 minutes). Credentialed requests never follow redirects. The OAuth client flow runs on `@kokuin/oauth` 0.7.4. New `tracing.payloads: 'never'` keeps content and error message text out of telemetry, and the content-capture environment variable cannot override it.
+
 ## 0.16.0
 
 ### Minor Changes

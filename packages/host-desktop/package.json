@@ -1,6 +1,6 @@
 {
   "name": "@mokei/host-desktop",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Desktop dialogs, notifications and input inbox for Mokei hosts",
   "keywords": [
     "model",

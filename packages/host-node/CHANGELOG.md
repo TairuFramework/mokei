@@ -1,5 +1,17 @@
 # @mokei/host-node
 
+## 0.16.1
+
+### Patch Changes
+
+- Reconnect lost contexts. `reconnect: true | ReconnectOptions` on `addLocalContext`, `addHTTPContext`, `addDirectContext` and the session equivalents rebuilds a context after a transport loss, with backoff, a call gate (`ContextUnavailableError`, whose `cause` is the terminal `ReconnectExhaustedError` or `AuthRequiredError`), `context:reconnecting`, `context:reconnected`, `context:failed`, `context:removed` and `resource:subscription-lost` events, and restoration of resource subscriptions. Stdio contexts accept `respawn` to change spawn params per loss. `HTTPTransport` emits connection events and `dispose({ terminateSession })`, an interrupted task rejects with `TaskInterruptedError`, and the CLI chat shows reconnect notices. Reconnect is off by default; HTTP and direct contexts now emit `context:added`.
+
+- **Behaviour change:** callers that pass `env` must now include `PATH` (and anything else the server needs). The command is looked up with the child's `PATH`, so `command: 'node'` with `env: { API_KEY }` and no `PATH` fails with `ENOENT`.
+
+  Spawn stdio contexts with exactly the given `env`: an explicit `env` is now the child's whole environment and no longer merges with the parent's `process.env`, so daemon variables stop leaking into MCP servers. Omit `env` to inherit the parent environment. On Windows, libuv still adds a few non-sensitive system variables (`PATH`, `TEMP`, `USERPROFILE`, `USERNAME`, `SYSTEMROOT`), and `env` keys that differ only by case can collide.
+
+- React Native support and safer HTTP auth: `HTTPTransport`, `addHTTPContext` and `createOAuthMiddleware` take a `@sozai/runtime` `runtime` for `fetch` and random values. An interactive OAuth sign-in no longer runs under the request timeout (new `authorizationTimeout`, default 10 minutes). Credentialed requests never follow redirects. The OAuth client flow runs on `@kokuin/oauth` 0.7.4. New `tracing.payloads: 'never'` keeps content and error message text out of telemetry, and the content-capture environment variable cannot override it.
+
 ## 0.16.0
 
 ### Minor Changes

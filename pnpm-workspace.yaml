@@ -24,16 +24,16 @@ publicHoistPattern:
 
 catalog:
   '@biomejs/biome': ^2.5.0
-  '@enkaku/client': ^0.23.2
-  '@enkaku/http-fetch': ^0.23.2
-  '@enkaku/http-serve': ^0.23.2
-  '@enkaku/node-streams': ^0.23.2
-  '@enkaku/protocol': ^0.23.2
-  '@enkaku/react': ^0.23.2
-  '@enkaku/server': ^0.23.2
-  '@enkaku/socket': ^0.23.2
-  '@enkaku/transport': ^0.23.2
-  '@kokuin/oauth': ^0.7.4
+  '@enkaku/client': ^0.23.3
+  '@enkaku/http-fetch': ^0.23.3
+  '@enkaku/http-serve': ^0.23.3
+  '@enkaku/node-streams': ^0.23.3
+  '@enkaku/protocol': ^0.23.3
+  '@enkaku/react': ^0.23.3
+  '@enkaku/server': ^0.23.3
+  '@enkaku/socket': ^0.23.3
+  '@enkaku/transport': ^0.23.3
+  '@kokuin/oauth': ^0.7.5
   '@kokuin/token': ^0.7.0
   '@logtape/logtape': ^2.4.2
   '@napi-rs/keyring': ^2.1.2
@@ -51,14 +51,14 @@ catalog:
   '@sozai/schema': ^0.1.6
   '@opentelemetry/api': ^1.10.0
   '@opentelemetry/core': ^3.0.0
-  '@opentelemetry/context-async-hooks': ^3.0.0
-  '@opentelemetry/exporter-trace-otlp-http': ^0.300.0
-  '@opentelemetry/sdk-trace': ^3.0.0
-  '@opentelemetry/sdk-metrics': ^3.0.0
-  '@opentelemetry/exporter-metrics-otlp-http': ^0.300.0
-  '@opentelemetry/resources': ^3.0.0
+  '@opentelemetry/context-async-hooks': ^3.1.1
+  '@opentelemetry/exporter-trace-otlp-http': ^0.301.1
+  '@opentelemetry/sdk-trace': ^3.1.1
+  '@opentelemetry/sdk-metrics': ^3.1.1
+  '@opentelemetry/exporter-metrics-otlp-http': ^0.301.1
+  '@opentelemetry/resources': ^3.1.1
   '@sozai/stream': ^0.2.2
-  '@teikyo/oauth': ^0.3.0
+  '@teikyo/oauth': ^0.4.0
   '@standard-schema/spec': ^1.1.0
   '@tejika/cli': ^0.6.1
   '@tejika/db': ^0.5.0
@@ -75,10 +75,10 @@ catalog:
   '@hozon/store-log': ^0.4.1
   '@hozon/store-telemetry': ^0.4.1
   '@inkjs/ui': ^2.0.0
-  '@mantine/code-highlight': ^9.7.5
-  '@mantine/core': ^9.7.5
-  '@mantine/hooks': ^9.7.5
-  '@mantine/notifications': ^9.7.5
+  '@mantine/code-highlight': ^9.8.0
+  '@mantine/core': ^9.8.0
+  '@mantine/hooks': ^9.8.0
+  '@mantine/notifications': ^9.8.0
   '@modelcontextprotocol/client': 2.4.0
   '@modelcontextprotocol/core': 2.4.0
   '@modelcontextprotocol/ext-tasks': 0.2.3
@@ -87,18 +87,18 @@ catalog:
   '@swc/cli': ^0.8.1
   '@swc/core': ^1.15.41
   '@testing-library/react': ^16.3.3
-  '@testing-library/user-event': ^14.6.8
-  '@tabler/icons-react': ^3.50.0
+  '@testing-library/user-event': ^14.6.9
+  '@tabler/icons-react': ^3.51.0
   '@tanstack/react-router': ^1.170.46
   '@tanstack/react-virtual': ^3.14.26
-  '@tanstack/router-devtools': ^1.167.2
-  '@tanstack/router-plugin': ^1.168.48
+  '@tanstack/router-devtools': ^1.167.3
+  '@tanstack/router-plugin': ^1.169.0
   '@types/luxon': ^3.7.6
   '@types/node': ^26.6.6
   '@types/react': ^19.3.0
   '@types/react-dom': ^19.3.0
   '@types/turndown': ^5.0.6
-  '@vitejs/plugin-react': ^6.2.1
+  '@vitejs/plugin-react': ^6.3.0
   '@vitest/ui': ^4.1.9
   ansi-colors: ^4.1.3
   del-cli: ^7.0.0
@@ -106,12 +106,12 @@ catalog:
   execa: ^10.2.1
   get-port: ^7.2.0
   globals: ^17.14.0
-  hono: ^4.13.16
+  hono: ^4.13.18
   ink: ^8.0.0
-  commander: ^15.0.0
+  commander: ^15.1.0
   ink-testing-library: ^4.0.0
-  jotai: ^3.0.1
-  jsdom: ^30.1.3
+  jotai: ^3.0.2
+  jsdom: ^31.0.0
   kysely: ^0.29.8
   ky: ^2.2.0
   luxon: ^3.7.2
@@ -130,7 +130,7 @@ catalog:
   typedoc: ^0.28.20
   typedoc-plugin-markdown: ^4.14.1
   typescript: ^6.0.3
-  vite: ^8.3.6
+  vite: ^8.3.8
   vitest: ^5.1.0
 
 catalogMode: manual

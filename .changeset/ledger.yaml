@@ -50,6 +50,12 @@
   intents:
     - ancient-boxes-invent
     - stack-enkaku-0-23
+"@mokei/context-client@0.16.1":
+  dir: packages/context-client
+  intents:
+    - context-reconnect
+    - per-call-elicitation
+    - rn-runtime-oauth-reuse
 "@mokei/context-protocol@0.11.0":
   dir: packages/context-protocol
   intents:
@@ -81,6 +87,10 @@
     - ancient-boxes-invent
     - calm-heads-check
     - quiet-params-match
+"@mokei/context-protocol@0.16.1":
+  dir: packages/context-protocol
+  intents:
+    - adopt-upstream-gaps
 "@mokei/context-rpc@0.11.0":
   dir: packages/context-rpc
   intents:
@@ -108,6 +118,10 @@
   dir: packages/context-rpc
   intents:
     - stack-enkaku-0-23
+"@mokei/context-rpc@0.16.1":
+  dir: packages/context-rpc
+  intents:
+    - context-reconnect
 "@mokei/context-server-node@0.15.0":
   dir: packages/context-server-node
   intents:
@@ -162,6 +176,10 @@
   intents:
     - ancient-boxes-invent
     - wise-rice-jump
+"@mokei/decision-flow-server@0.16.1":
+  dir: packages/decision-flow-server
+  intents:
+    - adopt-upstream-gaps
 "@mokei/decision-flow@0.15.0":
   dir: packages/decision-flow
   intents:
@@ -173,6 +191,10 @@
   dir: packages/decision-flow
   intents:
     - ancient-boxes-invent
+"@mokei/decision-flow@0.16.1":
+  dir: packages/decision-flow
+  intents:
+    - adopt-upstream-gaps
 "@mokei/flow-client@0.15.0":
   dir: packages/flow-client
   intents:
@@ -223,6 +245,10 @@
   dir: packages/host-monitor
   intents:
     - stack-enkaku-0-23
+"@mokei/host-monitor@0.16.1":
+  dir: packages/host-monitor
+  intents:
+    - adopt-upstream-gaps
 "@mokei/host-node@0.14.0":
   dir: packages/host-node
   intents:
@@ -243,6 +269,12 @@
     - keen-keys-rest
     - sharp-trace-calls
     - stack-enkaku-0-23
+"@mokei/host-node@0.16.1":
+  dir: packages/host-node
+  intents:
+    - context-reconnect
+    - host-node-exact-env
+    - rn-runtime-oauth-reuse
 "@mokei/host-protocol@0.15.0":
   dir: packages/host-protocol
   intents:
@@ -285,6 +317,13 @@
   dir: packages/host
   intents:
     - stack-enkaku-0-23
+"@mokei/host@0.16.1":
+  dir: packages/host
+  intents:
+    - adopt-upstream-gaps
+    - context-reconnect
+    - per-call-elicitation
+    - rn-runtime-oauth-reuse
 "@mokei/http-client@0.11.0":
   dir: packages/http-client
   intents:
@@ -318,6 +357,12 @@
     - keen-keys-rest
     - quiet-params-match
     - stack-enkaku-0-23
+"@mokei/http-client@0.16.1":
+  dir: packages/http-client
+  intents:
+    - context-reconnect
+    - network-error-redaction
+    - rn-runtime-oauth-reuse
 "@mokei/http-server@0.11.0":
   dir: packages/http-server
   intents:
@@ -350,6 +395,10 @@
     - good-cups-shop
     - quiet-params-match
     - stack-enkaku-0-23
+"@mokei/http-server@0.16.1":
+  dir: packages/http-server
+  intents:
+    - adopt-upstream-gaps
 "@mokei/llama-provider@0.15.0":
   dir: packages/llama-provider
   intents:
@@ -409,6 +458,10 @@
   dir: packages/openai-provider
   intents:
     - steady-chats-retry
+"@mokei/openai-provider@0.16.1":
+  dir: packages/openai-provider
+  intents:
+    - openai-streamed-tool-args
 "@mokei/session-node@0.14.0":
   dir: packages/session-node
   intents:
@@ -420,6 +473,10 @@
     - params-objects
     - session-split
     - stack-alignment
+"@mokei/session-node@0.16.1":
+  dir: packages/session-node
+  intents:
+    - context-reconnect
 "@mokei/session@0.11.0":
   dir: packages/session
   intents:
@@ -441,6 +498,11 @@
   dir: packages/session
   intents:
     - steady-chats-retry
+"@mokei/session@0.16.1":
+  dir: packages/session
+  intents:
+    - context-reconnect
+    - rn-runtime-oauth-reuse
 "@mokei/system-one-client@0.14.0":
   dir: packages/system-one-client
   intents:
@@ -476,3 +538,7 @@ mokei@0.16.0:
     - stack-enkaku-0-23
     - steady-chats-retry
     - wise-rice-jump
+mokei@0.16.1:
+  dir: packages/cli
+  intents:
+    - context-reconnect

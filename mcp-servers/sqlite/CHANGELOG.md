@@ -1,5 +1,7 @@
 # @mokei/mcp-sqlite
 
+## 0.16.1
+
 ## 0.16.0
 
 ### Patch Changes

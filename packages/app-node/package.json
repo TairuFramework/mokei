@@ -1,6 +1,6 @@
 {
   "name": "@mokei/app-node",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Mokei Node app foundation: configuration, database and telemetry",
   "keywords": [
     "model",
