@@ -229,12 +229,17 @@ registration. Loss is classified only from the `TRANSPORT_FAILURE` brand (read w
 `transportFailureOf`, exported from `@mokei/context-client` and re-exported by
 `@mokei/http-client`), `TransportClosedError` and transport or stdio events, never from message
 text. `HTTPTransport` fires `connectionEvents` (`failed`, `session-expired`) and
-`dispose({ terminateSession })` skips the session `DELETE` for a lost generation. Every async step
+`dispose({ terminateSession })` sends the session `DELETE` by default; the host passes
+`{ terminateSession: false }` only when the loss is a session expiry, since the server already
+dropped the session. Every async step
 re-checks ownership (registration current, captured client current, generation unchanged) after
 each await; a step that lost ownership disposes what it built and publishes nothing.
 
 While a reconnect runs, host calls wait at a gate (`gateTimeoutMs`) and fail with
-`ContextUnavailableError`; exhausting attempts yields `ReconnectExhaustedError`. Events:
+`ContextUnavailableError`. When the reconnect ends for good, waiting calls reject with
+`ContextUnavailableError` whose `cause` is the terminal error (`ReconnectExhaustedError`, or
+`AuthRequiredError`), and that terminal error is what `context:failed` carries.
+`callNamespacedTool` turns `ContextUnavailableError` into an error tool result. Events:
 `context:reconnecting`, `context:reconnected`, `tools:changed` when the tool list differs, and
 terminally `context:failed` once then `context:removed` once. A client captured before a reconnect
 is stale and not gated; `getContext(key).client` is always current. Tasks in flight reject with
