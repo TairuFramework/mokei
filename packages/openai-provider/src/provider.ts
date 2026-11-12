@@ -32,6 +32,18 @@ export type OpenAIProviderParams = {
   client?: OpenAIClient | OpenAIClientParams
 }
 
+/**
+ * A finished tool call whose `raw` carries the accumulated arguments. `raw` is the first streamed
+ * delta, holding only the first chunk of the arguments, and it is what the next request sends back
+ * as history; a server streaming the arguments in pieces would otherwise get a truncated call.
+ */
+function withRawArguments(call: FunctionToolCall<ToolCall>): FunctionToolCall<ToolCall> {
+  return {
+    ...call,
+    raw: { ...call.raw, function: { ...call.raw.function, arguments: call.arguments } },
+  }
+}
+
 export class OpenAIProvider implements ModelProvider<OpenAITypes> {
   static fromConfig(config: OpenAIConfiguration): OpenAIProvider {
     assertType(validateConfiguration, config)
@@ -83,9 +95,10 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
         for (const toolCall of part.toolCalls) {
           if (toolCall.id != null) {
             if (currentToolCall != null) {
-              toolCalls.push(currentToolCall)
+              toolCalls.push(withRawArguments(currentToolCall))
             }
-            currentToolCall = toolCall
+            // A copy: later deltas append to it, and the streamed parts stay as they were.
+            currentToolCall = { ...toolCall }
           } else if (currentToolCall != null) {
             currentToolCall.arguments += toolCall.arguments
           }
@@ -102,7 +115,7 @@ export class OpenAIProvider implements ModelProvider<OpenAITypes> {
       }
     }
     if (currentToolCall != null) {
-      toolCalls.push(currentToolCall)
+      toolCalls.push(withRawArguments(currentToolCall))
     }
     return {
       source: 'aggregated',

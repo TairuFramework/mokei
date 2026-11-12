@@ -188,6 +188,42 @@ export class ChatDriver {
     return false
   }
 
+  /** Whether the *current* status line is waiting for a tool-call approval. */
+  isAwaitingApproval(): boolean {
+    const s = this.screen()
+    const awaiting = s.lastIndexOf('· awaiting-approval')
+    return (
+      awaiting >
+      Math.max(
+        s.lastIndexOf(`${UI.idle}`),
+        s.lastIndexOf('· streaming'),
+        s.lastIndexOf('· calling-tool'),
+      )
+    )
+  }
+
+  /**
+   * Wait until the turn settles back to idle, denying every tool call the model asks for again
+   * meanwhile: after a denial a model may retry the same call instead of answering. Gives up after
+   * `maxDenials` repeats.
+   */
+  async waitForIdleDenying(timeoutMs: number, maxDenials = 3): Promise<boolean> {
+    const end = Date.now() + timeoutMs
+    let denials = 0
+    while (Date.now() < end) {
+      if (this.isIdle()) return true
+      if (this.isAwaitingApproval()) {
+        if (denials >= maxDenials) return false
+        denials++
+        this.deny()
+        await delay(500)
+        continue
+      }
+      await delay(150)
+    }
+    return false
+  }
+
   /** Wait until the turn settles back to idle. */
   async waitForIdle(timeoutMs: number): Promise<boolean> {
     const end = Date.now() + timeoutMs

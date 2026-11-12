@@ -130,6 +130,38 @@ describe('OpenAIProvider reasoning', () => {
     expect(aggregated.reasoning).toBe('')
     expect(aggregated.toolCalls).toHaveLength(1)
   })
+
+  test('aggregateMessage carries streamed tool-call arguments into the raw call', () => {
+    const provider = new OpenAIProvider()
+    const first: ToolCall = {
+      id: 'call-1',
+      type: 'function',
+      function: { name: 'get', arguments: '{' },
+    }
+    const rest = { function: { arguments: '"url":"https://example.test"}' } } as ToolCall
+    const parts = [
+      {
+        source: 'server',
+        role: 'assistant',
+        toolCalls: [{ name: 'get', arguments: '{', id: 'call-1', raw: first }],
+        raw: chunk({}),
+      },
+      {
+        source: 'server',
+        role: 'assistant',
+        toolCalls: [{ name: undefined, arguments: rest.function.arguments, raw: rest }],
+        raw: chunk({}),
+      },
+    ] as unknown as Array<Parameters<OpenAIProvider['aggregateMessage']>[0][number]>
+    const aggregated = provider.aggregateMessage(parts)
+    const call = aggregated.toolCalls[0]
+    expect(call?.arguments).toBe('{"url":"https://example.test"}')
+    // The raw call is what goes back to the server in the next request's history.
+    expect(call?.raw.function.arguments).toBe('{"url":"https://example.test"}')
+    // The streamed parts are left as they were.
+    expect(first.function.arguments).toBe('{')
+    expect(parts[0]?.toolCalls?.[0]?.arguments).toBe('{')
+  })
 })
 
 describe('OpenAIProvider telemetry', () => {
