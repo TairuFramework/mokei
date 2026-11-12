@@ -229,6 +229,7 @@ export type TypedToolHandler<Arguments, Output = unknown> = (
       | Promise<StructuredToolHandlerReturn<Output> | InputRequiredResult | CreateTaskResult>
 
 export type GenericToolDefinition = {
+  title?: string
   description: string
   inputSchema: ToolInputSchema
   outputSchema?: ToolOutputSchema
