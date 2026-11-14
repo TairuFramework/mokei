@@ -1,5 +1,13 @@
 # @mokei/anthropic-provider
 
+## 0.16.3
+
+### Patch Changes
+
+- Accept a `fetch` implementation in the OpenAI, Anthropic and Ollama client params, used for every request (for example one that rejects redirects). Defaults to the global fetch.
+
+  `AnthropicClient.listModels()` accepts `afterID` and `limit`, and `AnthropicProvider.listModels()` follows pagination to return every model.
+
 ## 0.16.2
 
 ## 0.16.1

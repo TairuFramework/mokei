@@ -6,6 +6,10 @@
   dir: packages/anthropic-provider
   intents:
     - steady-chats-retry
+"@mokei/anthropic-provider@0.16.3":
+  dir: packages/anthropic-provider
+  intents:
+    - provider-client-fetch
 "@mokei/app-node@0.15.0":
   dir: packages/app-node
   intents:
@@ -454,6 +458,10 @@
   dir: packages/ollama-provider
   intents:
     - steady-chats-retry
+"@mokei/ollama-provider@0.16.3":
+  dir: packages/ollama-provider
+  intents:
+    - provider-client-fetch
 "@mokei/openai-provider@0.11.0":
   dir: packages/openai-provider
   intents:
@@ -470,6 +478,10 @@
   dir: packages/openai-provider
   intents:
     - openai-streamed-tool-args
+"@mokei/openai-provider@0.16.3":
+  dir: packages/openai-provider
+  intents:
+    - provider-client-fetch
 "@mokei/session-node@0.14.0":
   dir: packages/session-node
   intents:
