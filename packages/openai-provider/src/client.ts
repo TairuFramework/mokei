@@ -107,7 +107,10 @@ export type ChatParams = RequestParams & {
   providerOptions?: Record<string, unknown>
 }
 
-export type OpenAIClientParams = OpenAIConfiguration
+export type OpenAIClientParams = OpenAIConfiguration & {
+  /** Fetch implementation for every request, e.g. one that rejects redirects. Defaults to the global fetch. */
+  fetch?: typeof fetch
+}
 
 export type { ChatCompletionChunk }
 
@@ -125,6 +128,7 @@ export class OpenAIClient {
     this.#baseURL = params.baseURL ?? DEFAULT_BASE_URL
     this.#api = ky.create({
       prefix: this.#baseURL,
+      fetch: params.fetch,
       timeout: params.timeout ?? DEFAULT_TIMEOUT,
       headers,
     })

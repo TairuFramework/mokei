@@ -79,7 +79,10 @@ export type MessagesParams = RequestParams & {
   providerOptions?: Record<string, unknown>
 }
 
-export type AnthropicClientParams = AnthropicConfiguration
+export type AnthropicClientParams = AnthropicConfiguration & {
+  /** Fetch implementation for every request, e.g. one that rejects redirects. Defaults to the global fetch. */
+  fetch?: typeof fetch
+}
 
 export type { StreamEvent }
 
@@ -100,6 +103,7 @@ export class AnthropicClient {
     this.#baseURL = params.baseURL ?? DEFAULT_BASE_URL
     this.#api = ky.create({
       prefix: this.#baseURL,
+      fetch: params.fetch,
       timeout: params.timeout ?? DEFAULT_TIMEOUT,
       headers,
     })

@@ -115,7 +115,10 @@ export type ChatResponseFinal = {
 
 export type ChatResponse = ChatResponseStreaming | ChatResponseFinal
 
-export type OllamaClientParams = OllamaConfiguration
+export type OllamaClientParams = OllamaConfiguration & {
+  /** Fetch implementation for every request, e.g. one that rejects redirects. Defaults to the global fetch. */
+  fetch?: typeof fetch
+}
 
 export class OllamaClient {
   #api: KyInstance
@@ -125,6 +128,7 @@ export class OllamaClient {
     this.#baseURL = params.baseURL ?? DEFAULT_BASE_URL
     this.#api = ky.create({
       prefix: this.#baseURL,
+      fetch: params.fetch,
       timeout: params.timeout ?? DEFAULT_TIMEOUT,
     })
   }
