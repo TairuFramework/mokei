@@ -69,15 +69,18 @@ function readReleaseAgeExclude() {
     .filter((entry) => entry !== '')
 }
 
-// Public packages: `versioning.fixed` in pnpm-workspace.yaml, which also lists `mokei`.
+// Public packages: every workspace package under packages/ and mcp-servers/ not marked private.
 function readPublicPackageNames() {
-  const text = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
-  const block = text.match(/^versioning:\n {2}fixed:\n((?: {4}.*\n)+)/m)?.[1] ?? ''
-  const names = [...block.matchAll(/'([^']+)'/g)].map((match) => match[1])
-  if (names.length === 0) {
-    throw new Error('No packages found in versioning.fixed')
+  const names = []
+  for (const [name, directory] of findPackageDirectories()) {
+    if (readJSON(join(directory, 'package.json')).private !== true) {
+      names.push(name)
+    }
   }
-  return names
+  if (names.length === 0) {
+    throw new Error('No public workspace packages found')
+  }
+  return names.sort()
 }
 
 function findPackageDirectories() {
