@@ -68,9 +68,17 @@ export class AnthropicProvider implements ModelProvider<AnthropicTypes> {
     return this.#telemetry
   }
 
+  /** Lists every model, following `has_more` / `last_id` across pages. */
   async listModels(params?: RequestParams) {
-    const result = await this.#client.listModels(params)
-    return result.data.map((model) => ({ id: model.id, raw: model }))
+    const models: Array<Model> = []
+    let afterID: string | undefined
+    for (;;) {
+      const page = await this.#client.listModels({ signal: params?.signal, afterID, limit: 1000 })
+      models.push(...page.data)
+      if (!page.has_more || page.data.length === 0 || page.last_id === afterID) break
+      afterID = page.last_id
+    }
+    return models.map((model) => ({ id: model.id, raw: model }))
   }
 
   async embed(_params: EmbedParams): Promise<{ embeddings: Array<Array<number>> }> {

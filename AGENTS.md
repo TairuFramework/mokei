@@ -33,8 +33,8 @@ through a unified session and agent architecture built on typed MCP server/clien
 | `pnpm change status` | Preview the release plan the pending intents produce |
 | `pnpm version -r` | Apply the plan: bump versions, propagate `workspace:` ranges |
 
-Published packages release in lockstep -- `versioning.fixed` in `pnpm-workspace.yaml` holds
-every public package, so one intent moves them all to the same version.
+Versioning is per-package: each intent bumps the packages it names, and pnpm cascades a patch
+through internal dependents. There is no `versioning.fixed` lock.
 
 ## Guardrails
 

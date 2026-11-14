@@ -93,7 +93,7 @@ describe('AnthropicProvider', () => {
       const provider = new AnthropicProvider({ client: { apiKey: 'test-key' } })
       await provider.listModels({ signal })
 
-      expect(spy).toHaveBeenCalledWith({ signal })
+      expect(spy).toHaveBeenCalledWith({ signal, afterID: undefined, limit: 1000 })
     })
   })
 
