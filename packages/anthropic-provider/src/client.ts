@@ -50,7 +50,12 @@ function toResponseStream<T>(response: ResponsePromise<T>): Promise<ReadableStre
   }, rethrow)
 }
 
-export type ListModelParams = RequestParams
+export type ListModelParams = RequestParams & {
+  /** Return the page after this model ID (the previous page's `last_id`). */
+  afterID?: string
+  /** Models per page, 1 to 1000 (API default 20). */
+  limit?: number
+}
 
 export type ListModelResult = {
   data: Array<Model>
@@ -118,7 +123,14 @@ export class AnthropicClient {
    */
   async listModels(params: ListModelParams = {}): Promise<ListModelResult> {
     return await this.#api
-      .get('models', { signal: params.signal, retry: IDEMPOTENT_RETRY })
+      .get('models', {
+        searchParams: {
+          ...(params.afterID == null ? {} : { after_id: params.afterID }),
+          ...(params.limit == null ? {} : { limit: params.limit }),
+        },
+        signal: params.signal,
+        retry: IDEMPOTENT_RETRY,
+      })
       .json<ListModelResult>()
       .catch(rethrow)
   }
