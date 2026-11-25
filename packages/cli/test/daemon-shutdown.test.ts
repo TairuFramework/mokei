@@ -59,7 +59,7 @@ test.each(['initialization', 'admitted call'] as const)(
           }),
           loadFlows: async () => ({ files: [], flows: [] }),
           createSession: () => {
-            const session = new NodeSession({ elicit: true })
+            const session = new NodeSession({ elicit: true, tasks: true })
             vi.spyOn(session, 'addContext').mockImplementation(async () => {
               entered()
               await gate
