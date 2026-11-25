@@ -75,6 +75,9 @@ export function skillNameFromURI(skillURI: string): string {
 }
 
 export function isWithinSkill(skillURI: string, fileURI: string): boolean {
+  if (!isValidSkillURI(skillURI) || !isValidSkillURI(fileURI)) {
+    return false
+  }
   return fileURI.startsWith(`${skillRootURI(skillURI)}/`)
 }
 

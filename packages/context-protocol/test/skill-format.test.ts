@@ -84,6 +84,18 @@ describe('skill format', () => {
       expect(isWithinSkill(uri, `${scheme}://acme/billing/refunds-other/x.md`)).toBe(false)
       expect(isWithinSkill(uri, `${scheme}://acme/billing/x.md`)).toBe(false)
     }
+    const root = 'skill://a/b/SKILL.md'
+    for (const hostile of [
+      'skill://a/b/../../x',
+      'skill://a/b/%2e%2e/x',
+      'skill://a/b//x',
+      'skill://a/b/x?x',
+      'skill://a/b/x#f',
+      'skill://a/b/x\u0001',
+    ]) {
+      expect(isWithinSkill(root, hostile)).toBe(false)
+    }
+    expect(isWithinSkill('skill://a/../SKILL.md', 'skill://a/../x')).toBe(false)
     expect(skillNameFromURI('github://o/r/refunds/SKILL.md')).toBe('refunds')
   })
 
