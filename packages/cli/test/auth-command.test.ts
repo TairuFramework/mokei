@@ -202,7 +202,15 @@ test('a failed revocation still deletes locally but exits 1', async () => {
 test('logout with no matching sign-in fails', async () => {
   await run('logout', 'https://nowhere.example.com/mcp', '--keychain')
   expect(process.exitCode).toBe(1)
-  expect(stderr.join('')).toContain('No stored sign-in for https://nowhere.example.com/mcp')
+  expect(stderr.join('')).toContain('No stored sign-in for https://nowhere.example.com/mcp\n')
+})
+
+test('logout with no match names the argument as given, then its canonical form', async () => {
+  await run('logout', 'https://nowhere.example.com/mcp/?tenant=a', '--keychain')
+  expect(process.exitCode).toBe(1)
+  expect(stderr.join('')).toContain(
+    'No stored sign-in for https://nowhere.example.com/mcp/?tenant=a (canonical https://nowhere.example.com/mcp)',
+  )
 })
 
 test('list shows client credentials records beside legacy ones', async () => {

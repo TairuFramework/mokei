@@ -127,8 +127,11 @@ async function runLogout(resource: string, options: LogoutOptions): Promise<void
         (options.clientId == null || signIn.clientID === options.clientId),
     )
     if (matches.length === 0) {
+      // Name the argument as given: client credentials sign-ins are looked up verbatim, so the
+      // canonical form alone could name something that was never looked up.
+      const looked = canonical === resource ? resource : `${resource} (canonical ${canonical})`
       throw new Error(
-        `No stored sign-in for ${canonical}${options.clientId == null ? '' : ` with client ${options.clientId}`}`,
+        `No stored sign-in for ${looked}${options.clientId == null ? '' : ` with client ${options.clientId}`}`,
       )
     }
     const outcomes: Array<LogoutOutcome> = []
