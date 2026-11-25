@@ -140,6 +140,41 @@ const tools = {
 A handler that returns `structuredContent` violating its `outputSchema` — or
 omits it entirely — raises an `INTERNAL_ERROR` back to the client.
 
+## Skills
+
+The `io.modelcontextprotocol/skills` extension (`2026-07-28` only) serves agent skills: directories
+with a `SKILL.md` file plus supporting files. Build a catalog and pass it as `skills`; the server
+then answers `skills/list` and `skills/get`, and serves the files through `resources/read` under
+`skill://` URIs. Each entry lists every file with its SHA-256 digest and size. The package stays
+portable: it takes file contents from the caller and never touches the filesystem.
+
+```typescript
+import { createSkillCatalog, ContextServer } from '@mokei/context-server'
+
+const skills = await createSkillCatalog(
+  [
+    {
+      path: 'acme/greeter',
+      files: {
+        'SKILL.md': '---\nname: greeter\ndescription: Greets people.\n---\nSay hello.',
+        'references/tone.md': 'Be friendly.',
+      },
+    },
+  ],
+  { directoryRead: true }, // optional: also serve resources/directory/read
+)
+
+const server = new ContextServer({
+  name: 'my-server',
+  version: '1.0.0',
+  protocolVersions: ['2026-07-28'],
+  skills,
+})
+```
+
+The last path segment is the skill name and must match the `name` in the frontmatter. To load skills
+from disk, use `loadSkillCatalog` from `@mokei/context-server-node`.
+
 ## Type-Safe Client Integration
 
 The `@mokei/context-server` package provides utilities to extract TypeScript types from your server configuration, enabling type-safe client usage.

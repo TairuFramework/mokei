@@ -21,14 +21,25 @@ Done for `private_key_jwt`: `docs/agents/plans/completed/2026-11-25-oauth-client
 
 `io.modelcontextprotocol/skills` (Beta, SEP-2640 Final).
 
-- Server: register skills, implement `skills/list` and `skills/get`, serve files via
-  `resources/read` (`skill://` scheme), manifests with SHA-256 digest and byte size per file,
-  `resultType` / `ttlMs` / `cacheScope` on results. Optional `resources/directory/read` behind
-  `directoryRead: true`.
-- Client: list/get skills, verify digests, sizes and frontmatter before use, restrict reads to the
-  retained manifest, preserve server identity + URI.
-- Session / agent layer: on-demand loading with approval bound to the manifest; never prefetch
-  files.
+Base client and server support is implemented on the `mcp-extensions` branch: `skills/list` and
+`skills/get`, `skill://` files via `resources/read` with digest and size manifests, optional
+`resources/directory/read` (`directoryRead: true`), disk loading in `context-server-node`, and a
+verifying client (`readSkillFile`, `SkillVerificationError`).
+
+Remaining follow-on work:
+
+- Session, agent and host integration:
+  - registries keyed by server label + URI;
+  - user approval bound to the manifest, including activation of nested skills;
+  - caches;
+  - origin tagging and cross-server read rules;
+  - the `allowed-tools` and code-execution gates;
+  - offering skills to models in the CLI and host-desktop.
+  - Keep on-demand loading: never prefetch files.
+- Dynamic skills on the server (`"resources": "dynamic"`); the client already accepts them.
+- Skill files in `resources/list` (`skills/list` stays the discovery path until then).
+- Per-skill or per-URI auth scopes; today one catalog-wide scope list.
+- Protocol revision `2025-11-25` support for the extension methods.
 
 ## 4. Events
 

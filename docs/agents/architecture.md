@@ -184,12 +184,25 @@ When a waited request is withdrawn, the signal passed to the input handler abort
 ### Extensions
 
 MCP extensions are described by a built-in registry in `packages/context-protocol/src/extensions.ts`
-(`EXTENSIONS`; `TASKS` is the only entry). An `ExtensionDefinition` names its id, an optional
+(`EXTENSIONS`; entries: `TASKS`, `SKILLS`). An `ExtensionDefinition` names its id, an optional
 `revision`, the protocol versions it is advertised on, and the client and server methods it owns.
 There is no runtime registration. The server gates a request for an extension method on the
 client's declared capabilities. `readExtension` returns a peer's settings, or `null` when the
 extension is not declared or the declared `revision` differs from the definition's, so an unknown
-revision counts as unsupported. Extensions are advertised per revision: in `initialize` on
+revision counts as unsupported.
+
+An `ExtensionDefinition` also has a `clientDeclaration`: absent means `'required'` (as for `TASKS`,
+the client must declare the extension to call its methods); `'none'` means it need not. `SKILLS`
+uses `'none'`, so the server never gates `skills/*` on a client capability. `ContextClient` still
+opts in locally with `skills: true`.
+
+Skills (`io.modelcontextprotocol/skills`) are on `2026-07-28` only. `context-protocol` holds the
+schemas and the format helpers (names, `skill://` URIs, frontmatter parsing, digests).
+`context-server` builds a portable `SkillCatalog` (`createSkillCatalog`) passed as the
+`ContextServer` `skills` option; `context-server-node` loads one from disk (`loadSkillCatalog`).
+`ContextClient` exposes `listSkills`, `getSkill`, `readResourceDirectory` and `readSkillFile`;
+the last verifies each file against the entry the caller holds (listed URI, size, SHA-256 digest,
+frontmatter) and throws `SkillVerificationError` otherwise. Nothing reads files eagerly. Extensions are advertised per revision: in `initialize` on
 `2025-11-25` and in `server/discover` on `2026-07-28`, only for definitions that list that
 revision. `ContextClient.getServerExtension(definition)` reads what the server declared.
 
