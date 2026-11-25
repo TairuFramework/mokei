@@ -5,6 +5,7 @@ import type {
   CreateMessageResult,
   ElicitRequest,
   ElicitResult,
+  ExtensionDefinition,
   Implementation,
   LoggingLevel,
   Metadata,
@@ -134,6 +135,15 @@ export type PromptParams<T extends ContextTypes> = NamedParams<T['Prompts']>
 export type ToolParams<T extends ContextTypes> = NamedParams<T['Tools']>
 
 export type ClientParams = {
+  /** Opt into the Tasks extension (declared on `2026-07-28`; default `false`). */
+  tasks?: boolean
+  /** @internal test hook: extra extensions to declare and allow. */
+  _extensions?: ReadonlyArray<{
+    definition: ExtensionDefinition
+    settings?: Record<string, unknown>
+  }>
+  /** @internal test hook: registry used to look up extensions by method (default `EXTENSIONS`). */
+  _registry?: ReadonlyArray<ExtensionDefinition>
   tracing?: ClientTracing
   /** Revision to speak. `'auto'` probes the server, then caches the result. */
   protocolVersion: ProtocolVersion | 'auto'

@@ -181,6 +181,7 @@ describe('ContextClient subscriptions wiring', () => {
   test('task acknowledgements preserve the active resource subscription filter', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      tasks: true,
       protocolVersion: '2026-07-28',
       transport: transports.client,
     })
@@ -214,6 +215,7 @@ describe('ContextClient subscriptions wiring', () => {
   test('waiting with an uncached tool name does not request tools/list', async () => {
     const transports = new DirectTransports<ServerMessage, ClientMessage>()
     const client = new ContextClient({
+      tasks: true,
       protocolVersion: '2026-07-28',
       transport: transports.client,
     })

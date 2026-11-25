@@ -134,6 +134,7 @@ function setup(params: {
       : (params.clientElicit ?? vi.fn<ElicitHandler>(() => ({ action: 'decline' })))
   const client = new ContextClient({
     protocolVersion: version,
+    tasks: true,
     transport: pair.client,
     elicit: clientElicit,
   })

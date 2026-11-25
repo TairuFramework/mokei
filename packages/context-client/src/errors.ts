@@ -260,3 +260,19 @@ export type StructuredContentValidationErrorParams = {
   issues: Array<ValidationIssue>
   cause?: unknown
 }
+
+export type ExtensionNotDeclaredErrorParams = { extension: string; cause?: unknown }
+
+export class ExtensionNotDeclaredError extends Error {
+  #extension: string
+
+  constructor(params: ExtensionNotDeclaredErrorParams) {
+    super(`Server did not declare the ${params.extension} extension`, { cause: params.cause })
+    this.name = 'ExtensionNotDeclaredError'
+    this.#extension = params.extension
+  }
+
+  get extension(): string {
+    return this.#extension
+  }
+}

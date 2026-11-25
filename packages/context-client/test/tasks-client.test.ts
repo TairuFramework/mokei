@@ -55,6 +55,7 @@ function harness(
   transports.push(pair)
   const client = new ContextClient({
     protocolVersion: version,
+    tasks: true,
     transport: pair.client,
     listRoots: withRoots ? [] : undefined,
   })
@@ -141,7 +142,11 @@ test('task waits receive server notifications without polling', async () => {
       }),
     },
   })
-  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  const client = new ContextClient({
+    protocolVersion: '2026-07-28',
+    transport: pair.client,
+    tasks: true,
+  })
   const get = vi.spyOn(manager, 'get')
   const controller = new AbortController()
   let pending: Promise<CallToolResult> | undefined
@@ -391,7 +396,11 @@ test('a loss after the server returned a task rejects with TaskInterruptedError'
   // A harness variant: once the client waits on the task (any tasks/* request), drop the link.
   const pair = new DirectTransports<ServerMessage, ClientMessage>()
   transports.push(pair)
-  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  const client = new ContextClient({
+    protocolVersion: '2026-07-28',
+    transport: pair.client,
+    tasks: true,
+  })
   void (async () => {
     for (;;) {
       const next = await pair.server.read()
@@ -431,7 +440,11 @@ test.each(['network', 'session-expired'] as const)(
     // A local transport failing a `tasks/*` request with a branded error frame (as HTTP does).
     const pair = new DirectTransports<ServerMessage, ClientMessage>()
     transports.push(pair)
-    const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      transport: pair.client,
+      tasks: true,
+    })
     void (async () => {
       for (;;) {
         const next = await pair.server.read()
@@ -472,7 +485,11 @@ test.each(['network', 'session-expired'] as const)(
 test('a timeout transport failure after the server returned a task is not a TaskInterruptedError', async () => {
   const pair = new DirectTransports<ServerMessage, ClientMessage>()
   transports.push(pair)
-  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  const client = new ContextClient({
+    protocolVersion: '2026-07-28',
+    transport: pair.client,
+    tasks: true,
+  })
   void (async () => {
     for (;;) {
       const next = await pair.server.read()

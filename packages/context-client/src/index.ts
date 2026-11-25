@@ -22,6 +22,8 @@ export {
 export {
   CapabilityNotDeclaredError,
   type CapabilityNotDeclaredErrorParams,
+  ExtensionNotDeclaredError,
+  type ExtensionNotDeclaredErrorParams,
   InputRequiredNotSupportedError,
   type InputRequiredNotSupportedErrorParams,
   ListMaxPagesError,
