@@ -59,3 +59,10 @@ In progress: `docs/superpowers/specs/2026-11-25-extension-plumbing-design.md`.
   `jwt-bearer` grant, plus enterprise IdP configuration. Revisit on concrete demand.
 - **Experimental extensions** (interceptors, variants, tool-annotations, file-uploads,
   filesystems): no stability guarantees; wait for Beta.
+
+## Follow-up: PKCE discovery fallbacks
+
+The interactive PKCE middleware's discovery (`packages/http-client/src/oauth/discovery.ts`) tries
+only the path-specific protected-resource metadata URL and one OAuth authorisation-server metadata
+URL. MCP authorization discovery also requires the root protected-resource fallback and OpenID
+Connect metadata. The client-credentials path implements the full order; bring PKCE in line.

@@ -121,6 +121,46 @@ the builder, as for the client.
 - **Advertised settings.** `{}` in `server/discover` and the `2025-11-25` `initialize` result
   only. (my call)
 
+### Codex review changes
+
+Supersede the "Settled details" above where they conflict.
+
+- **Token isolation.** Client-credentials tokens never share a store key with PKCE. They live
+  under their own key namespace built from grant, pinned issuer, resource, client ID and scopes;
+  single-flight is keyed by that identity too, and every record returned (from a joined flight
+  or an atomic `update`) is re-validated against the pin. PKCE keys and `parseTokenStoreKey`
+  handling of existing three-element keys stay as they are. This replaces the
+  `grant: 'client_credentials'` marker idea, which did not stop the PKCE middleware from
+  attaching a service token.
+- **Metadata validation split.** Fetching metadata and checking `issuer` equality are shared;
+  grant-specific requirements are not. The PKCE path keeps its `authorization_endpoint` and
+  `S256` checks. The client-credentials path requires a secure `token_endpoint` only, and must
+  accept metadata without an authorisation endpoint or PKCE support.
+- **Discovery fallbacks.** The client-credentials path follows the MCP authorization discovery
+  order, including the root protected-resource metadata fallback and both OAuth and OpenID
+  Connect authorisation-server metadata, requiring the exact pinned issuer in every accepted
+  response and never falling back to another issuer. The PKCE path is unchanged here (anti-goal);
+  its missing fallbacks go to the backlog as a separate item.
+- **Resource identity.** An explicitly configured `resource` is used verbatim (validated as an
+  absolute `https` URL — loopback `http` allowed as elsewhere — with no fragment), not passed
+  through `canonicalResource`. Only the default is derived from the MCP URL with
+  `canonicalResource`. The same resolved value is used for discovery comparison, the token
+  request and the store key.
+- **Metadata compatibility.** Before signing: if `grant_types_supported`,
+  `token_endpoint_auth_methods_supported` or `token_endpoint_auth_signing_alg_values_supported`
+  is present and lacks `client_credentials`, `private_key_jwt` or the signer's `alg`
+  respectively, fail with a distinct error for each. When a field is absent, proceed: the client
+  is preregistered, and the authorisation server's own error is surfaced (my call; RFC 8414's
+  defaults would reject most real servers, which omit these fields).
+- **Host seam.** The declaration switch is threaded through the host's `HTTPContextParams`,
+  `createHostedContext` and reconnect builds, not only `createHTTPClient` and `ContextClient`,
+  with a host-level declaration test on both revisions.
+- **Assertion type.** The assertion header defaults to `typ: 'client-authentication+jwt'`
+  (RFC 10070 recommendation), overridable for compatibility.
+- **Replay.** Tests prove a fresh assertion and `jti` on every grant attempt.
+- **Shared code (narrowed).** Bounded HTTP, store primitives and metadata fetching are shared;
+  recovery-flight state is per grant.
+
 ### Order
 
 One mokei PR (decided): this item ships on the same branch as item 1, and the branch merges only
