@@ -30,7 +30,9 @@ credentials grant (RFC 6749 §4.4) with a signed JWT client assertion (RFC 7523)
 ## Anti-goals
 
 - Sending a client assertion to any authorisation server other than the pinned issuer.
-- Any behaviour change to the existing interactive PKCE middleware.
+- Regressions in the interactive PKCE middleware against servers it works with today. Its
+  discovery gains the MCP fallbacks (decided, see "Discovery fallbacks"); nothing else about it
+  changes.
 
 ## Approaches
 
@@ -136,11 +138,13 @@ Supersede the "Settled details" above where they conflict.
   grant-specific requirements are not. The PKCE path keeps its `authorization_endpoint` and
   `S256` checks. The client-credentials path requires a secure `token_endpoint` only, and must
   accept metadata without an authorisation endpoint or PKCE support.
-- **Discovery fallbacks.** The client-credentials path follows the MCP authorization discovery
-  order, including the root protected-resource metadata fallback and both OAuth and OpenID
-  Connect authorisation-server metadata, requiring the exact pinned issuer in every accepted
-  response and never falling back to another issuer. The PKCE path is unchanged here (anti-goal);
-  its missing fallbacks go to the backlog as a separate item.
+- **Discovery fallbacks (both logins, decided).** One shared discovery follows the MCP
+  authorization discovery order: path-specific then root protected-resource metadata, and for the
+  authorisation server the OAuth and OpenID Connect metadata URLs in the order MCP specifies. Every
+  accepted metadata response must carry the expected `issuer` exactly. The PKCE middleware uses it
+  too. The first URL tried today stays first, so servers that work now resolve the same document.
+  On the client-credentials path the expected issuer is the pin and no other issuer is ever tried.
+  Tests cover each fallback on both paths, plus an unchanged-result test for today's first URL.
 - **Resource identity.** An explicitly configured `resource` is used verbatim (validated as an
   absolute `https` URL — loopback `http` allowed as elsewhere — with no fragment), not passed
   through `canonicalResource`. Only the default is derived from the MCP URL with
