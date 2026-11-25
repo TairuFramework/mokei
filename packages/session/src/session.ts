@@ -268,35 +268,15 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   async #setupHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
-    const {
-      key,
-      url,
-      headers,
-      auth,
-      timeout,
-      protocolVersion,
-      fetchMiddleware,
-      enableTools,
-      elicit,
-      runtime,
-      reconnect,
-    } = params
+    // Everything but the session's own params goes to the host, so a field added to
+    // `HTTPContextParams` is forwarded without being listed here.
+    const { enableTools, signal: _signal, ...contextParams } = params
+    const { key } = contextParams
     // `ContextHost.addHTTPContext` registers the context synchronously (unlike stdio's
     // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
     // BEFORE registering anything. Awaiting it outside the try means a duplicate-key rejection
     // never enters the catch below, so it can never remove a pre-existing context.
-    const client = await this.#contextHost.addHTTPContext({
-      key,
-      url,
-      headers,
-      auth,
-      timeout,
-      protocolVersion,
-      fetchMiddleware,
-      elicit,
-      runtime,
-      reconnect,
-    })
+    const client = await this.#contextHost.addHTTPContext(contextParams)
     // Captured once: a reconnect swaps `.client` in place but keeps this registration. Claimed
     // only when it still holds the client this call registered: a remove + re-add in the await
     // above leaves a replacement registration that is not ours.

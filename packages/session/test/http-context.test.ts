@@ -65,6 +65,32 @@ describe('Session.addHTTPContext', () => {
     expect(addHTTPContextSpy).toHaveBeenCalledWith(expect.objectContaining({ fetchMiddleware }))
   })
 
+  test('forwards clientCredentials to the host, keeping session-only params back', async () => {
+    session = new Session()
+    const addHTTPContextSpy = vi
+      .spyOn(session.contextHost, 'addHTTPContext')
+      .mockResolvedValue({} as never)
+    vi.spyOn(session.contextHost, 'setup').mockResolvedValue([])
+
+    const clientCredentials = {
+      clientID: 'svc',
+      issuer: 'https://as.example.com',
+      signer: { alg: 'EdDSA' as const, sign: async () => new Uint8Array() },
+    }
+    await session.addHTTPContext({
+      key: 'remote',
+      url: 'https://mcp.example.com/mcp',
+      clientCredentials,
+      enableTools: true,
+      signal: new AbortController().signal,
+    })
+
+    const forwarded = addHTTPContextSpy.mock.calls[0]?.[0]
+    expect(forwarded?.clientCredentials).toBe(clientCredentials)
+    expect(forwarded).not.toHaveProperty('enableTools')
+    expect(forwarded).not.toHaveProperty('signal')
+  })
+
   test('Session HTTP entry false leaves capability absent', async () => {
     session = new Session({ elicit: true })
     let elicitationCapability: unknown

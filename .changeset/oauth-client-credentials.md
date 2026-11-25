@@ -4,6 +4,7 @@
 "@mokei/context-server": patch
 "@mokei/http-client": patch
 "@mokei/host": patch
+"@mokei/session": patch
 "mokei": patch
 ---
 
