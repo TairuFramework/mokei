@@ -169,6 +169,15 @@ test('honours assertionLifetimeSeconds', async () => {
   expect(claims.exp).toBe(1030)
 })
 
+test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+  'rejects assertionLifetimeSeconds %s at construction',
+  (assertionLifetimeSeconds) => {
+    expect(() =>
+      createClientCredentialsMiddleware({ clientID, issuer, signer, assertionLifetimeSeconds }),
+    ).toThrow('Client credentials assertionLifetimeSeconds must be a positive integer')
+  },
+)
+
 test('refuses when the pin is not in authorization_servers, without a token request', async () => {
   const w = world({ authorizationServers: ['https://other.example.com'] })
   const mw = createClientCredentialsMiddleware({ clientID, issuer, signer })
@@ -553,4 +562,35 @@ test('an unsupported signer algorithm fails before any token request', async () 
     'Unsupported client assertion algorithm: RS256',
   )
   expect(w.tokenForms).toHaveLength(0)
+})
+
+test('a joiner whose signal aborts stops waiting; the starter still completes and stores', async () => {
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const w = world({
+    tokenResponse: async () => {
+      await gate
+      return json({ access_token: 'tok-1', token_type: 'Bearer', expires_in: 3600 })
+    },
+  })
+  const store = createMemoryTokenStore()
+  const mw = createClientCredentialsMiddleware({ clientID, issuer, signer, store })
+  const starter = mw(w.next)(resource)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(w.tokenForms).toHaveLength(1)
+
+  const controller = new AbortController()
+  const reason = new Error('joiner gave up')
+  const joiner = mw(w.next)(resource, { signal: controller.signal })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  controller.abort(reason)
+  await expect(joiner).rejects.toBe(reason)
+
+  release()
+  const response = await starter
+  expect(response.status).toBe(200)
+  expect(w.tokenForms).toHaveLength(1)
+  expect((await store.get(ccKey()))?.accessToken).toBe('tok-1')
 })

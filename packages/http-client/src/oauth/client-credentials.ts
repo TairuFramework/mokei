@@ -7,15 +7,20 @@ import { createRuntime, type Runtime } from '@sozai/runtime'
 
 import type { FetchLike, FetchMiddleware } from '../transport.js'
 import { parseBearerChallenge, splitScopes } from './challenge.js'
-import { type AuthServerMetadata, discover, parseResourceMetadataURL } from './discovery.js'
+import {
+  type AuthServerMetadata,
+  discover,
+  isSecureOrLoopbackURL,
+  parseResourceMetadataURL,
+} from './discovery.js'
 import {
   DEFAULT_CLOCK_SKEW_SECONDS,
-  isSecureOrLoopbackURL,
   nearExpiry,
   oauthFetchFor,
   requireSecureTransportURL,
   runtimeFor,
   toStoredTokens,
+  untilAborted,
   withAuthorization,
   withSingleFlight,
 } from './middleware.js'
@@ -72,6 +77,17 @@ function validateResource(resource: string): string {
     throw new Error(`Client credentials resource must not have a fragment, got: ${resource}`)
   }
   return resource
+}
+
+/** Checks a configured assertion lifetime: anything but a positive integer would sign an
+ * assertion that is already expired or has a malformed `exp`. */
+function validateAssertionLifetime(seconds: number | undefined): number | undefined {
+  if (seconds != null && !(Number.isInteger(seconds) && seconds > 0)) {
+    throw new Error(
+      `Client credentials assertionLifetimeSeconds must be a positive integer, got: ${seconds}`,
+    )
+  }
+  return seconds
 }
 
 /** Requires a present metadata list to be an array of strings that contains `value`. Only an
@@ -145,6 +161,7 @@ export function createClientCredentialsMiddleware(
   config: ClientCredentialsConfig,
 ): FetchMiddleware {
   const configuredResource = config.resource == null ? undefined : validateResource(config.resource)
+  const assertionLifetimeSeconds = validateAssertionLifetime(config.assertionLifetimeSeconds)
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
   const runtime = config.runtime ?? createRuntime()
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
@@ -156,8 +173,19 @@ export function createClientCredentialsMiddleware(
 
   /** One grant per key at a time, through the flights shared with every middleware on `store`.
    * Every record obtained, from the store or a joined flight, is checked against the pin: a
-   * foreign one is never used, and the grant runs once more in its place. */
-  async function obtain(
+   * foreign one is never used, and the grant runs once more in its place. The wait is bounded by
+   * `signal`: a joiner that aborts stops waiting and leaves the starter's flight running. */
+  function obtain(
+    key: string,
+    staleAccessToken: string | undefined,
+    run: () => Promise<StoredTokens>,
+    signal: AbortSignal | undefined,
+  ): Promise<StoredTokens> {
+    const wait = () => obtainPinned(key, staleAccessToken, run)
+    return signal == null ? wait() : untilAborted(wait, signal)
+  }
+
+  async function obtainPinned(
     key: string,
     staleAccessToken: string | undefined,
     run: () => Promise<StoredTokens>,
@@ -193,7 +221,7 @@ export function createClientCredentialsMiddleware(
       signer: config.signer,
       clientID: config.clientID,
       audience: config.issuer,
-      lifetimeSeconds: config.assertionLifetimeSeconds,
+      lifetimeSeconds: assertionLifetimeSeconds,
       now,
       runtime,
     })
@@ -239,10 +267,14 @@ export function createClientCredentialsMiddleware(
         const { tokenEndpoint, accessToken } = tokens
         const scopes = tokens.requestedScopes ?? config.scopes ?? []
         try {
-          tokens = await obtain(key, accessToken, () =>
-            reasonOnAbort(signal, () =>
-              grantAndStore({ next: oauthNext, key, resource, tokenEndpoint, scopes, signal }),
-            ),
+          tokens = await obtain(
+            key,
+            accessToken,
+            () =>
+              reasonOnAbort(signal, () =>
+                grantAndStore({ next: oauthNext, key, resource, tokenEndpoint, scopes, signal }),
+              ),
+            signal,
           )
         } catch {
           // Deliberately best-effort: any failure, an abort included, is left to `next()` below,
@@ -260,26 +292,30 @@ export function createClientCredentialsMiddleware(
 
       const wwwAuthenticate = response.headers.get('WWW-Authenticate')
       const scopes = config.scopes ?? splitScopes(parseBearerChallenge(wwwAuthenticate)?.scope)
-      tokens = await obtain(key, tokens?.accessToken, () =>
-        reasonOnAbort(signal, async () => {
-          const { as } = await discover({
-            resource,
-            resourceMetadataURL: parseResourceMetadataURL(wwwAuthenticate) ?? undefined,
-            fetch: oauthNext,
-            grant: 'client_credentials',
-            expectedIssuer: config.issuer,
-            signal,
-          })
-          requireCompatible(as, config.signer.alg)
-          return await grantAndStore({
-            next: oauthNext,
-            key,
-            resource,
-            tokenEndpoint: as.token_endpoint,
-            scopes,
-            signal,
-          })
-        }),
+      tokens = await obtain(
+        key,
+        tokens?.accessToken,
+        () =>
+          reasonOnAbort(signal, async () => {
+            const { as } = await discover({
+              resource,
+              resourceMetadataURL: parseResourceMetadataURL(wwwAuthenticate) ?? undefined,
+              fetch: oauthNext,
+              grant: 'client_credentials',
+              expectedIssuer: config.issuer,
+              signal,
+            })
+            requireCompatible(as, config.signer.alg)
+            return await grantAndStore({
+              next: oauthNext,
+              key,
+              resource,
+              tokenEndpoint: as.token_endpoint,
+              scopes,
+              signal,
+            })
+          }),
+        signal,
       )
       return next(url, attach(init))
     }
@@ -287,23 +323,39 @@ export function createClientCredentialsMiddleware(
 }
 
 /**
- * Resolves a `clientCredentials` option, shared by `createHTTPClient` and the host's
- * `addHTTPContext`: builds the middleware to use as `fetchMiddleware` and flags that the client
- * declares the extension. Call it once per connection, not per reconnect, so every generation
- * shares one store and its in-flight grants. Without `clientCredentials`, `fetchMiddleware` is
- * returned unchanged.
+ * The shared `clientCredentials` wiring behind `createHTTPClient` and the host's
+ * `addHTTPContext`. It is public so that other code building an `HTTPTransport` itself can offer
+ * the same option with the same rules.
+ *
+ * With `clientCredentials` set, it builds a {@link createClientCredentialsMiddleware} to use as
+ * the transport's `fetchMiddleware`, and returns `oauthClientCredentials: true` so the client
+ * declares the extension. When `clientCredentials.runtime` is unset, the caller's `runtime` is
+ * used, so the assertion `jti` draws on the same randomness as the rest of the connection.
+ *
+ * Combining `clientCredentials` with `fetchMiddleware` throws: the client credentials middleware
+ * owns the `Authorization` header, and a second middleware would wrap or replace it. Without
+ * `clientCredentials`, `fetchMiddleware` is returned unchanged.
+ *
+ * Call it once per connection, not per reconnect, so every generation shares one token store and
+ * its in-flight grants.
  */
 export function resolveClientCredentials(params: {
   clientCredentials?: ClientCredentialsConfig
   fetchMiddleware?: FetchMiddleware
+  /** The connection's runtime, used when `clientCredentials.runtime` is unset. */
+  runtime?: Runtime
 }): { fetchMiddleware?: FetchMiddleware; oauthClientCredentials?: true } {
-  const { clientCredentials, fetchMiddleware } = params
+  const { clientCredentials, fetchMiddleware, runtime } = params
   if (clientCredentials == null) return { fetchMiddleware }
   if (fetchMiddleware != null) {
     throw new Error('clientCredentials cannot be combined with fetchMiddleware')
   }
+  const config =
+    clientCredentials.runtime == null && runtime != null
+      ? { ...clientCredentials, runtime }
+      : clientCredentials
   return {
-    fetchMiddleware: createClientCredentialsMiddleware(clientCredentials),
+    fetchMiddleware: createClientCredentialsMiddleware(config),
     oauthClientCredentials: true,
   }
 }

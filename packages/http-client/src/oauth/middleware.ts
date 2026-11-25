@@ -21,7 +21,7 @@ import {
 } from '../request-timeout.js'
 import type { FetchLike, FetchMiddleware } from '../transport.js'
 import { parseBearerChallenge, splitScopes } from './challenge.js'
-import { discover, isLoopbackHost, parseResourceMetadataURL } from './discovery.js'
+import { discover, isSecureOrLoopbackURL, parseResourceMetadataURL } from './discovery.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
 import { createMemoryTokenStore, tokenStoreKey } from './store.js'
@@ -76,8 +76,9 @@ export type OAuthClientConfig = {
 /** Default budget for an interactive `handler.authorize`, in milliseconds. */
 export const DEFAULT_AUTHORIZATION_TIMEOUT = 600_000
 
-/** Waits for `run`, rejecting with `signal.reason` as soon as `signal` aborts. */
-function untilAborted<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> {
+/** Waits for `run`, rejecting with `signal.reason` as soon as `signal` aborts. Abandoning the
+ * wait does not cancel `run`. */
+export function untilAborted<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) return Promise.reject(signal.reason)
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => reject(signal.reason)
@@ -171,11 +172,6 @@ export async function exchangeRefresh(params: ExchangeRefreshParams): Promise<St
 
 /** Default refresh window before actual token expiry, in seconds. */
 export const DEFAULT_CLOCK_SKEW_SECONDS = 60
-
-/** Whether `u` is `https`, or `http` on a loopback host. */
-export function isSecureOrLoopbackURL(u: URL): boolean {
-  return u.protocol === 'https:' || (u.protocol === 'http:' && isLoopbackHost(u.hostname))
-}
 
 /** Throws unless the transport URL is `https` (or loopback `http`): tokens never go out in clear. */
 export function requireSecureTransportURL(url: string): void {

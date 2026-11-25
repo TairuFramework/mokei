@@ -1284,6 +1284,7 @@ export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
   const { fetchMiddleware, oauthClientCredentials } = resolveClientCredentials({
     clientCredentials,
     fetchMiddleware: params.fetchMiddleware,
+    runtime: params.runtime,
   })
   if (fetchMiddleware != null) transportParams.fetchMiddleware = fetchMiddleware
   if (oauthClientCredentials) clientParams.oauthClientCredentials = true

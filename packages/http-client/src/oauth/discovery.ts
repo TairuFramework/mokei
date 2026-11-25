@@ -36,11 +36,19 @@ export function isLoopbackHost(hostname: string): boolean {
   )
 }
 
+/** Whether `u` is `https`, or `http` on a loopback host when `allowLoopback` (the default). The
+ * one place the "tokens never go out in clear" rule is spelled. */
+export function isSecureOrLoopbackURL(u: URL, allowLoopback = true): boolean {
+  return (
+    u.protocol === 'https:' ||
+    (allowLoopback && u.protocol === 'http:' && isLoopbackHost(u.hostname))
+  )
+}
+
 function requireHTTPS(url: string, allowLoopback: boolean): void {
-  const u = new URL(url)
-  if (u.protocol === 'https:') return
-  if (allowLoopback && u.protocol === 'http:' && isLoopbackHost(u.hostname)) return
-  throw new Error(`OAuth endpoint must be https: ${url}`)
+  if (!isSecureOrLoopbackURL(new URL(url), allowLoopback)) {
+    throw new Error(`OAuth endpoint must be https: ${url}`)
+  }
 }
 
 /** GETs an OAuth metadata document through `fetch` (kokuin `fetchOAuthJSON`: bounded deadline,

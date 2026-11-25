@@ -1,7 +1,8 @@
-import { fromB64U } from '@sozai/codec'
+import { b64uToJSON, fromB64U } from '@sozai/codec'
 import { createRuntime, type GetRandomValues } from '@sozai/runtime'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
+import { resolveClientCredentials } from '../src/oauth/client-credentials.js'
 import { type AuthorizationHandler, createOAuthMiddleware } from '../src/oauth/middleware.js'
 import { createMemoryTokenStore } from '../src/oauth/store.js'
 import { type FetchLike, type FetchMiddleware, HTTPTransport } from '../src/transport.js'
@@ -103,5 +104,35 @@ describe('runtime injection', () => {
     expect(response.status).toBe(200)
     expect(allOnes(state)).toBe(true)
     expect(allOnes(verifier)).toBe(true)
+  })
+
+  test('resolveClientCredentials defaults the assertion jti randomness to the caller runtime', async () => {
+    const issuer = 'https://as.example.com'
+    const resource = 'https://mcp.example.com/mcp'
+    let assertion: string | null = null
+    const next = async (url: string, init?: RequestInit): Promise<Response> => {
+      if (url.includes('oauth-protected-resource'))
+        return json({ resource, authorization_servers: [issuer] })
+      if (url === `${issuer}/.well-known/oauth-authorization-server`)
+        return json({ issuer, token_endpoint: `${issuer}/token` })
+      if (url === `${issuer}/token`) {
+        assertion = new URLSearchParams(String(init?.body)).get('client_assertion')
+        return json({ access_token: 'tok', token_type: 'Bearer', expires_in: 3600 })
+      }
+      if (new Headers(init?.headers).get('Authorization') === 'Bearer tok') return json({})
+      return new Response('unauth', { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } })
+    }
+    const { fetchMiddleware } = resolveClientCredentials({
+      clientCredentials: {
+        clientID: 'svc',
+        issuer,
+        signer: { alg: 'EdDSA', sign: async () => new Uint8Array([1, 2, 3]) },
+      },
+      runtime: createRuntime({ getRandomValues: fillOnes }),
+    })
+    const response = await (fetchMiddleware as FetchMiddleware)(next)(resource)
+    expect(response.status).toBe(200)
+    const claims = b64uToJSON<{ jti: string }>(String(assertion).split('.')[1] as string)
+    expect(allOnes(claims.jti)).toBe(true)
   })
 })
