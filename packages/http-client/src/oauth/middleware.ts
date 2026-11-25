@@ -120,12 +120,12 @@ function nativeDefinition(params: {
 }
 
 /** A runtime whose `fetch` is `fetch`: kokuin's token calls stay on the unwrapped transport fetch. */
-function runtimeFor(fetch: FetchLike, runtime: Runtime = createRuntime()): Runtime {
+export function runtimeFor(fetch: FetchLike, runtime: Runtime = createRuntime()): Runtime {
   return { ...runtime, fetch: fetch as Runtime['fetch'] }
 }
 
 /** Maps a validated kokuin token response to `StoredTokens`, rejecting a non-bearer token. */
-function toStoredTokens(
+export function toStoredTokens(
   data: TokenResponse,
   now: () => number,
   fallbackRefreshToken?: string,

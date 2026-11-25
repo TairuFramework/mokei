@@ -28,6 +28,12 @@ export {
 export { interactionOf, REQUEST_INTERACTION, type RequestInteraction } from './interaction.js'
 export { parseBearerChallenge } from './oauth/challenge.js'
 export {
+  type ClientAssertionSigner,
+  type ClientCredentialsConfig,
+  createClientCredentialsMiddleware,
+  createWebCryptoAssertionSigner,
+} from './oauth/client-credentials.js'
+export {
   type AuthorizationHandler,
   createOAuthMiddleware,
   type OAuthClientConfig,
