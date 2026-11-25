@@ -148,8 +148,14 @@ dependency of `@mokei/context-protocol`.
 
 **Definitions.**
 ```
-SkillDefinition = { path: string; files: Record<string, string | Uint8Array> }
+SkillDefinition = {
+  path: string
+  files: Record<string, string | Uint8Array>
+  directories?: Array<string>
+}
 ```
+- `directories` lists any empty directories inside the skill, as relative paths. Directories that hold
+  files are found from `files`.
 - `path` is the skill path within the namespace, for example `git-workflow` or `acme/billing/refunds`.
 - The keys of `files` are paths relative to the skill root, separated by `/`, and must include
   `SKILL.md`.
@@ -308,6 +314,56 @@ published.
   - URIs are compared as exact strings.
   - `checkSkillEntry` rejects an entry as `'invalid-entry'` when any URI contains `.` or `..` segments,
     empty segments, `%2F`, `%2f` or a backslash.
+
+## Rules from the Codex design review
+
+These rules take precedence over anything above that they contradict.
+
+1. **The client checks entries at runtime.**
+   - `checkSkillEntry` checks the whole entry before anything is counted or read; TypeScript types
+     don't check what a server sends. `readSkillFile` runs `checkSkillEntry` first.
+   - Every `size` must be a non-negative safe integer, so negative sizes can't cancel out an oversized
+     file in the 16 MiB total.
+   - Every `digest` must match `^sha256:[0-9a-f]{64}$`.
+   - `frontmatter.name` and `frontmatter.description` must be non-empty strings.
+   - Every URI must pass the shared URI validator (rule 4).
+2. **The client picks a response's content strictly.** `readSkillFile` requires exactly one entry in
+   `contents`.
+   - The entry's `uri` must equal the requested URI exactly.
+   - It must carry exactly one of `text` or `blob`.
+   - Anything else is `SkillVerificationError` with reason `'response'`.
+   - Every returned value comes from the verified bytes. `text` is a UTF-8 decode of those bytes, and
+     the frontmatter check parses that same decode. The client never returns the server's `text`
+     without checking it.
+3. **The server serves exactly the bytes it hashed.**
+   - The catalog keeps each file's original bytes, and hashes those.
+   - On a read, a file is sent as `text` only if it decodes as strict UTF-8, with a BOM kept, and
+     re-encodes to identical bytes. Otherwise it is sent as `blob`.
+   - Decide this once, when the catalog is built. The file extension only sets the MIME type.
+4. **One shared path validator and URI builder,** in `@mokei/context-protocol`. It is used for:
+   - skill `path`s;
+   - Node `prefix`es;
+   - relative file and directory paths;
+   - the URIs the client checks.
+
+   Every segment must be non-empty and must not be `.` or `..`. It must not contain `/`, `\`, `%`, `?`,
+   `#`, or ASCII control characters. URIs are built by joining segments with `/`, with no escaping;
+   segments that would need escaping are rejected. Tests show that every entry the catalog accepts
+   passes `checkSkillEntry`.
+5. **The server checks frontmatter fully,** against the Agent Skills specification, before publishing.
+   Unknown fields are kept unchanged.
+   - `name` follows the naming rules.
+   - `description` is a non-empty string of at most 1024 characters.
+   - Optional fields that are present must have the format Agent Skills defines: `license` and
+     `compatibility` are strings, `compatibility` is at most 500 characters, `metadata` is a mapping
+     of strings to strings, and `allowed-tools` is a string.
+   - The client's frontmatter check stays the equality check against the entry. The client doesn't
+     re-check these format rules.
+6. **Empty directories are directories too.**
+   - The Node loader records every directory under a skill, empty ones included, in `directories`.
+   - The catalog's directory index covers both file-holding and empty directories.
+   - `resources/directory/read` lists an empty child as `inode/directory` in its parent, and returns an
+     empty page when the empty directory itself is read.
 
 ## Left to the builder
 
