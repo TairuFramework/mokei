@@ -21,7 +21,7 @@ import {
 } from '../request-timeout.js'
 import type { FetchLike, FetchMiddleware } from '../transport.js'
 import { parseBearerChallenge, splitScopes } from './challenge.js'
-import { discover, parseResourceMetadataURL } from './discovery.js'
+import { discover, isLoopbackHost, parseResourceMetadataURL } from './discovery.js'
 import { canonicalResource } from './resource.js'
 import type { StoredTokens, TokenStore } from './store.js'
 import { createMemoryTokenStore, tokenStoreKey } from './store.js'
@@ -170,18 +170,42 @@ export async function exchangeRefresh(params: ExchangeRefreshParams): Promise<St
 }
 
 /** Default refresh window before actual token expiry, in seconds. */
-const DEFAULT_CLOCK_SKEW_SECONDS = 60
+export const DEFAULT_CLOCK_SKEW_SECONDS = 60
 
-/** Whether `hostname` names a loopback address, kept local rather than imported from
- * `discovery.js` to keep this module's boundary independent. */
-function isLoopbackHost(hostname: string): boolean {
-  return (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '::1' ||
-    hostname === '[::1]' ||
-    hostname.endsWith('.localhost')
-  )
+/** Whether `u` is `https`, or `http` on a loopback host. */
+export function isSecureOrLoopbackURL(u: URL): boolean {
+  return u.protocol === 'https:' || (u.protocol === 'http:' && isLoopbackHost(u.hostname))
+}
+
+/** Throws unless the transport URL is `https` (or loopback `http`): tokens never go out in clear. */
+export function requireSecureTransportURL(url: string): void {
+  const u = new URL(url)
+  if (!isSecureOrLoopbackURL(u)) {
+    throw new Error(
+      `OAuth requires an https (or loopback) transport URL, got: ${u.protocol}//${u.host}`,
+    )
+  }
+}
+
+/** The fetch for OAuth's own discovery, token and refresh calls: they inherit the triggering
+ * request's timeout tag, so a hung authorisation server still fails at the transport's
+ * `timeout`. */
+export function oauthFetchFor(next: FetchLike, init: RequestInit | undefined): FetchLike {
+  const timeout = requestTimeoutOf(init)
+  return timeout == null
+    ? next
+    : (oauthURL, oauthInit) =>
+        next(oauthURL, { ...oauthInit, [REQUEST_TIMEOUT]: timeout } as TimedRequestInit)
+}
+
+/** `requestInit` with `tokens` as its `Authorization` header, when there are tokens. */
+export function withAuthorization(
+  requestInit: RequestInit | undefined,
+  tokens: StoredTokens | undefined,
+): RequestInit {
+  const headers = new Headers(requestInit?.headers)
+  if (tokens != null) headers.set('Authorization', `${tokens.tokenType} ${tokens.accessToken}`)
+  return { ...requestInit, headers }
 }
 
 function isRefreshable(
@@ -195,8 +219,10 @@ function isInvalidGrant(error: unknown): boolean {
   return error instanceof OAuthTokenError && error.code === 'invalid_grant'
 }
 
-/** In-flight refreshes and authorisations, shared by every middleware using the same store, so
- * contexts that share a store never redeem one refresh token twice or prompt twice for one key. */
+/** In-flight token recoveries (refreshes, authorisations, client-credentials grants), shared by
+ * every middleware using the same store, so contexts that share a store never redeem one refresh
+ * token twice or prompt twice for one key. Each grant has its own key shape, so flights of
+ * different grants never meet. */
 const flightsByStore = new WeakMap<TokenStore, Map<string, Promise<StoredTokens>>>()
 
 /** The tail of each handler's queue of interactive authorisations. */
@@ -209,6 +235,52 @@ function storeFlights(store: TokenStore): Map<string, Promise<StoredTokens>> {
     flightsByStore.set(store, flights)
   }
   return flights
+}
+
+/** The recovery already under way for `key` in `store`, if any. */
+export function inFlight(store: TokenStore, key: string): Promise<StoredTokens> | undefined {
+  return storeFlights(store).get(key)
+}
+
+/**
+ * Runs one recovery per `store` and `key` at a time. Recheck token identity before recovery:
+ * expiry alone could reuse a token that just failed with 401 or has no `expiresAt`, so a stored
+ * token is used instead of running only when it differs from `staleAccessToken` and passes
+ * `accept`. A joiner retries after a rejected flight so a fixable 401 is not lost; the flights
+ * map deduplicates it. A joiner gets whatever the flight returns: callers that need a property
+ * of the record (an issuer, scopes) check it themselves.
+ */
+export function withSingleFlight(params: {
+  store: TokenStore
+  key: string
+  staleAccessToken: string | undefined
+  run: () => Promise<StoredTokens>
+  accept?: (current: StoredTokens) => boolean
+}): Promise<StoredTokens> {
+  const { store, key, staleAccessToken, run, accept = () => true } = params
+  const flights = storeFlights(store)
+
+  function start(): Promise<StoredTokens> {
+    const flight = (async () => {
+      const current = await store.get(key)
+      if (current != null && current.accessToken !== staleAccessToken && accept(current)) {
+        return current
+      }
+      return run()
+    })()
+    flights.set(key, flight)
+    // Handle rejection on this cleanup chain; an unhandled rejection could crash Node.
+    flight
+      .finally(() => {
+        if (flights.get(key) === flight) flights.delete(key)
+      })
+      .catch(() => {})
+    return flight
+  }
+
+  const current = flights.get(key)
+  if (current == null) return start()
+  return current.catch(() => flights.get(key) ?? start())
 }
 
 /** Runs `run` after every earlier authorisation through `handler` has settled, so contexts that
@@ -241,38 +313,14 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS
   // A per-request default store would never retain a token.
   const store = config.store ?? createMemoryTokenStore()
-  const flights = storeFlights(store)
 
-  /** Recheck token identity before recovery: expiry alone could reuse a token that
-   * just failed with 401 or has no `expiresAt`. A joiner retries after a rejected
-   * pre-emptive flight so a fixable 401 is not lost; `flights` deduplicates it. */
-  function withSingleFlight(
+  function singleFlight(
     key: string,
     staleAccessToken: string | undefined,
     run: () => Promise<StoredTokens>,
-    accept: (current: StoredTokens) => boolean = () => true,
+    accept?: (current: StoredTokens) => boolean,
   ): Promise<StoredTokens> {
-    function start(): Promise<StoredTokens> {
-      const flight = (async () => {
-        const current = await store.get(key)
-        if (current != null && current.accessToken !== staleAccessToken && accept(current)) {
-          return current
-        }
-        return run()
-      })()
-      flights.set(key, flight)
-      // Handle rejection on this cleanup chain; an unhandled rejection could crash Node.
-      flight
-        .finally(() => {
-          if (flights.get(key) === flight) flights.delete(key)
-        })
-        .catch(() => {})
-      return flight
-    }
-
-    const inFlight = flights.get(key)
-    if (inFlight == null) return start()
-    return inFlight.catch(() => flights.get(key) ?? start())
+    return withSingleFlight({ store, key, staleAccessToken, run, accept })
   }
 
   /**
@@ -289,7 +337,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
     staleAccessToken: string,
     signal?: AbortSignal,
   ): Promise<StoredTokens> {
-    return withSingleFlight(key, staleAccessToken, async () => {
+    return singleFlight(key, staleAccessToken, async () => {
       let failure: { error: unknown } | undefined
       const result = await store.update(key, async (current) => {
         if (current != null && current.accessToken !== staleAccessToken) return current
@@ -430,21 +478,8 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       // A `'never'` request attaches and refreshes tokens and may join a sign-in already under
       // way, but never starts one or steps up.
       const interactive = interactionOf(init) === 'allowed'
-      // OAuth's own discovery, token and refresh calls inherit the triggering request's timeout
-      // tag, so a hung authorisation server still fails at the transport's `timeout`.
-      const timeout = requestTimeoutOf(init)
-      const oauthNext: FetchLike =
-        timeout == null
-          ? next
-          : (oauthURL, oauthInit) =>
-              next(oauthURL, { ...oauthInit, [REQUEST_TIMEOUT]: timeout } as TimedRequestInit)
-      const u = new URL(url)
-      const loopback = isLoopbackHost(u.hostname)
-      if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) {
-        throw new Error(
-          `OAuth requires an https (or loopback) transport URL, got: ${u.protocol}//${u.host}`,
-        )
-      }
+      const oauthNext = oauthFetchFor(next, init)
+      requireSecureTransportURL(url)
 
       const resource = canonicalResource(config.resource ?? url)
       const key = tokenStoreKey({ resource, clientID: config.clientID, scopes: config.scopes })
@@ -463,12 +498,8 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         }
       }
 
-      const attach = (requestInit: RequestInit | undefined): RequestInit => {
-        const headers = new Headers(requestInit?.headers)
-        if (tokens != null)
-          headers.set('Authorization', `${tokens.tokenType} ${tokens.accessToken}`)
-        return { ...requestInit, headers }
-      }
+      const attach = (requestInit: RequestInit | undefined): RequestInit =>
+        withAuthorization(requestInit, tokens)
 
       const response = await next(url, tokens != null ? attach(init) : init)
       if (response.status === 403) return await stepUp(response)
@@ -492,7 +523,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
 
       if (!interactive) {
         // Join a sign-in another request already started, but never begin one.
-        const joined = flights.get(key)
+        const joined = inFlight(store, key)
         if (joined == null) throw new AuthRequiredError()
         // The shared flight belongs to its starter: this request bounds its own wait by its
         // signal and the sign-in budget, and abandoning the wait leaves the flight running.
@@ -524,7 +555,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
         tokens?.requestedScopes,
         splitScopes(parseBearerChallenge(wwwAuthenticate)?.scope),
       )
-      const authorized = await withSingleFlight(key, stale, () => {
+      const authorized = await singleFlight(key, stale, () => {
         return serialiseAuthorize(config.handler, () => {
           return authorize({
             next: oauthNext,
@@ -571,10 +602,10 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
               signal,
             })
           })
-        let elevated = await withSingleFlight(key, stale, run(stale), accept)
+        let elevated = await singleFlight(key, stale, run(stale), accept)
         // Joined a flight for something else (a refresh, a narrower step-up): ask once more.
         if (!accept(elevated)) {
-          elevated = await withSingleFlight(
+          elevated = await singleFlight(
             key,
             elevated.accessToken,
             run(elevated.accessToken),

@@ -7,7 +7,11 @@ import {
   createWebCryptoAssertionSigner,
 } from '../src/index.js'
 import { createClientCredentialsMiddleware as direct } from '../src/oauth/client-credentials.js'
-import { type AuthorizationHandler, createOAuthMiddleware } from '../src/oauth/middleware.js'
+import {
+  type AuthorizationHandler,
+  createOAuthMiddleware,
+  withSingleFlight,
+} from '../src/oauth/middleware.js'
 import {
   clientCredentialsStoreKey,
   createMemoryTokenStore,
@@ -59,6 +63,8 @@ type WorldOptions = {
   /** Response of the protected resource for a given Authorization header. */
   protectedResponse?: (auth: string | null) => Response
   challenge?: string
+  /** Runs before the protected-resource metadata is served; may throw like a failed fetch. */
+  onPRM?: () => void
 }
 
 function world(options: WorldOptions = {}): World {
@@ -72,6 +78,7 @@ function world(options: WorldOptions = {}): World {
   const next = async (url: string, init?: RequestInit): Promise<Response> => {
     if (url.includes('/.well-known/oauth-protected-resource')) {
       metadataCalls.push(url)
+      options.onPRM?.()
       return json({
         resource: options.prmResource ?? resource,
         authorization_servers: options.authorizationServers ?? [issuer],
@@ -485,4 +492,65 @@ test('refuses a plain-http, non-loopback transport URL', async () => {
   const w = world()
   const mw = createClientCredentialsMiddleware({ clientID, issuer, signer })
   await expect(mw(w.next)('http://mcp.example.com/mcp')).rejects.toThrow(/https/)
+})
+
+test('an abort noticed during discovery rejects with the reason and stores nothing', async () => {
+  const controller = new AbortController()
+  const reason = new Error('caller gave up')
+  const w = world({
+    onPRM: () => {
+      controller.abort(reason)
+      // A fetch that notices the abort may fail with an error of its own.
+      throw new TypeError('fetch failed')
+    },
+  })
+  const store = createMemoryTokenStore()
+  const mw = createClientCredentialsMiddleware({ clientID, issuer, signer, store })
+  await expect(mw(w.next)(resource, { signal: controller.signal })).rejects.toBe(reason)
+  expect(w.tokenForms).toHaveLength(0)
+  expect(await store.get(ccKey())).toBeUndefined()
+})
+
+test('a joined flight returning a record from another issuer is never attached', async () => {
+  const store = createMemoryTokenStore()
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  // Another participant on the same store and key, whose flight yields a foreign record.
+  const foreign = withSingleFlight({
+    store,
+    key: ccKey(),
+    staleAccessToken: undefined,
+    run: async () => {
+      await gate
+      return {
+        accessToken: 'foreign',
+        tokenType: 'Bearer',
+        issuer: 'https://evil.example.com',
+        tokenEndpoint: 'https://evil.example.com/token',
+      }
+    },
+  })
+  const w = world()
+  const mw = createClientCredentialsMiddleware({ clientID, issuer, signer, store })
+  const pending = mw(w.next)(resource)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  release()
+  await foreign
+  const response = await pending
+  expect(response.status).toBe(200)
+  expect(w.protectedAuth).toEqual([null, 'Bearer tok-1'])
+  expect(w.tokenForms).toHaveLength(1)
+  expect((await store.get(ccKey()))?.issuer).toBe(issuer)
+})
+
+test('an unsupported signer algorithm fails before any token request', async () => {
+  const w = world()
+  const badSigner = { ...signer, alg: 'RS256' } as unknown as ClientAssertionSigner
+  const mw = createClientCredentialsMiddleware({ clientID, issuer, signer: badSigner })
+  await expect(mw(w.next)(resource)).rejects.toThrow(
+    'Unsupported client assertion algorithm: RS256',
+  )
+  expect(w.tokenForms).toHaveLength(0)
 })
