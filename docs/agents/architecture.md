@@ -136,6 +136,24 @@ The `io.modelcontextprotocol/tasks` extension is available on `2026-07-28` when 
 a `TaskManager`. The application owns that manager and its store. A memory store is the default.
 Applications that need tasks to survive restarts provide a persistent `TaskStore`.
 
+The client must opt in: `ContextClient` declares the extension only with `tasks: true`
+(`ContextHost`, `NodeContextHost`, `createHostedContext`, `Session` and `NodeSession` forward the
+same param). Without it the client refuses `client.tasks.*`, `waitForTask` and listening with
+`taskIds` locally with `ExtensionNotDeclaredError`, and the server rejects task methods with a
+missing-required-client-capability error.
+
+### Extensions
+
+MCP extensions are described by a built-in registry in `packages/context-protocol/src/extensions.ts`
+(`EXTENSIONS`; `TASKS` is the only entry). An `ExtensionDefinition` names its id, an optional
+`revision`, the protocol versions it is advertised on, and the client and server methods it owns.
+There is no runtime registration. The server gates a request for an extension method on the
+client's declared capabilities. `readExtension` returns a peer's settings, or `null` when the
+extension is not declared or the declared `revision` differs from the definition's, so an unknown
+revision counts as unsupported. Extensions are advertised per revision: in `initialize` on
+`2025-11-25` and in `server/discover` on `2026-07-28`, only for definitions that list that
+revision. `ContextClient.getServerExtension(definition)` reads what the server declared.
+
 The manager owns task records, detached workers, cancellation signals and expiry. Its store uses
 revision-based compare-and-swap (CAS): a write based on a stale revision conflicts, and the manager
 re-reads and retries so concurrent status changes and partial input responses are preserved.
