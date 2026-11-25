@@ -7,20 +7,7 @@ Each item is its own plan; item 1 is a prerequisite for the others.
 
 ## 1. Generic extension plumbing
 
-Today only tasks can be declared: `ContextServer` sets `capabilities.extensions` for tasks alone,
-and `ContextClient` derives its capabilities from the handlers it is given, adding tasks itself.
-
-- `extensions` param on `ContextServer` and `ContextClient` to declare extension identifiers with
-  their settings objects.
-- Settings-aware helpers generalising `declaresTasksExtension` (per-request client capabilities on
-  the server; discovered server capabilities on the client).
-- Carry `capabilities.extensions` through `initialize` on `2025-11-25` (initialization-based
-  negotiation), not only through `_meta` / `server/discover` on `2026-07-28`.
-- Honour the settings `revision` rule: a peer receiving an unknown `revision` does not enable the
-  extension.
-- Make the client's tasks declaration configurable. It is currently always declared on
-  `2026-07-28`, while the spec says extensions are disabled by default and require explicit
-  opt-in. Keeping it on by default is acceptable since `task-waiter` handles it transparently.
+In progress: `docs/superpowers/specs/2026-11-25-extension-plumbing-design.md`.
 
 ## 2. OAuth Client Credentials
 
