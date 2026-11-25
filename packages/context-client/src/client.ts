@@ -1014,7 +1014,7 @@ export class ContextClient<
       throw new MethodNotInRevisionError({
         method: 'subscriptions/listen',
         version: protocol.version,
-        hint: `task filters need the ${TASKS.id} extension, which is not enabled`,
+        message: `Task filters on subscriptions/listen require the ${TASKS.id} extension; create the client with tasks: true`,
       })
     }
   }
@@ -1991,9 +1991,9 @@ export class ContextClient<
       }
       return Promise.reject(
         new MethodNotInRevisionError({
-          method: 'tasks/get',
+          method: 'waitForTask',
           version,
-          hint: `the ${TASKS.id} extension is not enabled`,
+          message: `waitForTask requires the ${TASKS.id} extension; create the client with tasks: true`,
         }),
       )
     }

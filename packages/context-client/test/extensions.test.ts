@@ -188,3 +188,41 @@ test('waitForTask rejects rather than throws on an unresolved auto client with t
   }).not.toThrow()
   await expect(promise).rejects.toThrow()
 })
+
+test("an 'auto' client with tasks: true negotiates 2025-11-25 against a 2025-only server", async () => {
+  const pair = new DirectTransports<ServerMessage, ClientMessage>()
+  transports.push(pair)
+  const sent: Array<ClientMessage> = []
+  const clientWrite = pair.client.write.bind(pair.client)
+  pair.client.write = ((message: ClientMessage) => {
+    sent.push(message)
+    return clientWrite(message)
+  }) as typeof pair.client.write
+  const server = new ContextServer({
+    transport: pair.server,
+    protocolVersions: ['2025-11-25'],
+    serverInfo: { name: 'test', version: '1' },
+    tools: {
+      echo: createTool({
+        description: 'echo',
+        inputSchema: { type: 'object' },
+        handler: () => ({ content: [{ type: 'text' as const, text: 'ok' }] }),
+      }),
+    },
+    tasks: createTaskManager(),
+  } as never)
+  const client = new ContextClient({
+    protocolVersion: 'auto',
+    transport: pair.client,
+    tasks: true,
+  })
+  await client.initialize()
+  expect(client.protocolVersion).toBe('2025-11-25')
+  const init = sent.find((m) => (m as { method?: string }).method === 'initialize') as {
+    params: { capabilities: Record<string, unknown> }
+  }
+  expect(init.params.capabilities).not.toHaveProperty('extensions')
+  const result = await client.callTool({ name: 'echo', arguments: {} })
+  expect(result.content).toEqual([{ type: 'text', text: 'ok' }])
+  void server
+})
