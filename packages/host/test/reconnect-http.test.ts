@@ -414,7 +414,7 @@ describe('HTTP loss after a task was accepted', () => {
 
   test('a read-only call is not retried once its task was accepted', async () => {
     const env = taskServer()
-    const host = new ContextHost()
+    const host = new ContextHost({ tasks: true })
     hosts.push(host)
     await host.addHTTPContext({
       key: 'remote',

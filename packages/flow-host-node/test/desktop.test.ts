@@ -179,6 +179,7 @@ const inputFlow: FlowDefinition = {
 }
 async function runtime(approval = false) {
   const session = new Session({
+    tasks: true,
     elicit: async () => {
       throw new Error('Unexpected elicitation')
     },

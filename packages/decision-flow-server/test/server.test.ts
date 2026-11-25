@@ -85,7 +85,11 @@ async function setup(
     elicitation: options.elicitation,
   })
   const server = new ContextServer({ ...definition.config, transport: pair.server })
-  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  const client = new ContextClient({
+    protocolVersion: '2026-07-28',
+    transport: pair.client,
+    tasks: true,
+  })
   cleanups.push(async () => {
     await client.dispose()
     await server.dispose()

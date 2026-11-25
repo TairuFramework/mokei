@@ -150,7 +150,7 @@ test('run_flow calls a registered flow and routes a declined input', async () =>
       },
     },
   } as unknown as FlowDefinition
-  const session = new Session({ elicit: true })
+  const session = new Session({ elicit: true, tasks: true })
   const wiring = await addDecisionFlow(session, { key: 'flow', flows: [ask] })
   const completed: Array<unknown> = []
   const agent = new AgentSession({

@@ -53,7 +53,7 @@ afterEach(async () => {
 })
 
 async function setup() {
-  const session = new Session({ elicit: true })
+  const session = new Session({ elicit: true, tasks: true })
   let executions = 0
   session.contextHost.addLocalTool({
     name: 'echo',

@@ -34,7 +34,7 @@ test('recovers waiting input from a reopened sqlite database', async () => {
     logs: { file: false },
     reportCategories: [FLOW_REPORT_CATEGORY],
   })
-  let session = new Session({ elicit: true })
+  let session = new Session({ elicit: true, tasks: true })
   let host: FlowHost | undefined
   try {
     const firstRuns = await getFlowRunStore(database)
@@ -67,7 +67,7 @@ test('recovers waiting input from a reopened sqlite database', async () => {
     database = await openMokeiDatabase({ path, stores: flowStoreDefinitions })
     const secondRuns = await getFlowRunStore(database)
     const secondTasks = await getFlowTaskStore(database)
-    session = new Session({ elicit: true })
+    session = new Session({ elicit: true, tasks: true })
     const recovered = vi.fn(() => getLogger(['restart']).info('Recovered input'))
     const secondHost = await createFlowHost({
       session,

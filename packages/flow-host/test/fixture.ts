@@ -45,7 +45,7 @@ export async function createFixture(
   const elicit = vi.fn(async () => {
     throw new Error('Unexpected session elicitation')
   })
-  const session = new Session({ elicit })
+  const session = new Session({ elicit, tasks: true })
   const echo = vi.fn(() => ({ content: [{ type: 'text' as const, text: 'echo' }] }))
   session.contextHost.addLocalTool({ name: 'echo', inputSchema: { type: 'object' }, execute: echo })
   const held = deferred<void>()

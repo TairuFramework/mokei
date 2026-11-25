@@ -44,7 +44,7 @@ const sessions: Array<Session> = []
 const wirings: Array<{ dispose(): Promise<void> }> = []
 
 function session() {
-  const value = new Session()
+  const value = new Session({ tasks: true })
   sessions.push(value)
   return value
 }
