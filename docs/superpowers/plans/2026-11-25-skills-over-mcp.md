@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** planning
+**Stage:** qa
 **Mode:** tasks
 
 **Goal:** Base client and server support for the `io.modelcontextprotocol/skills` extension: publish skills, discover them, and read skill files with verification.
