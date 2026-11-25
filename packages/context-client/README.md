@@ -52,7 +52,8 @@ unavailable. Use `client.tasks.get(taskId)` to inspect the current status withou
 
 Tasks are opt-in. The client declares the Tasks extension only when created with `tasks: true`;
 the default is `false`. With `tasks: false`, `client.tasks.*`, `waitForTask` and listening with
-`taskIds` throw `ExtensionNotDeclaredError` without contacting the server.
+`taskIds` throw `MethodNotInRevisionError` (its hint names the extension) without contacting the
+server.
 
 ```ts
 const client = new ContextClient({ protocolVersion: '2026-07-28', transport, tasks: true })

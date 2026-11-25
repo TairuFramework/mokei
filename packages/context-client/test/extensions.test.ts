@@ -177,3 +177,14 @@ test('ExtensionNotDeclaredError carries the id', () => {
   expect(error.message).toBe('Server did not declare the x/y extension')
   expect(error.extension).toBe('x/y')
 })
+
+test('waitForTask rejects rather than throws on an unresolved auto client with tasks off', async () => {
+  const pair = new DirectTransports<ServerMessage, ClientMessage>()
+  transports.push(pair)
+  const client = new ContextClient({ protocolVersion: 'auto', transport: pair.client })
+  let promise: Promise<unknown> | undefined
+  expect(() => {
+    promise = client.waitForTask({ taskID: 't1' })
+  }).not.toThrow()
+  await expect(promise).rejects.toThrow()
+})

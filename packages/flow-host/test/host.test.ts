@@ -375,6 +375,12 @@ test('elicitation must be enabled', async () => {
   await session.dispose()
 })
 
+test('tasks must be enabled', async () => {
+  const session = new Session({ elicit: async () => ({ action: 'cancel' }) })
+  await expect(createFlowHost({ session })).rejects.toThrow(/requires tasks/i)
+  await session.dispose()
+})
+
 test.each(['issues', 'plan'] as const)(
   'changed authorization %s fails without minting a grant',
   async (change) => {

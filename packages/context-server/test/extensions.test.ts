@@ -36,6 +36,10 @@ type Setup = {
   protocolVersions?: Array<'2025-11-25' | '2026-07-28'>
   tasks?: boolean
   tool?: GenericToolDefinition
+  /** Replaces the default `[TEST_EXT]` declared by the server. */
+  declared?: Array<ExtensionDefinition>
+  /** Replaces the default `[TEST_EXT, TASKS]` registry. */
+  registry?: Array<ExtensionDefinition>
 }
 
 function setup(options: Setup = {}) {
@@ -49,8 +53,8 @@ function setup(options: Setup = {}) {
     subscriptions: options.tasks,
     tools: options.tool ? { probe: options.tool } : undefined,
     transport: transports.server,
-    _extensions: [{ definition: TEST_EXT }],
-    _registry: [TEST_EXT, TASKS],
+    _extensions: (options.declared ?? [TEST_EXT]).map((definition) => ({ definition })),
+    _registry: options.registry ?? [TEST_EXT, TASKS],
   })
   cleanup.push(() => transports.dispose())
   if (tasks != null) cleanup.push(() => tasks.dispose())
@@ -164,5 +168,58 @@ describe('registry gating', () => {
       _meta: meta({}),
     })
     expect(response.error?.message).toBe('Client did not declare the tasks extension')
+  })
+})
+
+describe('registry gating on 2025-11-25', () => {
+  // Claims a core 2025-11-25 method so the gate runs on the stateful revision.
+  const CoreExt: ExtensionDefinition = {
+    id: 'dev.mokei/core-ext',
+    revision: '1',
+    protocolVersions: new Set(['2025-11-25']),
+    clientMethods: new Set(['logging/setLevel']),
+    serverMethods: new Set(),
+  }
+  const initialize = (capabilities: Record<string, unknown>) => ({
+    protocolVersion: '2025-11-25',
+    capabilities,
+    clientInfo: { name: 'c', version: '1' },
+  })
+
+  test('is method-not-found when the server does not enable the extension', async () => {
+    const request = setup({
+      protocolVersions: ['2025-11-25'],
+      declared: [],
+      registry: [CoreExt],
+    })
+    await request('initialize', initialize({}))
+    const response = await request('logging/setLevel', { level: 'info' })
+    expect(response.error?.code).toBe(-32601)
+  })
+
+  test('is refused when the client did not declare the extension', async () => {
+    const request = setup({
+      protocolVersions: ['2025-11-25'],
+      declared: [CoreExt],
+      registry: [CoreExt],
+    })
+    await request('initialize', initialize({}))
+    const response = await request('logging/setLevel', { level: 'info' })
+    expect(response.error?.code).toBe(-32021)
+  })
+
+  test('succeeds when the client declared the extension', async () => {
+    const request = setup({
+      protocolVersions: ['2025-11-25'],
+      declared: [CoreExt],
+      registry: [CoreExt],
+    })
+    await request(
+      'initialize',
+      initialize({ extensions: { 'dev.mokei/core-ext': { revision: '1' } } }),
+    )
+    const response = await request('logging/setLevel', { level: 'info' })
+    expect(response.error).toBeUndefined()
+    expect(response.result).toEqual({})
   })
 })

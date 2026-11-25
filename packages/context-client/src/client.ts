@@ -1663,7 +1663,12 @@ export class ContextClient<
     return this.#serverCapabilitySnapshot
   }
 
-  /** The server's settings for an extension, or `null` when it did not declare it. */
+  /**
+   * The server's settings for an extension, or `null` when it did not declare it. On
+   * `2026-07-28` this reads the session's `server/discover` snapshot, so it rejects if the server
+   * refuses `server/discover` (same semantics as the capability checks) rather than returning
+   * `null`.
+   */
   async getServerExtension(
     definition: ExtensionDefinition,
     options?: RequestOptions,
@@ -1977,10 +1982,17 @@ export class ContextClient<
 
   waitForTask(params: WaitForTaskParams): Promise<CallToolResult> {
     if (!this.#extensions.has(TASKS)) {
+      // Always reject, never throw: `#requireProtocol()` throws while an 'auto' probe is pending.
+      let version: ProtocolVersion
+      try {
+        version = this.#requireProtocol().version
+      } catch (error) {
+        return Promise.reject(error)
+      }
       return Promise.reject(
         new MethodNotInRevisionError({
           method: 'tasks/get',
-          version: this.#requireProtocol().version,
+          version,
           hint: `the ${TASKS.id} extension is not enabled`,
         }),
       )
