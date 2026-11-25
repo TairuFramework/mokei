@@ -175,7 +175,7 @@ const fetchMiddleware = createClientCredentialsMiddleware({
   assertion, and only tokens obtained from it are used.
 - `signer` is a `ClientAssertionSigner` (`EdDSA` or `ES256`). `createWebCryptoAssertionSigner`
   wraps a WebCrypto private key. Assertions are built by `createClientAssertion` from
-  `@kokuin/oauth`, which requires the next `@kokuin/oauth` release.
+  `@kokuin/oauth`, which requires `@kokuin/oauth` 0.7.6 or later.
 - `scopes` default to the scopes in the `401` challenge. `resource` defaults to the canonical
   request URL and is otherwise used verbatim.
 - Tokens are stored under `clientCredentialsStoreKey`, apart from authorisation-code tokens, and

@@ -215,7 +215,7 @@ from authorisation-code tokens (`clientCredentialsStoreKey`). `createHTTPClient`
 `addHTTPContext` accept `clientCredentials` to build it and declare the
 `io.modelcontextprotocol/oauth-client-credentials` extension (`oauthClientCredentials` on
 `ContextClient` and `ContextServer`); the host builds the middleware once, so reconnects share its
-store. The assertion helpers come from `@kokuin/oauth` and need its next release.
+store. The assertion helpers come from `@kokuin/oauth` and need version 0.7.6 or later.
 `Session.addHTTPContext` accepts HTTP contexts.
 The CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
 `--oauth-scope`, and either `--oauth-tokens <path>` or `--oauth-keychain`. Persistence stays
