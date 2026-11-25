@@ -39,7 +39,9 @@ export {
   revokeTokens,
 } from './oauth/revoke.js'
 export {
+  clientCredentialsStoreKey,
   createMemoryTokenStore,
+  parseClientCredentialsStoreKey,
   parseTokenStoreKey,
   type StoredTokens,
   type TokenStore,

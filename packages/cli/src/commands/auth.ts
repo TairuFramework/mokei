@@ -1,4 +1,9 @@
-import { canonicalResource, parseTokenStoreKey, revokeTokens } from '@mokei/http-client'
+import {
+  canonicalResource,
+  parseClientCredentialsStoreKey,
+  parseTokenStoreKey,
+  revokeTokens,
+} from '@mokei/http-client'
 import { Command } from 'commander'
 
 import { openTokenStore, type TokenStoreOptions } from '../auth-store.js'
@@ -8,7 +13,10 @@ type ListOptions = TokenStoreOptions & { json?: boolean }
 
 type LogoutOptions = TokenStoreOptions & { clientId?: string; revoke: boolean; json?: boolean }
 
+type Grant = 'authorization_code' | 'client_credentials'
+
 type SignIn = {
+  grant: Grant
   resource: string
   clientID: string
   scopes: Array<string>
@@ -19,6 +27,7 @@ type SignIn = {
 
 const SIGN_IN_COLUMNS = [
   { key: 'resource', label: 'RESOURCE' },
+  { key: 'grant', label: 'GRANT' },
   { key: 'clientID', label: 'CLIENT' },
   { key: 'scopes', label: 'SCOPES' },
   { key: 'issuer', label: 'ISSUER' },
@@ -37,19 +46,34 @@ async function readSignIns(options: TokenStoreOptions): Promise<Array<SignIn & {
   const store = openTokenStore(options)
   const signIns: Array<SignIn & { key: string }> = []
   for (const key of await store.keys()) {
-    const parts = parseTokenStoreKey(key)
-    if (parts == null) continue
+    const legacy = parseTokenStoreKey(key)
+    const clientCredentials = legacy == null ? parseClientCredentialsStoreKey(key) : undefined
+    if (legacy == null && clientCredentials == null) continue
     const tokens = await store.get(key)
     if (tokens == null) continue
-    signIns.push({
-      key,
-      resource: parts.resource,
-      clientID: parts.clientID,
-      scopes: parts.scopes,
-      issuer: tokens.issuer ?? null,
-      expiresAt: tokens.expiresAt ?? null,
-      refreshable: tokens.refreshToken != null,
-    })
+    if (legacy != null) {
+      signIns.push({
+        key,
+        grant: 'authorization_code',
+        resource: legacy.resource,
+        clientID: legacy.clientID,
+        scopes: legacy.scopes,
+        issuer: tokens.issuer ?? null,
+        expiresAt: tokens.expiresAt ?? null,
+        refreshable: tokens.refreshToken != null,
+      })
+    } else if (clientCredentials != null) {
+      signIns.push({
+        key,
+        grant: 'client_credentials',
+        resource: clientCredentials.resource,
+        clientID: clientCredentials.clientID,
+        scopes: clientCredentials.scopes,
+        issuer: clientCredentials.issuer,
+        expiresAt: tokens.expiresAt ?? null,
+        refreshable: false,
+      })
+    }
   }
   return signIns.sort((a, b) => a.resource.localeCompare(b.resource))
 }
@@ -69,6 +93,7 @@ async function runList(options: ListOptions): Promise<void> {
       SIGN_IN_COLUMNS,
       signIns.map((signIn) => ({
         resource: signIn.resource,
+        grant: signIn.grant,
         clientID: signIn.clientID,
         scopes: signIn.scopes.join(' ') || '-',
         issuer: signIn.issuer ?? '-',
@@ -83,6 +108,7 @@ async function runList(options: ListOptions): Promise<void> {
 
 type LogoutOutcome = {
   resource: string
+  grant: Grant
   clientID: string
   scopes: Array<string>
   revocation: 'revoked' | 'skipped' | 'unsupported' | 'failed'
@@ -95,7 +121,9 @@ async function runLogout(resource: string, options: LogoutOptions): Promise<void
     const store = openTokenStore(options)
     const matches = (await readSignIns(options)).filter(
       (signIn) =>
-        signIn.resource === canonical &&
+        (signIn.grant === 'client_credentials'
+          ? signIn.resource === resource
+          : signIn.resource === canonical) &&
         (options.clientId == null || signIn.clientID === options.clientId),
     )
     if (matches.length === 0) {
@@ -109,10 +137,13 @@ async function runLogout(resource: string, options: LogoutOptions): Promise<void
         resource: signIn.resource,
         clientID: signIn.clientID,
         scopes: signIn.scopes,
+        grant: signIn.grant,
         revocation: 'skipped',
       }
       const tokens = await store.get(signIn.key)
-      if (options.revoke && tokens != null) {
+      if (signIn.grant === 'client_credentials') {
+        outcome.detail = 'client credentials tokens are deleted locally only'
+      } else if (options.revoke && tokens != null) {
         try {
           const result = await revokeTokens({
             tokens,
