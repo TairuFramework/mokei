@@ -11,6 +11,7 @@ import type {
   CreateTaskResult,
   DetailedTask,
   DiscoverResult,
+  ExtensionDefinition,
   GetPromptRequest,
   GetPromptResult,
   Implementation,
@@ -47,6 +48,10 @@ import type {
   TasksGetResult,
 } from '@mokei/context-protocol'
 import {
+  declareExtension,
+  EXTENSIONS,
+  extensionForClientMethod,
+  extensionsFor,
   INPUT_REQUEST_CAPABILITIES,
   INVALID_REQUEST,
   inferSchemaDraft,
@@ -56,10 +61,12 @@ import {
   META_SUBSCRIPTION_ID,
   METHOD_NOT_FOUND,
   MOKEI_VERSION,
+  OAUTH_CLIENT_CREDENTIALS,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
+  readExtension,
   serverMessage,
-  TASKS_EXTENSION,
+  TASKS,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import {
@@ -85,6 +92,7 @@ import {
 } from './client-tracing.js'
 import {
   CapabilityNotDeclaredError,
+  ExtensionNotDeclaredError,
   InputRequiredNotSupportedError,
   ListMaxPagesError,
   MethodNotInRevisionError,
@@ -343,6 +351,8 @@ export class ContextClient<
   #tracing?: ClientTracing
   #exchangeTracer = createExchangeTracer(() => this.#tracing)
   #capabilities: ClientCapabilities
+  #extensions = new Map<ExtensionDefinition, Record<string, unknown>>()
+  #registry: ReadonlyArray<ExtensionDefinition>
   // Aborted once the transport closes, so an input-required flow waiting on a handler settles.
   #closed = new AbortController()
   #clientInfo: Implementation
@@ -481,6 +491,16 @@ export class ContextClient<
     }
 
     this.#capabilities = capabilities
+    this.#registry = params._registry ?? EXTENSIONS
+    if (params.tasks === true) {
+      this.#extensions.set(TASKS, declareExtension(TASKS))
+    }
+    if (params.oauthClientCredentials === true) {
+      this.#extensions.set(OAUTH_CLIENT_CREDENTIALS, declareExtension(OAUTH_CLIENT_CREDENTIALS))
+    }
+    for (const { definition, settings } of params._extensions ?? []) {
+      this.#extensions.set(definition, declareExtension(definition, settings))
+    }
     this.#tracing = params.tracing
     this.#clientInfo = params.clientInfo ?? DEFAULT_CLIENT_INFO
     this.#initialized = lazy(() => this.#initialize())
@@ -647,6 +667,7 @@ export class ContextClient<
     if (!protocol.clientMethods.has(method as string)) {
       throw new MethodNotInRevisionError({ method: method as string, version: protocol.version })
     }
+    this.#refuseUndeclaredExtension(method as string, params, protocol)
     const traced = options as TracedRequestOptions | undefined
     const firstContext = traced?.[FIRST_EXCHANGE]
     const exchange = this.#exchangeTracer.startOutgoing(method as string, params, {
@@ -842,7 +863,7 @@ export class ContextClient<
     const { result, negotiatedRevision } = await this.#setupReader.driveInitialize({
       protocolVersion: protocol.version,
       clientInfo: this.#clientInfo,
-      capabilities: this.#capabilities,
+      capabilities: this.#capabilitiesFor(protocol),
     })
     // Reject a negotiated version other than the one this client is configured to speak. This
     // `dispose()` runs twice -- the throw propagates into `#setup()`'s blanket catch, which
@@ -966,10 +987,39 @@ export class ContextClient<
   }
 
   #capabilitiesFor(protocol: ProtocolDefinition): ClientCapabilities {
-    if (protocol.version !== '2026-07-28') return this.#capabilities
-    return {
-      ...this.#capabilities,
-      extensions: { ...this.#capabilities.extensions, [TASKS_EXTENSION]: {} },
+    const extensions = extensionsFor(this.#extensions, protocol.version)
+    return extensions == null ? this.#capabilities : { ...this.#capabilities, extensions }
+  }
+
+  /** Local refusal of an extension method (or task listen filter) this client did not opt into. */
+  #refuseUndeclaredExtension(method: string, params: unknown, protocol: ProtocolDefinition): void {
+    const definition = extensionForClientMethod(method, this.#registry)
+    if (
+      definition != null &&
+      (!this.#extensions.has(definition) || !definition.protocolVersions.has(protocol.version))
+    ) {
+      throw new MethodNotInRevisionError({
+        method,
+        version: protocol.version,
+        hint: `the ${definition.id} extension is not enabled`,
+      })
+    }
+    if (method === 'subscriptions/listen') {
+      const filter = (params as { notifications?: SubscriptionFilter } | undefined)?.notifications
+      this.#refuseUndeclaredTaskFilter(filter, protocol)
+    }
+  }
+
+  #refuseUndeclaredTaskFilter(
+    filter: SubscriptionFilter | undefined,
+    protocol: ProtocolDefinition,
+  ): void {
+    if (filter?.taskIds != null && !this.#extensions.has(TASKS)) {
+      throw new MethodNotInRevisionError({
+        method: 'subscriptions/listen',
+        version: protocol.version,
+        message: `Task filters on subscriptions/listen require the ${TASKS.id} extension; create the client with tasks: true`,
+      })
     }
   }
 
@@ -1333,6 +1383,7 @@ export class ContextClient<
    * directly to the task waiter.
    */
   #openListen(filter: SubscriptionFilter, handlers: ListenHandlers): ListenHandle {
+    this.#refuseUndeclaredTaskFilter(filter, this.#requireProtocol())
     const traced = this.#exchangeTracer.startOutgoing('subscriptions/listen', {
       notifications: filter,
     })
@@ -1598,20 +1649,49 @@ export class ContextClient<
     capability: 'tools' | 'completions',
     options?: RequestOptions,
   ): Promise<void> {
-    const protocol = this.#requireProtocol()
-    let capabilities: ServerCapabilities
-    if (isHandshakeRequired(protocol)) {
-      capabilities = this.#serverCapabilities
-    } else {
-      if (this.#serverCapabilitySnapshot == null) {
-        const result = await this.discover(options)
-        this.#serverCapabilitySnapshot = result.capabilities
-      }
-      capabilities = this.#serverCapabilitySnapshot
-    }
+    const capabilities = await this.#serverCapabilitiesAsync(options)
     if (capabilities[capability] == null) {
       throw new CapabilityNotDeclaredError({ capability: capability })
     }
+  }
+
+  async #serverCapabilitiesAsync(options?: RequestOptions): Promise<ServerCapabilities> {
+    const protocol = this.#requireProtocol()
+    if (isHandshakeRequired(protocol)) {
+      return this.#serverCapabilities
+    }
+    if (this.#serverCapabilitySnapshot == null) {
+      const result = await this.discover(options)
+      this.#serverCapabilitySnapshot = result.capabilities
+    }
+    return this.#serverCapabilitySnapshot
+  }
+
+  /**
+   * The server's settings for an extension, or `null` when it did not declare it. On
+   * `2026-07-28` this reads the session's `server/discover` snapshot, so it rejects if the server
+   * refuses `server/discover` (same semantics as the capability checks) rather than returning
+   * `null`.
+   */
+  async getServerExtension(
+    definition: ExtensionDefinition,
+    options?: RequestOptions,
+  ): Promise<Record<string, unknown> | null> {
+    await this.#ready
+    return readExtension(await this.#serverCapabilitiesAsync(options), definition)
+  }
+
+  // No caller yet: guards a future feature that needs the server to speak an extension.
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: specified by the plan, first caller lands later
+  async #requireServerExtensionAsync(
+    definition: ExtensionDefinition,
+    options?: RequestOptions,
+  ): Promise<Record<string, unknown>> {
+    const settings = await this.getServerExtension(definition, options)
+    if (settings == null) {
+      throw new ExtensionNotDeclaredError({ extension: definition.id })
+    }
+    return settings
   }
 
   get notifications(): ReadableStream<ServerNotification> {
@@ -1905,6 +1985,22 @@ export class ContextClient<
   }
 
   waitForTask(params: WaitForTaskParams): Promise<CallToolResult> {
+    if (!this.#extensions.has(TASKS)) {
+      // Always reject, never throw: `#requireProtocol()` throws while an 'auto' probe is pending.
+      let version: ProtocolVersion
+      try {
+        version = this.#requireProtocol().version
+      } catch (error) {
+        return Promise.reject(error)
+      }
+      return Promise.reject(
+        new MethodNotInRevisionError({
+          method: 'waitForTask',
+          version,
+          message: `waitForTask requires the ${TASKS.id} extension; create the client with tasks: true`,
+        }),
+      )
+    }
     this.#taskWaiter ??= new TaskWaiter({
       request: async (method, requestParams) => {
         if (method === 'tasks/get') {

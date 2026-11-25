@@ -26,6 +26,18 @@ export {
   type ElicitFormResult,
   elicitFormFields,
 } from './elicitation-form.js'
+export {
+  declareExtension,
+  EXTENSIONS,
+  type ExtensionDefinition,
+  extensionForClientMethod,
+  extensionForServerMethod,
+  extensionsFor,
+  missingExtensionErrorParams,
+  OAUTH_CLIENT_CREDENTIALS,
+  readExtension,
+  TASKS,
+} from './extensions.js'
 export { MCP_NAME_HEADER_SOURCE } from './http-headers.js'
 export type {
   ClientCapabilities,

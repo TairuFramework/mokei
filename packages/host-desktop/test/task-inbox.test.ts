@@ -151,7 +151,7 @@ describe('decision-flow-style task through the inbox', () => {
       env: LINUX_ENV,
       onUnsupported: (reason) => reports.push(reason),
     })
-    host = new ContextHost({ elicit: handler })
+    host = new ContextHost({ elicit: handler, tasks: true })
     deadline = new AbortController()
   })
 

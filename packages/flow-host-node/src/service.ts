@@ -198,7 +198,7 @@ export function createFlowService(params: FlowServiceParams): FlowService {
     loadFlows: loadFlowDirs,
     createSession: () => {
       return new NodeSession({
-        contextHost: new NodeContextHost({ elicit: true, tracing: params.tracing }),
+        contextHost: new NodeContextHost({ elicit: true, tasks: true, tracing: params.tracing }),
       })
     },
     createHost: createFlowHost,

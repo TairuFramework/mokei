@@ -132,6 +132,8 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   contextHost?: ContextHost
   /** Enable elicitation when this session creates its own context host. */
   elicit?: HostElicitHandler | true
+  /** Declare the Tasks extension when this session creates its own context host. Default `false`. */
+  tasks?: boolean
   /**
    * Local tools that can be called directly without setting up an MCP server.
    * These tools are registered with the `local:` namespace prefix.
@@ -218,8 +220,8 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #tracing: SessionTracing | undefined
 
   constructor(params: SessionParams<T> = {}) {
-    if (params.contextHost && params.elicit != null) {
-      throw new Error('Cannot provide both contextHost and elicit')
+    if (params.contextHost && (params.elicit != null || params.tasks != null)) {
+      throw new Error('Cannot provide both contextHost and elicit or tasks')
     }
     super({
       dispose: async () => {
@@ -229,7 +231,11 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     this.#events = new EventEmitter()
     this.#contextHost =
       params.contextHost ??
-      new DefaultContextHost({ elicit: params.elicit, tracing: params.tracing })
+      new DefaultContextHost({
+        elicit: params.elicit,
+        tasks: params.tasks,
+        tracing: params.tracing,
+      })
     this.#tracing = params.tracing
     this.#retry = params.retry
     this.#providers = new Map(Object.entries(params.providers ?? {}))
@@ -262,35 +268,15 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   }
 
   async #setupHTTPContext(params: AddHTTPContextParams): Promise<Array<ContextTool>> {
-    const {
-      key,
-      url,
-      headers,
-      auth,
-      timeout,
-      protocolVersion,
-      fetchMiddleware,
-      enableTools,
-      elicit,
-      runtime,
-      reconnect,
-    } = params
+    // Everything but the session's own params goes to the host, so a field added to
+    // `HTTPContextParams` is forwarded without being listed here.
+    const { enableTools, signal: _signal, ...contextParams } = params
+    const { key } = contextParams
     // `ContextHost.addHTTPContext` registers the context synchronously (unlike stdio's
     // async-spawning `addLocalContext`), and rejects with "already exists" for a duplicate key
     // BEFORE registering anything. Awaiting it outside the try means a duplicate-key rejection
     // never enters the catch below, so it can never remove a pre-existing context.
-    const client = await this.#contextHost.addHTTPContext({
-      key,
-      url,
-      headers,
-      auth,
-      timeout,
-      protocolVersion,
-      fetchMiddleware,
-      elicit,
-      runtime,
-      reconnect,
-    })
+    const client = await this.#contextHost.addHTTPContext(contextParams)
     // Captured once: a reconnect swaps `.client` in place but keeps this registration. Claimed
     // only when it still holds the client this call registered: a remove + re-add in the await
     // above leaves a replacement registration that is not ours.

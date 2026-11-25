@@ -203,6 +203,7 @@ export function toolToLocalTool(params: ToolToLocalToolParams): LocalToolDefinit
         // round-trip a `requestState` over -- but `mintRequestState` is a pure encoder a
         // handler may still call while building an `inputRequired()` result, so it gets the
         // same default `ContextServer` falls back to rather than a throwing stub.
+        clientCapabilities: {},
         mintRequestState: defaultMintRequestState,
       })
       // Suspension is not a tool outcome: local execution has no wire or retry loop to resume it.

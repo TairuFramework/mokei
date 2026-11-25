@@ -36,6 +36,10 @@ import {
   SESSION_EXPIRED_MESSAGE,
 } from './errors.js'
 import { REQUEST_INTERACTION, type RequestInteraction } from './interaction.js'
+import {
+  type ClientCredentialsConfig,
+  resolveClientCredentials,
+} from './oauth/client-credentials.js'
 import { withCredentialRedirectGuard } from './redirect-guard.js'
 import {
   REQUEST_TIMEOUT,
@@ -1231,6 +1235,11 @@ export type CreateHTTPClientParams = HTTPTransportParams &
      * itself.
      */
     protocolVersion: ProtocolVersion | 'auto'
+    /**
+     * Authenticate with the OAuth client credentials grant and declare the extension. Builds the
+     * middleware as the transport's `fetchMiddleware`, so it cannot be combined with one.
+     */
+    clientCredentials?: ClientCredentialsConfig
   }
 
 /**
@@ -1262,15 +1271,23 @@ const HTTP_TRANSPORT_PARAM_KEYS = {
 export function createHTTPClient<T extends ContextTypes = UnknownContextTypes>(
   params: CreateHTTPClientParams,
 ): ContextClient<T> {
+  const { clientCredentials, ...rest } = params
   const transportParams: Record<string, unknown> = {}
   const clientParams: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries(rest)) {
     if (key in HTTP_TRANSPORT_PARAM_KEYS) {
       transportParams[key] = value
     } else {
       clientParams[key] = value
     }
   }
+  const { fetchMiddleware, oauthClientCredentials } = resolveClientCredentials({
+    clientCredentials,
+    fetchMiddleware: params.fetchMiddleware,
+    runtime: params.runtime,
+  })
+  if (fetchMiddleware != null) transportParams.fetchMiddleware = fetchMiddleware
+  if (oauthClientCredentials) clientParams.oauthClientCredentials = true
   const transport = new HTTPTransport(transportParams as HTTPTransportParams)
   return new ContextClient<T>({
     ...(clientParams as Omit<ClientParams, 'transport'>),

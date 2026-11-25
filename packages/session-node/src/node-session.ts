@@ -28,13 +28,13 @@ export type NodeSessionParams<T extends ProviderTypes = ProviderTypes> = Omit<
 
 export class NodeSession<T extends ProviderTypes = ProviderTypes> extends Session<T> {
   constructor(params: NodeSessionParams<T> = {}) {
-    const { contextHost, elicit, ...sessionParams } = params
-    if (contextHost && elicit != null) {
-      throw new Error('Cannot provide both contextHost and elicit')
+    const { contextHost, elicit, tasks, ...sessionParams } = params
+    if (contextHost && (elicit != null || tasks != null)) {
+      throw new Error('Cannot provide both contextHost and elicit or tasks')
     }
     super({
       ...sessionParams,
-      contextHost: contextHost ?? new NodeContextHost({ elicit, tracing: params.tracing }),
+      contextHost: contextHost ?? new NodeContextHost({ elicit, tasks, tracing: params.tracing }),
     })
   }
 

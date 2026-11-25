@@ -72,7 +72,9 @@ export const META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo'
 export const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks'
 
 export function declaresTasksExtension(capabilities: ClientCapabilities | undefined): boolean {
-  return capabilities?.extensions?.[TASKS_EXTENSION] != null
+  // Same rule as `readExtension(capabilities, TASKS)`, inlined to avoid an import cycle.
+  const settings = capabilities?.extensions?.[TASKS_EXTENSION]
+  return settings != null && settings.revision === undefined
 }
 
 /** The protocol `_meta` every request carries in this revision. */

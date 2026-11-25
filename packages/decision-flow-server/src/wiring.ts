@@ -90,6 +90,7 @@ export async function addDecisionFlow(
   params: AddDecisionFlowParams,
 ): Promise<DecisionFlowWiring> {
   const host = session.contextHost
+  if (!host.tasksEnabled) throw new Error('Decision flow requires tasks')
   const caller = hostToolCaller(host, { exclude: [params.key] })
   const predictor = params.predictor ?? createMCPPredictor(caller)
   const registry = createFlowRegistry(params.flows ?? [])

@@ -50,6 +50,19 @@ if (task.resultType === 'task') {
 The client listens for task status notifications while waiting and polls when listening is
 unavailable. Use `client.tasks.get(taskId)` to inspect the current status without waiting.
 
+Tasks are opt-in. The client declares the Tasks extension only when created with `tasks: true`;
+the default is `false`. With `tasks: false`, `client.tasks.*`, `waitForTask` and listening with
+`taskIds` throw `MethodNotInRevisionError` (its hint names the extension) without contacting the
+server.
+
+```ts
+const client = new ContextClient({ protocolVersion: '2026-07-28', transport, tasks: true })
+```
+
+Use `client.getServerExtension(definition)` to read the settings a server declared for an
+extension (for example `TASKS` from `@mokei/context-protocol`). It returns `null` when the server
+did not declare it, or declared an unknown `revision`.
+
 ## Type-Safe Usage
 
 For the best developer experience, use type-safe clients by importing server types.

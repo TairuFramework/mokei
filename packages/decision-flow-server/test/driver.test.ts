@@ -226,7 +226,11 @@ test.each(['run_flow', 'flow_driver_test'])(
       approval: () => ({ tools: [] }),
     })
     const server = new ContextServer({ ...serverDefinition.config, transport: pair.server })
-    const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+    const client = new ContextClient({
+      protocolVersion: '2026-07-28',
+      transport: pair.client,
+      tasks: true,
+    })
     try {
       const started = await client.callTool({
         name,
@@ -272,7 +276,11 @@ test('run_flow with null input fails validation', async () => {
     approval: () => ({ tools: [] }),
   })
   const server = new ContextServer({ ...serverDefinition.config, transport: pair.server })
-  const client = new ContextClient({ protocolVersion: '2026-07-28', transport: pair.client })
+  const client = new ContextClient({
+    protocolVersion: '2026-07-28',
+    transport: pair.client,
+    tasks: true,
+  })
   try {
     await expect(
       client.callTool({

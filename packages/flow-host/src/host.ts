@@ -50,6 +50,7 @@ export function runSnapshot(record: RunRecord): FlowRunSnapshot {
 export async function createFlowHost(params: FlowHostParams): Promise<FlowHost> {
   if (!params.session.contextHost.elicitationEnabled)
     throw new Error('Flow host requires elicitation')
+  if (!params.session.contextHost.tasksEnabled) throw new Error('Flow host requires tasks')
   const key = params.key ?? 'flow'
   const store = params.runStore ?? createMemoryRunStore()
   const taskStore = params.taskStore ?? createMemoryTaskStore()

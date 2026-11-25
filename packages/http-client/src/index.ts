@@ -28,6 +28,13 @@ export {
 export { interactionOf, REQUEST_INTERACTION, type RequestInteraction } from './interaction.js'
 export { parseBearerChallenge } from './oauth/challenge.js'
 export {
+  type ClientAssertionSigner,
+  type ClientCredentialsConfig,
+  createClientCredentialsMiddleware,
+  createWebCryptoAssertionSigner,
+  resolveClientCredentials,
+} from './oauth/client-credentials.js'
+export {
   type AuthorizationHandler,
   createOAuthMiddleware,
   type OAuthClientConfig,
@@ -39,7 +46,9 @@ export {
   revokeTokens,
 } from './oauth/revoke.js'
 export {
+  clientCredentialsStoreKey,
   createMemoryTokenStore,
+  parseClientCredentialsStoreKey,
   parseTokenStoreKey,
   type StoredTokens,
   type TokenStore,

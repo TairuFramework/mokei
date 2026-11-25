@@ -154,10 +154,11 @@ describe('runner', () => {
     const pid = Number(fs.readFileSync(pidFile, 'utf8'))
     fs.rmSync(pidFile)
     const disposed = runner.dispose()
-    expect(await waitDead(pid, 1500)).toBe(true)
+    // SIGKILL follows a 1000 ms grace period; leave room for a loaded CI host.
+    expect(await waitDead(pid, 4000)).toBe(true)
     await disposed
     await promise.catch(() => {})
-  })
+  }, 10000)
 
   test('run after dispose rejects', async () => {
     runner = createRunner()

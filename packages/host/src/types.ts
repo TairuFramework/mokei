@@ -15,7 +15,12 @@ import type {
 } from '@mokei/context-protocol'
 import type { WithRequestOptions } from '@mokei/context-rpc'
 import type { JSONValue, ServerConfig } from '@mokei/context-server'
-import type { FetchMiddleware, HTTPAuthOptions, Runtime } from '@mokei/http-client'
+import type {
+  ClientCredentialsConfig,
+  FetchMiddleware,
+  HTTPAuthOptions,
+  Runtime,
+} from '@mokei/http-client'
 
 import type { CreateHostedContextParams, HostedContext } from './hosted-context.js'
 import type {
@@ -113,6 +118,8 @@ export type ContextHostParams = {
   /** Subclass teardown, run after every context is removed. */
   dispose?: () => Promise<void>
   elicit?: HostElicitHandler | true
+  /** Declare the Tasks extension on every context client this host creates. Default `false`. */
+  tasks?: boolean
   /** MCP payload capture defaults to 'off'. */
   tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
   /**
@@ -218,6 +225,11 @@ export type HTTPContextParams = {
   protocolVersion?: ProtocolVersion | 'auto'
   /** Fetch middleware (e.g. OAuth from createOAuthMiddleware) applied to the transport. */
   fetchMiddleware?: FetchMiddleware
+  /**
+   * Authenticate with the OAuth client credentials grant and declare the extension. Built once
+   * per context, so reconnects share its token store. Cannot be combined with `fetchMiddleware`.
+   */
+  clientCredentials?: ClientCredentialsConfig
   /**
    * Fetch and random-value implementations for the HTTP transport (default `createRuntime()`
    * from `@sozai/runtime`). React Native passes `@sozai/runtime-expo`'s `createRuntime({ fetch })`.

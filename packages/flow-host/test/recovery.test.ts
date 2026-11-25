@@ -119,7 +119,7 @@ test.each(['input', 'allowlisted approval'] as const)(
     const run = await first.host.start({ definition: source === 'input' ? inputFlow : echoFlow })
     if (source === 'input') await state(first.host, run.runID, 'input_required')
     await first.host.dispose()
-    const session = new Session({ elicit: true })
+    const session = new Session({ elicit: true, tasks: true })
     session.contextHost.addLocalTool({
       name: 'echo',
       inputSchema: { type: 'object' },
@@ -581,7 +581,7 @@ test('sibling wait survives disposal without cancelling or relaunching the sibli
       })
     },
   })
-  const session = new Session({ elicit: true })
+  const session = new Session({ elicit: true, tasks: true })
   session.contextHost.addDirectContext({
     key: 'sibling',
     protocolVersion: '2026-07-28',

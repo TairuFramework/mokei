@@ -19,7 +19,7 @@ const inputSchema = { type: 'object' as const, properties: {} }
 const outputSchema = { type: 'object' as const, properties: { ok: { type: 'boolean' as const } } }
 
 function host() {
-  const result = new ContextHost()
+  const result = new ContextHost({ tasks: true })
   hosts.push(result)
   return result
 }

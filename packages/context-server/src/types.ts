@@ -1,6 +1,7 @@
 import type { TransportType } from '@enkaku/transport'
 import type {
   CallToolResult,
+  ClientCapabilities,
   ClientMessage,
   CompleteRequest,
   CompleteResult,
@@ -114,6 +115,8 @@ export type HandlerRequest<C extends Record<string, unknown> = Record<string, ne
   progress?: ProgressEmitter
   signal: AbortSignal
   task?: TaskContext
+  /** The caller's declared capabilities (`{}` when none): per-request `_meta` on `2026-07-28`, the `initialize` capabilities on `2025-11-25`. */
+  clientCapabilities: ClientCapabilities
   /**
    * Results for the input requests this handler asked for on a previous round (MRTR, SEP-2322),
    * keyed as the handler keyed its own `inputRequests`. Absent on the first round and on

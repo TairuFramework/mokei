@@ -31,7 +31,9 @@ afterEach(async () => {
 })
 
 async function stdio() {
-  const spawned = await spawnMokeiStdioClient(MOKEI_STDIO_SERVER_TASKS_PATH, '2026-07-28')
+  const spawned = await spawnMokeiStdioClient(MOKEI_STDIO_SERVER_TASKS_PATH, '2026-07-28', {
+    tasks: true,
+  })
   clients.push(spawned)
   return spawned.client
 }
@@ -39,7 +41,11 @@ async function stdio() {
 async function http() {
   const server = await startMokeiTasksHTTPServer()
   servers.push(server)
-  const client = createHTTPClient({ url: server.url, protocolVersion: '2026-07-28' })
+  const client = createHTTPClient({
+    url: server.url,
+    protocolVersion: '2026-07-28',
+    tasks: true,
+  })
   clients.push(client)
   return { client, server }
 }
@@ -65,6 +71,7 @@ describe('mokei tasks over stdio', () => {
 
   test('fulfils elicitation input inside a task', async () => {
     const spawned = await spawnMokeiStdioClient(MOKEI_STDIO_SERVER_TASKS_PATH, '2026-07-28', {
+      tasks: true,
       elicit: ({ params }) => {
         expect(params.message).toBe('What is your name?')
         return { action: 'accept', content: { name: 'Ada' } }
@@ -77,7 +84,9 @@ describe('mokei tasks over stdio', () => {
   })
 
   test('cancels a task and receives a status notification on its listen', async () => {
-    const spawned = await spawnMokeiStdioSubscriptionClient(MOKEI_STDIO_SERVER_TASKS_PATH)
+    const spawned = await spawnMokeiStdioSubscriptionClient(MOKEI_STDIO_SERVER_TASKS_PATH, {
+      tasks: true,
+    })
     clients.push(spawned)
     const client = spawned.client
     const id = await taskID(client, TASK_CANCEL_TOOL)
@@ -121,6 +130,7 @@ describe('mokei tasks over HTTP', () => {
     const wireClient = createHTTPClient({
       url: server.url,
       protocolVersion: '2026-07-28',
+      tasks: true,
       fetchMiddleware: (next) => async (url, init) => {
         const response = await next(url, init)
         let request: { method?: unknown } | undefined
@@ -180,6 +190,7 @@ describe('mokei tasks over HTTP', () => {
     const client = createHTTPClient({
       url: server.url,
       protocolVersion: '2026-07-28',
+      tasks: true,
       elicit: () => ({ action: 'accept', content: { name: 'Ada' } }),
     })
     clients.push(client)
@@ -212,11 +223,13 @@ describe('bearer owned HTTP tasks', () => {
     const alice = createHTTPClient({
       url: server.url,
       protocolVersion: '2026-07-28',
+      tasks: true,
       auth: { type: 'bearer', token: 'alice' },
     })
     const bob = createHTTPClient({
       url: server.url,
       protocolVersion: '2026-07-28',
+      tasks: true,
       auth: { type: 'bearer', token: 'bob' },
     })
     clients.push(alice, bob)

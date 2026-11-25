@@ -180,6 +180,25 @@ const handler = createHTTPHandler({
 const response = await handler.handleRequest(request)
 ```
 
+### Client credentials extension
+
+Pass `oauthClientCredentials: true` to `ContextServer` to advertise the
+`io.modelcontextprotocol/oauth-client-credentials` extension (through `initialize` on `2025-11-25`
+and `server/discover` on `2026-07-28`). It declares that machine clients may authenticate with the
+client credentials grant; token verification stays with your `@teikyo/oauth` verifier.
+
+```typescript
+new ContextServer({
+  transport,
+  auth,
+  resolveAuth,
+  name,
+  version,
+  tools,
+  oauthClientCredentials: true,
+})
+```
+
 ## Subscriptions & graceful shutdown
 
 When `subscriptionHub` is passed to `serveHTTP` / `createHTTPHandler`, `2026-07-28`

@@ -43,6 +43,8 @@ export type SpawnHostedContextParams = SpawnContextServerParams & {
    */
   protocolVersion?: ProtocolVersion | 'auto'
   elicit?: ElicitHandler
+  /** Declare the Tasks extension on the client. Default `false`. */
+  tasks?: boolean
 }
 
 export async function spawnHostedContext<T extends ContextTypes = UnknownContextTypes>(
@@ -56,6 +58,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     killTimeout,
     protocolVersion,
     elicit,
+    tasks,
     ...spawnParams
   } = params
   // Validated before spawning: `ContextClient`'s constructor also rejects an unsupported pin,
@@ -98,6 +101,7 @@ export async function spawnHostedContext<T extends ContextTypes = UnknownContext
     transport: transport as ClientTransport,
     protocolVersion,
     elicit,
+    tasks,
     dispose: async () => {
       // Already exited -- nothing to reap.
       if (childProcess.exitCode != null || childProcess.signalCode != null) {
@@ -202,6 +206,7 @@ export class NodeContextHost extends ContextHost {
         maxBufferSize,
         maxMessageSize,
         protocolVersion,
+        tasks: this.tasksEnabled,
         elicit: elicitHandler,
         onStreamError: (error) => {
           // A framing fault only occurs while the read loop is actively pulling

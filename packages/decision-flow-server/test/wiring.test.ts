@@ -44,7 +44,7 @@ const sessions: Array<Session> = []
 const wirings: Array<{ dispose(): Promise<void> }> = []
 
 function session() {
-  const value = new Session()
+  const value = new Session({ tasks: true })
   sessions.push(value)
   return value
 }
@@ -904,6 +904,15 @@ test('elicitation guard covers callee input nodes', async () => {
     'Registered flow root requires elicitation',
   )
   expect(value.contextHost.getContextKeys()).not.toContain('flow')
+})
+
+test('rejects a session without tasks enabled', async () => {
+  const value = new Session({ elicit: async () => ({ action: 'cancel' }) })
+  await expect(addDecisionFlow(value, { key: 'flow', flows: [flow] })).rejects.toThrow(
+    'Decision flow requires tasks',
+  )
+  expect(value.contextHost.getContextKeys()).not.toContain('flow')
+  await value.dispose()
 })
 
 test('rejects a registered flow with a null node', async () => {

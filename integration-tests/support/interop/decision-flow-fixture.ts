@@ -38,7 +38,7 @@ export async function createDecisionFlowFixture(
   const siblingStore = createMemoryTaskStore()
   const siblingTasks = createTaskManager({ store: siblingStore })
   const flowStore = createMemoryTaskStore()
-  const session = new Session({ elicit: true })
+  const session = new Session({ elicit: true, tasks: true })
   let startTicket!: () => void
   const ticketStarted = new Promise<void>((resolve) => {
     startTicket = resolve

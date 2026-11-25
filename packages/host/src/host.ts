@@ -27,7 +27,12 @@ import type {
 } from '@mokei/context-protocol'
 import { TransportClosedError } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue } from '@mokei/context-server'
-import { type ConnectionEvent, HTTPTransport, SessionExpiredError } from '@mokei/http-client'
+import {
+  type ConnectionEvent,
+  HTTPTransport,
+  resolveClientCredentials,
+  SessionExpiredError,
+} from '@mokei/http-client'
 import { type SpanContext, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
@@ -125,6 +130,7 @@ export class ContextHost extends Disposer {
   // contexts (SEP-1391). Cleared in `remove()` so a listener never outlives its context.
   #subscriptionUnsubscribes: Map<string, Array<() => void>> = new Map()
   #elicit: HostElicitHandler | true | undefined
+  #tasks: boolean
   #elicitOverride: { handler: HostElicitOverride } | undefined
   #subscriptions = new ContextSubscriptions({
     isRegistered: (key, registration) => this.#contexts[key] === registration,
@@ -151,6 +157,7 @@ export class ContextHost extends Disposer {
       },
     })
     this.#elicit = params.elicit
+    this.#tasks = params.tasks ?? false
     this.#payloads = params.tracing?.payloads ?? 'off'
     this.#parentFrom = params.tracing?.parentFrom
     this.#connectivity = params.connectivity
@@ -158,6 +165,11 @@ export class ContextHost extends Disposer {
 
   get contexts(): Record<string, HostedContext> {
     return this.#contexts
+  }
+
+  /** Whether contexts created by this host declare the Tasks extension. */
+  get tasksEnabled(): boolean {
+    return this.#tasks
   }
 
   get elicitationEnabled(): boolean {
@@ -566,6 +578,7 @@ export class ContextHost extends Disposer {
 
     const context = createHostedContext<T>({
       ...hostedParams,
+      tasks: hostedParams.tasks ?? this.#tasks,
       elicit: this.createElicitHandler({ key, elicit }),
     })
     this.#register(key, context as unknown as HostedContext, {
@@ -591,6 +604,7 @@ export class ContextHost extends Disposer {
         transport: transports.client,
         tools: initialTools,
         protocolVersion,
+        tasks: this.#tasks,
         elicit: this.createElicitHandler({ key, elicit }),
         dispose: async () => {
           await Promise.all([server.dispose(), transports.client.dispose()])
@@ -645,8 +659,9 @@ export class ContextHost extends Disposer {
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
     params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, runtime, elicit } =
-      params
+    const { key, url, headers, auth, timeout, protocolVersion, runtime, elicit } = params
+    // Once, outside `build`: every reconnect generation shares the middleware's token store.
+    const { fetchMiddleware, oauthClientCredentials } = resolveClientCredentials(params)
 
     if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
@@ -670,6 +685,8 @@ export class ContextHost extends Disposer {
       const context = createHostedContext<T>({
         transport: transport as ClientTransport,
         protocolVersion,
+        tasks: this.#tasks,
+        oauthClientCredentials,
         elicit: this.createElicitHandler({ key, elicit }),
       })
       return { transport, context }

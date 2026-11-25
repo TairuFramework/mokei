@@ -1,4 +1,5 @@
 import {
+  clientCredentialsStoreKey,
   createMemoryTokenStore,
   revokeTokens,
   type TokenStore,
@@ -27,6 +28,8 @@ vi.mock('@mokei/http-client', async (importOriginal) => {
 
 const RESOURCE = 'https://mcp.example.com/mcp'
 const OTHER = 'https://other.example.com/mcp'
+const CC_RESOURCE = 'https://mcp.example.com/mcp/?tenant=a'
+const CC_ISSUER = 'https://as.example.com'
 
 let stdout: Array<string>
 let stderr: Array<string>
@@ -49,6 +52,21 @@ async function seed(): Promise<void> {
     tokenType: 'Bearer',
   })
   await store.set('not-a-mokei-key', { accessToken: 'x', tokenType: 'Bearer' })
+}
+
+async function seedClientCredentials(): Promise<string> {
+  const key = clientCredentialsStoreKey({
+    issuer: CC_ISSUER,
+    resource: CC_RESOURCE,
+    clientID: 'svc',
+    scopes: ['write', 'read'],
+  })
+  await store.set(key, {
+    accessToken: 'secret-cc',
+    tokenType: 'Bearer',
+    expiresAt: 4_000_000_001,
+  })
+  return key
 }
 
 async function run(...args: Array<string>) {
@@ -91,6 +109,7 @@ test('list shows sign-ins without their tokens', async () => {
       issuer: 'https://as.example.com',
       expiresAt: 4_000_000_000,
       refreshable: true,
+      grant: 'authorization_code',
     },
     {
       resource: RESOURCE,
@@ -99,6 +118,7 @@ test('list shows sign-ins without their tokens', async () => {
       issuer: null,
       expiresAt: null,
       refreshable: false,
+      grant: 'authorization_code',
     },
     {
       resource: OTHER,
@@ -107,6 +127,7 @@ test('list shows sign-ins without their tokens', async () => {
       issuer: null,
       expiresAt: null,
       refreshable: false,
+      grant: 'authorization_code',
     },
   ])
 })
@@ -123,6 +144,7 @@ test('list renders a table', async () => {
     issuer: 'https://as.example.com',
     expires: new Date(4_000_000_000_000).toISOString(),
     refresh: 'yes',
+    grant: 'authorization_code',
   })
 })
 
@@ -169,6 +191,7 @@ test('a failed revocation still deletes locally but exits 1', async () => {
       resource: OTHER,
       clientID: 'cli',
       scopes: [],
+      grant: 'authorization_code',
       revocation: 'failed',
       detail: 'Token revocation failed: 503',
     },
@@ -179,5 +202,73 @@ test('a failed revocation still deletes locally but exits 1', async () => {
 test('logout with no matching sign-in fails', async () => {
   await run('logout', 'https://nowhere.example.com/mcp', '--keychain')
   expect(process.exitCode).toBe(1)
-  expect(stderr.join('')).toContain('No stored sign-in for https://nowhere.example.com/mcp')
+  expect(stderr.join('')).toContain('No stored sign-in for https://nowhere.example.com/mcp\n')
+})
+
+test('logout with no match names the argument as given, then its canonical form', async () => {
+  await run('logout', 'https://nowhere.example.com/mcp/?tenant=a', '--keychain')
+  expect(process.exitCode).toBe(1)
+  expect(stderr.join('')).toContain(
+    'No stored sign-in for https://nowhere.example.com/mcp/?tenant=a (canonical https://nowhere.example.com/mcp)',
+  )
+})
+
+test('list shows client credentials records beside legacy ones', async () => {
+  await seedClientCredentials()
+  await run('list', '--keychain', '--json')
+  const rows = JSON.parse(stdout.join('')) as Array<Record<string, unknown>>
+  expect(rows).toHaveLength(4)
+  expect(rows.filter((row) => row.grant === 'authorization_code')).toHaveLength(3)
+  expect(rows.find((row) => row.grant === 'client_credentials')).toEqual({
+    resource: CC_RESOURCE,
+    clientID: 'svc',
+    scopes: ['read', 'write'],
+    issuer: CC_ISSUER,
+    expiresAt: 4_000_000_001,
+    refreshable: false,
+    grant: 'client_credentials',
+  })
+  expect(stdout.join('')).not.toContain('secret')
+})
+
+test('list table has a GRANT column after RESOURCE', async () => {
+  await seedClientCredentials()
+  await run('list', '--keychain')
+  const [columns, rows] = vi.mocked(renderTable).mock.calls[0] ?? []
+  expect(columns?.map((column) => column.label).slice(0, 2)).toEqual(['RESOURCE', 'GRANT'])
+  expect(rows?.map((row) => row.grant)).toContain('client_credentials')
+})
+
+test('logout deletes a client credentials record by its exact resource without revoking', async () => {
+  const key = await seedClientCredentials()
+  vi.mocked(revokeTokens).mockResolvedValue({
+    status: 'revoked',
+    endpoint: 'https://as.example.com/revoke',
+    revoked: ['access_token'],
+  })
+  await run('logout', CC_RESOURCE, '--keychain', '--json')
+  // The argument also canonicalises onto the legacy records for RESOURCE, which are revoked as usual.
+  expect(revokeTokens).toHaveBeenCalledTimes(2)
+  expect(revokeTokens).not.toHaveBeenCalledWith(expect.objectContaining({ clientID: 'svc' }))
+  expect(await store.keys()).not.toContain(key)
+  const outcomes = JSON.parse(stdout.join('')) as Array<Record<string, unknown>>
+  expect(outcomes.filter((outcome) => outcome.grant === 'client_credentials')).toEqual([
+    {
+      resource: CC_RESOURCE,
+      clientID: 'svc',
+      scopes: ['read', 'write'],
+      grant: 'client_credentials',
+      revocation: 'skipped',
+      detail: 'client credentials tokens are deleted locally only',
+    },
+  ])
+})
+
+test('logout does not match a client credentials record by canonical resource', async () => {
+  const key = await seedClientCredentials()
+  await run('logout', 'https://mcp.example.com/mcp', '--keychain', '--no-revoke')
+  expect(await store.keys()).toContain(key)
+  expect(
+    await store.get(tokenStoreKey({ resource: RESOURCE, clientID: 'other-client' })),
+  ).toBeUndefined()
 })

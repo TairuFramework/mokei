@@ -45,7 +45,8 @@ export type CapabilityNotDeclaredErrorParams = { capability: string; cause?: unk
 export class MethodNotInRevisionError extends Error {
   constructor(params: MethodNotInRevisionErrorParams) {
     super(
-      `${params.method} does not exist in protocol version ${params.version}${params.hint == null ? '' : `: ${params.hint}`}`,
+      params.message ??
+        `${params.method} does not exist in protocol version ${params.version}${params.hint == null ? '' : `: ${params.hint}`}`,
       { cause: params.cause },
     )
     this.name = 'MethodNotInRevisionError'
@@ -56,6 +57,8 @@ export type MethodNotInRevisionErrorParams = {
   method: string
   version: ProtocolVersion
   hint?: string
+  /** Replaces the whole message, for refusals where the method itself exists in the revision. */
+  message?: string
   cause?: unknown
 }
 
@@ -259,4 +262,20 @@ export type StructuredContentValidationErrorParams = {
   toolName: string
   issues: Array<ValidationIssue>
   cause?: unknown
+}
+
+export type ExtensionNotDeclaredErrorParams = { extension: string; cause?: unknown }
+
+export class ExtensionNotDeclaredError extends Error {
+  #extension: string
+
+  constructor(params: ExtensionNotDeclaredErrorParams) {
+    super(`Server did not declare the ${params.extension} extension`, { cause: params.cause })
+    this.name = 'ExtensionNotDeclaredError'
+    this.#extension = params.extension
+  }
+
+  get extension(): string {
+    return this.#extension
+  }
 }

@@ -35,8 +35,12 @@ import type {
   Tool,
 } from '@mokei/context-protocol'
 import {
-  declaresTasksExtension,
+  declareExtension,
   ENVELOPE_VIOLATION,
+  EXTENSIONS,
+  type ExtensionDefinition,
+  extensionForClientMethod,
+  extensionsFor,
   INPUT_REQUEST_CAPABILITIES,
   INTERNAL_ERROR,
   INVALID_PARAMS,
@@ -49,9 +53,12 @@ import {
   META_SUBSCRIPTION_ID,
   METHOD_NOT_FOUND,
   MISSING_REQUIRED_CLIENT_CAPABILITY,
+  missingExtensionErrorParams,
+  OAUTH_CLIENT_CREDENTIALS,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
-  TASKS_EXTENSION,
+  readExtension,
+  TASKS,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
 import {
@@ -114,6 +121,7 @@ import type {
 import { MissingRequiredClientCapabilityError, MRTRNotSupportedError } from './types.js'
 
 type MRTRContext = {
+  clientCapabilities: ClientCapabilities
   inputResponses?: Record<string, InputResponse>
   requestState?: unknown
   mintRequestState: (payload: unknown) => string
@@ -142,13 +150,12 @@ const validateClientMessage = createValidator<Schema, ClientMessage>({
   anyOf: PROTOCOL_VERSIONS.map((version) => PROTOCOLS[version].clientMessage),
 } as Schema)
 
-function requireTasksExtension(capabilities: ClientCapabilities | undefined): void {
-  if (declaresTasksExtension(capabilities)) return
-  throw new RPCError({
-    code: MISSING_REQUIRED_CLIENT_CAPABILITY,
-    message: 'Client did not declare the tasks extension',
-    data: { requiredCapabilities: { extensions: { [TASKS_EXTENSION]: {} } } },
-  })
+function requireExtension(
+  definition: ExtensionDefinition,
+  capabilities: ClientCapabilities | undefined,
+): void {
+  if (readExtension(capabilities, definition) != null) return
+  throw new RPCError(missingExtensionErrorParams(definition))
 }
 
 export type CacheHints = {
@@ -169,6 +176,15 @@ export type ServerConfig = {
   resources?: ResourceDefinitions
   tools?: ToolDefinitions
   tasks?: TaskManager
+  /** Advertise the OAuth client credentials extension (default `false`). */
+  oauthClientCredentials?: boolean
+  /** @internal test hook: extra extensions to advertise and gate. */
+  _extensions?: ReadonlyArray<{
+    definition: ExtensionDefinition
+    settings?: Record<string, unknown>
+  }>
+  /** @internal test hook: registry used to look up extensions by method (default `EXTENSIONS`). */
+  _registry?: ReadonlyArray<ExtensionDefinition>
   /**
    * Owns resource subscriptions (SEP-1391 `subscriptions/listen`): creates and owns a
    * {@link SubscriptionHub} bound to this server's own `events`, disposing it on teardown.
@@ -267,6 +283,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #tools: ToolDefinitions = {}
   #toolsList: Array<Tool> = []
   #tasks?: TaskManager
+  #extensions = new Map<ExtensionDefinition, Record<string, unknown>>()
+  #registry: ReadonlyArray<ExtensionDefinition>
   #auth?: RequestAuth
   #resolveAuth?: ResolveAuth
   #connectionID: string
@@ -293,8 +311,15 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.#tasks = params.tasks
     this.#auth = toRequestAuth(params.auth)
     this.#resolveAuth = params.resolveAuth
+    this.#registry = params._registry ?? EXTENSIONS
     if (params.tasks != null) {
-      this.#capabilities.extensions = { [TASKS_EXTENSION]: {} }
+      this.#extensions.set(TASKS, declareExtension(TASKS))
+    }
+    if (params.oauthClientCredentials === true) {
+      this.#extensions.set(OAUTH_CLIENT_CREDENTIALS, declareExtension(OAUTH_CLIENT_CREDENTIALS))
+    }
+    for (const { definition, settings } of params._extensions ?? []) {
+      this.#extensions.set(definition, declareExtension(definition, settings))
     }
     this.#completeHandler = params.complete
     this.#protocolVersions = params.protocolVersions
@@ -614,6 +639,17 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     if (request.method === 'ping') {
       return {}
     }
+    const clientCapabilities = this.#clientCapabilitiesFor(request, protocol)
+    const definition = extensionForClientMethod(request.method, this.#registry)
+    if (definition != null) {
+      if (!this.#extensions.has(definition) || !definition.protocolVersions.has(protocol.version)) {
+        throw new RPCError({
+          code: METHOD_NOT_FOUND,
+          message: `Unsupported method: ${request.method}`,
+        })
+      }
+      requireExtension(definition, clientCapabilities)
+    }
     const meta = (request.params as Record<string, unknown> | undefined)?._meta as
       | Record<string, unknown>
       | undefined
@@ -641,6 +677,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       })
     }
     const mrtr: MRTRContext = {
+      clientCapabilities,
       inputResponses: lifted.inputResponses,
       requestState,
       mintRequestState: this.#requestState?.mint ?? defaultMintRequestState,
@@ -672,10 +709,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           message: `${request.method} cannot suspend on input`,
         })
       }
-      const missing = missingInputCapabilities(
-        result.inputRequests,
-        protocol.readRequestMeta(request).clientCapabilities,
-      )
+      const missing = missingInputCapabilities(result.inputRequests, clientCapabilities)
       if (missing != null) {
         const [key, embedded] = Object.entries(result.inputRequests ?? {}).find(
           ([, value]) => missing[INPUT_REQUEST_CAPABILITIES[value.method]] != null,
@@ -701,7 +735,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         request.method !== 'tools/call' ||
         protocol.version !== '2026-07-28' ||
         this.#tasks == null ||
-        !declaresTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+        readExtension(clientCapabilities, TASKS) == null
       ) {
         throw new RPCError({ code: INTERNAL_ERROR, message: 'Task result without task context' })
       }
@@ -713,6 +747,18 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
       : (result as Record<string, unknown>)
     return protocol.wrapResult(body, { serverInfo: this.#serverInfo }) as ServerResult
+  }
+
+  #clientCapabilitiesFor(request: ClientRequest, protocol: ProtocolDefinition): ClientCapabilities {
+    return protocol.requiresRequestMeta
+      ? (protocol.readRequestMeta(request).clientCapabilities ?? {})
+      : (this.#clientInitialize?.capabilities ?? {})
+  }
+
+  #capabilitiesFor(version: ProtocolVersion): ServerCapabilities {
+    const { extensions: _omit, ...rest } = this.#capabilities
+    const extensions = extensionsFor(this.#extensions, version)
+    return extensions == null ? rest : { ...rest, extensions }
   }
 
   #authFor(request: ClientRequest): RequestAuth | undefined {
@@ -761,19 +807,8 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       case 'initialize': {
         this.#clientInitialize = request.params
         this.events.emit('initialize', request.params)
-        const capabilities = { ...this.#capabilities }
-        if (
-          protocol.version === '2025-11-25' &&
-          capabilities.extensions?.[TASKS_EXTENSION] != null
-        ) {
-          capabilities.extensions = { ...capabilities.extensions }
-          delete capabilities.extensions[TASKS_EXTENSION]
-          if (Object.keys(capabilities.extensions).length === 0) {
-            delete capabilities.extensions
-          }
-        }
         return {
-          capabilities,
+          capabilities: this.#capabilitiesFor(protocol.version),
           protocolVersion: protocol.version,
           serverInfo: this.#serverInfo,
         } satisfies InitializeResult
@@ -823,7 +858,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         })
       case 'server/discover':
         return buildDiscoverResult({
-          capabilities: this.#capabilities,
+          capabilities: this.#capabilitiesFor('2026-07-28'),
           protocolVersions: this.#protocolVersions,
         })
       case 'subscriptions/listen':
@@ -832,19 +867,17 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         }
         if (request.params.notifications.taskIds !== undefined) {
           if (this.#tasks == null) break
-          requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
+          requireExtension(TASKS, mrtr.clientCapabilities)
         }
         return this.#listen(request as SubscriptionsListenRequest, protocol, signal, auth)
       case 'tasks/get':
         if (this.#tasks == null) break
-        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
         return {
           ...(await this.#tasks.get(request.params.taskId, toTaskOwner(auth))),
           resultType: 'complete',
         }
       case 'tasks/update':
         if (this.#tasks == null) break
-        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
         await this.#tasks.update(
           request.params.taskId,
           request.params.inputResponses,
@@ -853,7 +886,6 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         return { resultType: 'complete' }
       case 'tasks/cancel':
         if (this.#tasks == null) break
-        requireTasksExtension(protocol.readRequestMeta(request).clientCapabilities)
         await this.#tasks.cancel(request.params.taskId, toTaskOwner(auth))
         return { resultType: 'complete' }
       case 'tools/call':
@@ -879,18 +911,18 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       // "Errors in finding the tool" are MCP protocol errors, per the spec.
       throw new RPCError({ code: INVALID_PARAMS, message: `Tool ${name} not found` })
     }
-    const clientCapabilities = protocol.readRequestMeta(request).clientCapabilities
+    const clientCapabilities = mrtr.clientCapabilities
     const tasks = this.#tasks
     const task: TaskContext | undefined =
       protocol.version === '2026-07-28' &&
       tasks != null &&
-      declaresTasksExtension(clientCapabilities)
+      readExtension(clientCapabilities, TASKS) != null
         ? {
             run: (work, options) =>
               tasks.create({
                 toolName: name,
                 tool,
-                clientCapabilities: clientCapabilities ?? {},
+                clientCapabilities,
                 owner: toTaskOwner(auth),
                 requestMeta: meta,
                 work,

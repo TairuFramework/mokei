@@ -63,3 +63,50 @@ export function parseTokenStoreKey(
   }
   return { resource: parsed[0], clientID: parsed[1], scopes: parsed[2] }
 }
+
+/**
+ * The token-store key for a client-credentials grant: a JSON array tagged `client_credentials`,
+ * then the issuer, the resource as given, the client ID and the sorted, de-duplicated scopes. The
+ * tag and the length keep these keys out of {@link parseTokenStoreKey}, so the authorisation-code
+ * middleware never sees them.
+ */
+export function clientCredentialsStoreKey(params: {
+  issuer: string
+  resource: string
+  clientID: string
+  scopes?: Array<string>
+}): string {
+  const scopes = [...new Set(params.scopes ?? [])].sort()
+  return JSON.stringify([
+    'client_credentials',
+    params.issuer,
+    params.resource,
+    params.clientID,
+    scopes,
+  ])
+}
+
+/** Splits a {@link clientCredentialsStoreKey} back into its parts, or `undefined` for any other key. */
+export function parseClientCredentialsStoreKey(
+  key: string,
+): { issuer: string; resource: string; clientID: string; scopes: Array<string> } | undefined {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(key)
+  } catch {
+    return undefined
+  }
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length !== 5 ||
+    parsed[0] !== 'client_credentials' ||
+    typeof parsed[1] !== 'string' ||
+    typeof parsed[2] !== 'string' ||
+    typeof parsed[3] !== 'string' ||
+    !Array.isArray(parsed[4]) ||
+    !parsed[4].every((scope) => typeof scope === 'string')
+  ) {
+    return undefined
+  }
+  return { issuer: parsed[1], resource: parsed[2], clientID: parsed[3], scopes: parsed[4] }
+}

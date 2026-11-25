@@ -370,8 +370,14 @@ test('flow error results map to failed', async () => {
   })
 })
 test('elicitation must be enabled', async () => {
-  const session = new Session()
+  const session = new Session({ tasks: true })
   await expect(createFlowHost({ session })).rejects.toThrow(/elicitation/i)
+  await session.dispose()
+})
+
+test('tasks must be enabled', async () => {
+  const session = new Session({ elicit: async () => ({ action: 'cancel' }) })
+  await expect(createFlowHost({ session })).rejects.toThrow(/requires tasks/i)
   await session.dispose()
 })
 
