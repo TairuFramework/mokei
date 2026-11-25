@@ -25,6 +25,7 @@ import type {
   Prompt,
   ProtocolDefinition,
   ProtocolVersion,
+  ReadResourceResult,
   ServerCapabilities,
   ServerMessage,
   ServerNotification,
@@ -58,6 +59,7 @@ import {
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   readExtension,
+  SKILLS,
   TASKS,
   UNSUPPORTED_PROTOCOL_VERSION,
 } from '@mokei/context-protocol'
@@ -95,6 +97,7 @@ import {
   type RequestStateHooks,
   resolveRequestState,
 } from './mrtr.js'
+import type { SkillCatalog } from './skill-catalog.js'
 import {
   createSubscriptionHub,
   type SubscriptionHandle,
@@ -158,6 +161,16 @@ function requireExtension(
   throw new RPCError(missingExtensionErrorParams(definition))
 }
 
+/** Every catalog URI uses this scheme; the catalog answers every URI under it. */
+const SKILL_URI_PREFIX = 'skill://'
+
+/** Methods answered only by the skill catalog. */
+const SKILL_METHODS: ReadonlySet<string> = new Set([
+  'skills/list',
+  'skills/get',
+  'resources/directory/read',
+])
+
 export type CacheHints = {
   cacheScope?: 'public' | 'private'
   ttlMs?: number
@@ -176,6 +189,11 @@ export type ServerConfig = {
   resources?: ResourceDefinitions
   tools?: ToolDefinitions
   tasks?: TaskManager
+  /**
+   * Serves the Skills extension (`2026-07-28` only) from this catalog, and answers
+   * `resources/read` for every `skill://` URI from it on every revision.
+   */
+  skills?: SkillCatalog
   /** Advertise the OAuth client credentials extension (default `false`). */
   oauthClientCredentials?: boolean
   /** @internal test hook: extra extensions to advertise and gate. */
@@ -283,6 +301,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #tools: ToolDefinitions = {}
   #toolsList: Array<Tool> = []
   #tasks?: TaskManager
+  #skills?: SkillCatalog
   #extensions = new Map<ExtensionDefinition, Record<string, unknown>>()
   #registry: ReadonlyArray<ExtensionDefinition>
   #auth?: RequestAuth
@@ -317,6 +336,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     }
     if (params.oauthClientCredentials === true) {
       this.#extensions.set(OAUTH_CLIENT_CREDENTIALS, declareExtension(OAUTH_CLIENT_CREDENTIALS))
+    }
+    if (params.skills != null) {
+      this.#skills = params.skills
+      this.#extensions.set(
+        SKILLS,
+        declareExtension(SKILLS, params.skills.directoryRead ? { directoryRead: true } : undefined),
+      )
     }
     for (const { definition, settings } of params._extensions ?? []) {
       this.#extensions.set(definition, declareExtension(definition, settings))
@@ -366,6 +392,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       this.#capabilities.resources = { listChanged: true }
       this.#resources = toResourceHandlers(params.resources)
       this.#resourceScopes = params.resources.scopes
+    } else if (this.#skills != null) {
+      // Catalog files are resources, so a skills-only server still declares the capability.
+      this.#capabilities.resources = {}
     }
 
     // Owner (`subscriptions: true`) creates and owns a hub bound to its own `events`; a borrower
@@ -409,11 +438,16 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   /**
    * The OAuth scopes a request needs beyond the server-wide ones: the called tool's
    * {@link GenericToolDefinition.scopes} for `tools/call`, the prompt's for `prompts/get`, and
-   * {@link ResourceDefinitions.scopes} for `resources/read`. `[]` for any other method, or an
-   * unknown tool or prompt. Reads only `method` and `params.name` / `params.uri`, so a transport
-   * can check it before dispatch (the HTTP server answers `403 insufficient_scope` from it).
+   * {@link ResourceDefinitions.scopes} for `resources/read`. The skill catalog's scopes, when
+   * set, replace those for the skills methods and a `resources/read` of a catalog URI. `[]` for
+   * any other method, or an unknown tool or prompt. Reads only `method` and `params.name` /
+   * `params.uri`, so a transport can check it before dispatch (the HTTP server answers
+   * `403 insufficient_scope` from it).
    */
   requiredScopes(request: { method?: unknown; params?: unknown }): Array<string> {
+    if (this.#isCatalogRequest(request)) {
+      return [...(this.#skills?.scopes ?? [])]
+    }
     const params = request.params
     if (params == null || typeof params !== 'object') return []
     const { name, uri } = params as { name?: unknown; uri?: unknown }
@@ -432,6 +466,18 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       default:
         return []
     }
+  }
+
+  /**
+   * Whether the skill catalog answers this request: a skills method, or a `resources/read` of a
+   * `skill://` URI. Such a request uses the catalog's scopes and cache hints.
+   */
+  #isCatalogRequest(request: { method?: unknown; params?: unknown }): boolean {
+    if (this.#skills == null || typeof request.method !== 'string') return false
+    if (SKILL_METHODS.has(request.method)) return true
+    if (request.method !== 'resources/read') return false
+    const uri = (request.params as { uri?: unknown } | undefined)?.uri
+    return typeof uri === 'string' && uri.startsWith(SKILL_URI_PREFIX)
   }
 
   /**
@@ -648,7 +694,16 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           message: `Unsupported method: ${request.method}`,
         })
       }
-      requireExtension(definition, clientCapabilities)
+      // An extension whose clients declare nothing is served to any client once advertised.
+      if (definition.clientDeclaration !== 'none') {
+        requireExtension(definition, clientCapabilities)
+      }
+    }
+    if (request.method === 'resources/directory/read' && this.#skills?.directoryRead !== true) {
+      throw new RPCError({
+        code: METHOD_NOT_FOUND,
+        message: `Unsupported method: ${request.method}`,
+      })
     }
     const meta = (request.params as Record<string, unknown> | undefined)?._meta as
       | Record<string, unknown>
@@ -744,9 +799,19 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       }) as ServerResult
     }
     const body = protocol.requiresCacheHints
-      ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
+      ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cacheFor(request))
       : (result as Record<string, unknown>)
     return protocol.wrapResult(body, { serverInfo: this.#serverInfo }) as ServerResult
+  }
+
+  /** The catalog's cache hints take precedence over the server's for catalog requests. */
+  #cacheFor(request: ClientRequest): CacheHints | undefined {
+    const catalog = this.#skills?.cache
+    if (catalog == null || !this.#isCatalogRequest(request)) return this.#cache
+    return {
+      ttlMs: catalog.ttlMs ?? this.#cache?.ttlMs,
+      cacheScope: catalog.cacheScope ?? this.#cache?.cacheScope,
+    }
   }
 
   #clientCapabilitiesFor(request: ClientRequest, protocol: ProtocolDefinition): ClientCapabilities {
@@ -783,10 +848,11 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       const required = this.requiredScopes(request)
       const missing = missingScopes(required, auth.scopes)
       if (missing.length > 0) {
-        const { name, uri } = request.params as { name?: unknown; uri?: unknown }
+        const { name, uri } = (request.params ?? {}) as { name?: unknown; uri?: unknown }
+        const target = name ?? uri
         throw new RPCError({
           code: INVALID_REQUEST,
-          message: `Insufficient scope for ${request.method} ${String(name ?? uri)}: requires ${missing.join(' ')}`,
+          message: `Insufficient scope for ${request.method}${target == null ? '' : ` ${String(target)}`}: requires ${missing.join(' ')}`,
           data: { error: INSUFFICIENT_SCOPE, scopes: required },
         })
       }
@@ -820,8 +886,21 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         return await this.#getPrompt(request, client, signal, mrtr, meta, auth)
       case 'prompts/list':
         return { prompts: this.#promptsList, ...this.#cache }
+      case 'resources/directory/read': {
+        // Gated in `_handleRequest`: only reached with a catalog serving `directoryRead`.
+        const uri = request.params.uri
+        const resources = this.#skills?.getDirectory(uri)
+        if (resources == null) {
+          throw new RPCError({
+            code: INVALID_PARAMS,
+            message: `${uri} is not a directory resource`,
+          })
+        }
+        return { resources }
+      }
       case 'resources/list':
         if (this.#resources == null) {
+          if (this.#skills != null) return { resources: [] }
           break
         }
         return this.#resources.list({
@@ -833,7 +912,16 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           ...mrtr,
         })
       case 'resources/read':
+        if (this.#isCatalogRequest(request)) {
+          return { contents: [this.#readCatalogFile(request.params.uri)] }
+        }
         if (this.#resources == null) {
+          if (this.#skills != null) {
+            throw new RPCError({
+              code: INVALID_PARAMS,
+              message: `Resource not found: ${request.params.uri}`,
+            })
+          }
           break
         }
         return this.#resources.read({
@@ -846,6 +934,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         })
       case 'resources/templates/list':
         if (this.#resources == null) {
+          if (this.#skills != null) return { resourceTemplates: [] }
           break
         }
         return this.#resources.listTemplates({
@@ -861,6 +950,21 @@ export class ContextServer extends ContextRPC<ServerTypes> {
           capabilities: this.#capabilitiesFor('2026-07-28'),
           protocolVersions: this.#protocolVersions,
         })
+      case 'skills/get': {
+        if (this.#skills == null) break
+        const skill = this.#skills.getEntry(request.params.uri)
+        if (skill == null) {
+          throw new RPCError({
+            code: INVALID_PARAMS,
+            message: `No skill is served at ${request.params.uri}`,
+          })
+        }
+        return { skill }
+      }
+      case 'skills/list':
+        if (this.#skills == null) break
+        // Every entry on one page: the extension allows a single page.
+        return { skills: [...this.#skills.entries] }
       case 'subscriptions/listen':
         if (this.#subscriptionHub == null) {
           break
@@ -894,6 +998,16 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         return { tools: this.#toolsList, ...this.#cache }
     }
     throw new RPCError({ code: METHOD_NOT_FOUND, message: `Unsupported method: ${request.method}` })
+  }
+
+  #readCatalogFile(uri: string): ReadResourceResult['contents'][number] {
+    const file = this.#skills?.getFile(uri)
+    if (file == null) {
+      throw new RPCError({ code: INVALID_PARAMS, message: `Resource not found: ${uri}` })
+    }
+    // The catalog sets exactly one of `text` or `blob` per file.
+    const { text, blob, ...rest } = file
+    return text == null ? { ...rest, blob: blob as string } : { ...rest, text }
   }
 
   async #callTool(

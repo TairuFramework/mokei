@@ -11,6 +11,9 @@ export const CACHEABLE_METHODS: ReadonlySet<string> = new Set([
   'resources/list',
   'resources/templates/list',
   'resources/read',
+  'resources/directory/read',
+  'skills/list',
+  'skills/get',
 ])
 
 /** Conservative fallback: immediately stale, never shared between callers. */

@@ -22,6 +22,7 @@ import {
   response,
 } from './rpc.js'
 import { createMessageRequest } from './sampling.js'
+import { getSkillResult, listSkillsResult, readResourceDirectoryResult } from './skills.js'
 import { callToolResult, listToolsResult, toolListChangedNotification } from './tool.js'
 import {
   type CreateTaskResult,
@@ -87,6 +88,9 @@ export const serverResult = {
     tasksGetResult,
     tasksAcknowledgement,
     listToolsResult,
+    listSkillsResult,
+    getSkillResult,
+    readResourceDirectoryResult,
   ],
 } as const satisfies Schema
 export type ServerResult =
@@ -103,6 +107,9 @@ export type ServerResult =
   | TasksGetResult
   | TasksAcknowledgement
   | FromSchema<typeof listToolsResult>
+  | FromSchema<typeof listSkillsResult>
+  | FromSchema<typeof getSkillResult>
+  | FromSchema<typeof readResourceDirectoryResult>
 
 export const serverResponse = {
   anyOf: [
