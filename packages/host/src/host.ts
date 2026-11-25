@@ -27,7 +27,12 @@ import type {
 } from '@mokei/context-protocol'
 import { TransportClosedError } from '@mokei/context-rpc'
 import { ContextServer, type JSONValue } from '@mokei/context-server'
-import { type ConnectionEvent, HTTPTransport, SessionExpiredError } from '@mokei/http-client'
+import {
+  type ConnectionEvent,
+  HTTPTransport,
+  resolveClientCredentials,
+  SessionExpiredError,
+} from '@mokei/http-client'
 import { type SpanContext, SpanKind } from '@opentelemetry/api'
 import { Disposer } from '@sozai/async'
 import { EventEmitter } from '@sozai/event'
@@ -654,8 +659,9 @@ export class ContextHost extends Disposer {
   async addHTTPContext<T extends ContextTypes = UnknownContextTypes>(
     params: HTTPContextParams,
   ): Promise<ContextClient<T>> {
-    const { key, url, headers, auth, timeout, protocolVersion, fetchMiddleware, runtime, elicit } =
-      params
+    const { key, url, headers, auth, timeout, protocolVersion, runtime, elicit } = params
+    // Once, outside `build`: every reconnect generation shares the middleware's token store.
+    const { fetchMiddleware, oauthClientCredentials } = resolveClientCredentials(params)
 
     if (this.#contexts[key] != null) {
       throw new Error(`Context ${key} already exists`)
@@ -680,6 +686,7 @@ export class ContextHost extends Disposer {
         transport: transport as ClientTransport,
         protocolVersion,
         tasks: this.#tasks,
+        oauthClientCredentials,
         elicit: this.createElicitHandler({ key, elicit }),
       })
       return { transport, context }

@@ -150,6 +150,44 @@ granted less than it asked for, the `403` is returned, and the transport surface
 JSON-RPC error. Concurrent `403`s for one key prompt once. Pass `stepUp: false` to return every
 `403` unchanged. `parseBearerChallenge(header)` is exported for reading other challenges.
 
+### Client credentials (machine-to-machine)
+
+For services with no user to sign in, `createClientCredentialsMiddleware(config)` runs the OAuth
+client credentials grant, authenticating with a signed `private_key_jwt` assertion. It attaches a
+stored token, grants again shortly before expiry, and on a `401` discovers the pinned authorisation
+server, grants, stores the token and retries once. A `403` passes through.
+
+```typescript
+import {
+  createClientCredentialsMiddleware,
+  createWebCryptoAssertionSigner,
+} from '@mokei/http-client'
+
+const fetchMiddleware = createClientCredentialsMiddleware({
+  clientID: 'svc',
+  issuer: 'https://as.example.com',
+  signer: createWebCryptoAssertionSigner({ alg: 'EdDSA', privateKey }),
+  scopes: ['tools:read'],
+})
+```
+
+- `issuer` is pinned: it must be listed in the resource's metadata, it is the audience of every
+  assertion, and only tokens obtained from it are used.
+- `signer` is a `ClientAssertionSigner` (`EdDSA` or `ES256`). `createWebCryptoAssertionSigner`
+  wraps a WebCrypto private key. Assertions are built by `createClientAssertion` from
+  `@kokuin/oauth`, which requires the next `@kokuin/oauth` release.
+- `scopes` default to the scopes in the `401` challenge. `resource` defaults to the canonical
+  request URL and is otherwise used verbatim.
+- Tokens are stored under `clientCredentialsStoreKey`, apart from authorisation-code tokens, and
+  every middleware sharing a `store` shares one in-flight grant per key.
+
+`createHTTPClient({ url, protocolVersion, clientCredentials })` (and the host's
+`addHTTPContext({ clientCredentials })`) builds the middleware for you and declares the
+`io.modelcontextprotocol/oauth-client-credentials` extension. It cannot be combined with
+`fetchMiddleware`: they throw `clientCredentials cannot be combined with fetchMiddleware`. When you
+build the transport yourself, pass the middleware as `fetchMiddleware` and set
+`oauthClientCredentials: true` on the `ContextClient` so it declares the extension.
+
 ## Documentation
 
 See the full documentation at [mokei.dev](https://mokei.dev).

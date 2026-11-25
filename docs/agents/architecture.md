@@ -208,7 +208,15 @@ random values (React Native). `@mokei/host-node` adds
 `@napi-rs/keyring`, loaded only when used). The keychain store has no locking of its own, so
 writes hold a lock file in mokei's state directory. That is the same `@sozai/lock` lock the file store
 uses, and it never takes a lock from a holder whose process is provably alive.
-That keeps refreshes exclusive across processes. `Session.addHTTPContext` accepts HTTP contexts.
+That keeps refreshes exclusive across processes. For machine clients,
+`createClientCredentialsMiddleware` runs the OAuth client credentials grant with a `private_key_jwt`
+assertion signed through a `ClientAssertionSigner`, pinned to one issuer, with tokens stored apart
+from authorisation-code tokens (`clientCredentialsStoreKey`). `createHTTPClient` and
+`addHTTPContext` accept `clientCredentials` to build it and declare the
+`io.modelcontextprotocol/oauth-client-credentials` extension (`oauthClientCredentials` on
+`ContextClient` and `ContextServer`); the host builds the middleware once, so reconnects share its
+store. The assertion helpers come from `@kokuin/oauth` and need its next release.
+`Session.addHTTPContext` accepts HTTP contexts.
 The CLI's `/context add-http` command accepts `--oauth-client-id`, `--oauth-resource`,
 `--oauth-scope`, and either `--oauth-tokens <path>` or `--oauth-keychain`. Persistence stays
 opt-in. `mokei auth list` and `mokei auth logout <resource>` read the same stores, and logout

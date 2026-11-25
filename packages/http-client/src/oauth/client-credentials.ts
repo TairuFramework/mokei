@@ -285,3 +285,25 @@ export function createClientCredentialsMiddleware(
     }
   }
 }
+
+/**
+ * Resolves a `clientCredentials` option, shared by `createHTTPClient` and the host's
+ * `addHTTPContext`: builds the middleware to use as `fetchMiddleware` and flags that the client
+ * declares the extension. Call it once per connection, not per reconnect, so every generation
+ * shares one store and its in-flight grants. Without `clientCredentials`, `fetchMiddleware` is
+ * returned unchanged.
+ */
+export function resolveClientCredentials(params: {
+  clientCredentials?: ClientCredentialsConfig
+  fetchMiddleware?: FetchMiddleware
+}): { fetchMiddleware?: FetchMiddleware; oauthClientCredentials?: true } {
+  const { clientCredentials, fetchMiddleware } = params
+  if (clientCredentials == null) return { fetchMiddleware }
+  if (fetchMiddleware != null) {
+    throw new Error('clientCredentials cannot be combined with fetchMiddleware')
+  }
+  return {
+    fetchMiddleware: createClientCredentialsMiddleware(clientCredentials),
+    oauthClientCredentials: true,
+  }
+}

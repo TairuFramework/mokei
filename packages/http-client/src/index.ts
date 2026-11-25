@@ -32,6 +32,7 @@ export {
   type ClientCredentialsConfig,
   createClientCredentialsMiddleware,
   createWebCryptoAssertionSigner,
+  resolveClientCredentials,
 } from './oauth/client-credentials.js'
 export {
   type AuthorizationHandler,

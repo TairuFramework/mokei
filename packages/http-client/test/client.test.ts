@@ -1,7 +1,7 @@
 import { ContextClient } from '@mokei/context-client'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { createHTTPClient } from '../src/index.js'
+import { type ClientAssertionSigner, createHTTPClient } from '../src/index.js'
 
 const TEST_URL = 'http://localhost:3000/mcp'
 
@@ -246,5 +246,111 @@ describe('createHTTPClient', () => {
     expect(call[1].headers['MCP-Protocol-Version']).toBe('2026-07-28')
 
     await client.dispose()
+  })
+
+  describe('clientCredentials', () => {
+    const issuer = 'https://as.example.com'
+    const extensionID = 'io.modelcontextprotocol/oauth-client-credentials'
+    const signer: ClientAssertionSigner = {
+      alg: 'EdDSA',
+      async sign() {
+        return new Uint8Array([1, 2, 3])
+      },
+    }
+    const clientCredentials = { clientID: 'svc', issuer, signer }
+
+    function json(body: unknown, status = 200): Response {
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    /** A bearer-protected server: `401` until the token endpoint's token arrives. */
+    function protectedServer() {
+      const bodies: Array<{ method?: string; params?: Record<string, unknown> }> = []
+      let tokenRequests = 0
+      fetchMock.mockImplementation(async (url: string, init: RequestInit = {}) => {
+        if (url.includes('/.well-known/oauth-protected-resource')) {
+          return json({ resource: TEST_URL, authorization_servers: [issuer] })
+        }
+        if (url === `${issuer}/.well-known/oauth-authorization-server`) {
+          return json({ issuer, token_endpoint: `${issuer}/token` })
+        }
+        if (url === `${issuer}/token`) {
+          tokenRequests += 1
+          return json({ access_token: 'tok-1', token_type: 'Bearer', expires_in: 3600 })
+        }
+        if (new Headers(init.headers).get('Authorization') !== 'Bearer tok-1') {
+          return new Response('unauth', { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } })
+        }
+        if (init.method !== 'POST' || init.body == null) return new Response(null, { status: 405 })
+        const message = JSON.parse(String(init.body)) as {
+          id?: number
+          method?: string
+          params?: Record<string, unknown>
+        }
+        bodies.push(message)
+        if (message.id == null) return new Response(null, { status: 202 })
+        if (message.method === 'initialize') {
+          return json({
+            jsonrpc: '2.0',
+            id: message.id,
+            result: {
+              protocolVersion: '2025-11-25',
+              capabilities: {},
+              serverInfo: { name: 's', version: '1' },
+            },
+          })
+        }
+        return json({ jsonrpc: '2.0', id: message.id, result: DISCOVER_RESULT })
+      })
+      return { bodies, tokenRequests: () => tokenRequests }
+    }
+
+    test('authenticates after a 401 and declares the extension on 2026-07-28', async () => {
+      const server = protectedServer()
+      const client = createHTTPClient({
+        url: TEST_URL,
+        protocolVersion: '2026-07-28',
+        clientCredentials,
+      })
+      await client.request('tools/list', {}).catch(() => {})
+
+      expect(server.tokenRequests()).toBe(1)
+      const meta = server.bodies[0]?.params?._meta as Record<string, unknown>
+      expect(meta['io.modelcontextprotocol/clientCapabilities']).toMatchObject({
+        extensions: { [extensionID]: {} },
+      })
+      await client.dispose()
+    })
+
+    test('declares the extension in initialize on 2025-11-25', async () => {
+      const server = protectedServer()
+      const client = createHTTPClient({
+        url: TEST_URL,
+        protocolVersion: '2025-11-25',
+        clientCredentials,
+      })
+      await client.initialize()
+
+      expect(server.tokenRequests()).toBe(1)
+      const init = server.bodies.find((m) => m.method === 'initialize') as {
+        params: { capabilities: { extensions?: Record<string, unknown> } }
+      }
+      expect(init.params.capabilities.extensions?.[extensionID]).toEqual({})
+      await client.dispose()
+    })
+
+    test('cannot be combined with fetchMiddleware', () => {
+      expect(() =>
+        createHTTPClient({
+          url: TEST_URL,
+          protocolVersion: '2025-11-25',
+          clientCredentials,
+          fetchMiddleware: (next) => next,
+        }),
+      ).toThrow('clientCredentials cannot be combined with fetchMiddleware')
+    })
   })
 })
