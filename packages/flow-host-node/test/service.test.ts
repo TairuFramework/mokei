@@ -69,7 +69,7 @@ function setup(
     loadConfig: async () => config,
     loadFlows: async () => ({ files: [], flows: [] }),
     createSession: () => {
-      const session = new NodeSession({ elicit: true })
+      const session = new NodeSession({ elicit: true, tasks: true })
       const dispose = session.dispose.bind(session)
       vi.spyOn(session, 'dispose').mockImplementation(async () => {
         order.push('session')
@@ -190,7 +190,7 @@ test('failed sibling startup disposes the owning session and never registers flo
   const fixture = setup({
     loadConfig: async () => ({ ...config, siblings: { sibling: { command: 'test-command' } } }),
     createSession: () => {
-      const session = new NodeSession({ elicit: true })
+      const session = new NodeSession({ elicit: true, tasks: true })
       vi.spyOn(session, 'addContext').mockRejectedValue(new Error('credential'))
       const dispose = session.dispose.bind(session)
       vi.spyOn(session, 'dispose').mockImplementation(async () => {
@@ -217,7 +217,7 @@ test('shutdown waits for a late sibling connection, closes it once and never pub
       siblings: { sibling: { command: 'test-command', args: ['arg'], env: { KEY: 'value' } } },
     }),
     createSession: () => {
-      const session = new NodeSession({ elicit: true })
+      const session = new NodeSession({ elicit: true, tasks: true })
       vi.spyOn(session, 'addContext').mockImplementation(async (params) => {
         expect(params).toMatchObject({
           key: 'sibling',
