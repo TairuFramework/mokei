@@ -252,7 +252,7 @@ describe('fallbacks', () => {
     const r = route({ [prmRoot]: prmDoc() })
     await expect(
       discover({ resource, resourceMetadataURL: challenge, fetch: r.fetch, grant: code }),
-    ).rejects.toThrow()
+    ).rejects.toMatchObject({ status: 404 })
     expect(r.urls).toEqual([challenge])
   })
 
@@ -301,7 +301,9 @@ describe('fallbacks', () => {
 
   test('all candidates missing rejects', async () => {
     const r = route({})
-    await expect(discover({ resource, fetch: r.fetch, grant: code })).rejects.toThrow()
+    await expect(discover({ resource, fetch: r.fetch, grant: code })).rejects.toMatchObject({
+      status: 404,
+    })
     expect(r.urls).toEqual([prmPath, prmRoot])
   })
 
@@ -316,7 +318,9 @@ describe('fallbacks', () => {
 describe('terminal failures do not fetch further candidates', () => {
   test('PRM 500', async () => {
     const r = route({ [prmPath]: () => status(500), [prmRoot]: prmDoc() })
-    await expect(discover({ resource, fetch: r.fetch, grant: code })).rejects.toThrow()
+    await expect(discover({ resource, fetch: r.fetch, grant: code })).rejects.toMatchObject({
+      status: 500,
+    })
     expect(r.urls).toEqual([prmPath])
   })
 
@@ -325,7 +329,9 @@ describe('terminal failures do not fetch further candidates', () => {
       [prmPath]: () => new Response('not json', { status: 200 }),
       [prmRoot]: prmDoc(),
     })
-    await expect(discover({ resource, fetch: r.fetch, grant: code })).rejects.toThrow()
+    await expect(discover({ resource, fetch: r.fetch, grant: code })).rejects.toThrow(
+      /not valid JSON/,
+    )
     expect(r.urls).toEqual([prmPath])
   })
 
@@ -372,7 +378,9 @@ describe('terminal failures do not fetch further candidates', () => {
 
   test('AS 500', async () => {
     const r = route({ [prmPath]: prmDoc(), [asOAuth]: () => status(500), [asOIDC]: () => asDoc() })
-    await expect(discover({ resource, fetch: r.fetch, grant: code })).rejects.toThrow()
+    await expect(discover({ resource, fetch: r.fetch, grant: code })).rejects.toMatchObject({
+      status: 500,
+    })
     expect(r.urls).toEqual([prmPath, asOAuth])
   })
 })
@@ -414,8 +422,8 @@ describe('expectedIssuer', () => {
       grant: 'client_credentials',
       expectedIssuer: pin,
     }).catch((e: Error) => e)
-    expect((error as Error).message).toContain(pin)
-    expect((error as Error).message).toContain(asBase)
+    expect((error as Error).message).toBe(`AS issuer ${asBase} != ${pin}`)
+    expect(r.urls).toEqual([prmPath, asOAuth])
   })
 })
 
@@ -445,7 +453,7 @@ describe('grant checks', () => {
         }).fetch,
         grant: code,
       }),
-    ).rejects.toThrow()
+    ).rejects.toThrow(/authorization_endpoint/)
   })
 
   test('authorization_code rejects plain-only PKCE', async () => {
