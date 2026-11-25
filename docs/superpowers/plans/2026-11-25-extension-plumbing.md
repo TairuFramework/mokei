@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** qa
+**Stage:** completing
 **Mode:** tasks
 
 **Goal:** One registry-driven mechanism for MCP extensions in context-protocol / context-server / context-client, with Tasks migrated onto it and made opt-in on the client.
