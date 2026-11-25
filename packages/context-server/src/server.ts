@@ -54,6 +54,7 @@ import {
   METHOD_NOT_FOUND,
   MISSING_REQUIRED_CLIENT_CAPABILITY,
   missingExtensionErrorParams,
+  OAUTH_CLIENT_CREDENTIALS,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   readExtension,
@@ -175,6 +176,8 @@ export type ServerConfig = {
   resources?: ResourceDefinitions
   tools?: ToolDefinitions
   tasks?: TaskManager
+  /** Advertise the OAuth client credentials extension (default `false`). */
+  oauthClientCredentials?: boolean
   /** @internal test hook: extra extensions to advertise and gate. */
   _extensions?: ReadonlyArray<{
     definition: ExtensionDefinition
@@ -311,6 +314,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.#registry = params._registry ?? EXTENSIONS
     if (params.tasks != null) {
       this.#extensions.set(TASKS, declareExtension(TASKS))
+    }
+    if (params.oauthClientCredentials === true) {
+      this.#extensions.set(OAUTH_CLIENT_CREDENTIALS, declareExtension(OAUTH_CLIENT_CREDENTIALS))
     }
     for (const { definition, settings } of params._extensions ?? []) {
       this.#extensions.set(definition, declareExtension(definition, settings))

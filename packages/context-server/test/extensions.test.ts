@@ -4,6 +4,7 @@ import {
   type ExtensionDefinition,
   META_CLIENT_CAPABILITIES,
   META_PROTOCOL_VERSION,
+  OAUTH_CLIENT_CREDENTIALS,
   TASKS,
   TASKS_EXTENSION,
 } from '@mokei/context-protocol'
@@ -35,6 +36,7 @@ afterEach(async () => {
 type Setup = {
   protocolVersions?: Array<'2025-11-25' | '2026-07-28'>
   tasks?: boolean
+  oauthClientCredentials?: boolean
   tool?: GenericToolDefinition
   /** Replaces the default `[TEST_EXT]` declared by the server. */
   declared?: Array<ExtensionDefinition>
@@ -50,6 +52,7 @@ function setup(options: Setup = {}) {
     version: '1.0.0',
     protocolVersions: options.protocolVersions ?? ['2025-11-25', '2026-07-28'],
     tasks,
+    oauthClientCredentials: options.oauthClientCredentials,
     subscriptions: options.tasks,
     tools: options.tool ? { probe: options.tool } : undefined,
     transport: transports.server,
@@ -221,5 +224,37 @@ describe('registry gating on 2025-11-25', () => {
     const response = await request('logging/setLevel', { level: 'info' })
     expect(response.error).toBeUndefined()
     expect(response.result).toEqual({})
+  })
+})
+
+describe('oauth client credentials advertising', () => {
+  const id = OAUTH_CLIENT_CREDENTIALS.id
+
+  test('flagged server advertises it as {} on initialize and server/discover', async () => {
+    const request = setup({
+      oauthClientCredentials: true,
+      declared: [],
+      registry: [OAUTH_CLIENT_CREDENTIALS],
+    })
+    const init = await request('initialize', {
+      protocolVersion: '2025-11-25',
+      capabilities: {},
+      clientInfo: { name: 'c', version: '1' },
+    })
+    expect(init.result?.capabilities.extensions).toEqual({ [id]: {} })
+    const discover = await request('server/discover', { _meta: meta({}) })
+    expect(discover.result?.capabilities.extensions).toEqual({ [id]: {} })
+  })
+
+  test('unflagged server advertises nothing', async () => {
+    const request = setup({ declared: [], registry: [OAUTH_CLIENT_CREDENTIALS] })
+    const init = await request('initialize', {
+      protocolVersion: '2025-11-25',
+      capabilities: {},
+      clientInfo: { name: 'c', version: '1' },
+    })
+    expect(init.result?.capabilities).not.toHaveProperty('extensions')
+    const discover = await request('server/discover', { _meta: meta({}) })
+    expect(discover.result?.capabilities).not.toHaveProperty('extensions')
   })
 })

@@ -1,7 +1,7 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ExtensionDefinition, ServerMessage } from '@mokei/context-protocol'
-import { TASKS, TASKS_EXTENSION } from '@mokei/context-protocol'
-import { afterEach, expect, test } from 'vitest'
+import { OAUTH_CLIENT_CREDENTIALS, TASKS, TASKS_EXTENSION } from '@mokei/context-protocol'
+import { afterEach, describe, expect, test } from 'vitest'
 
 import { ContextServer, createTaskManager, createTool } from '../../context-server/lib/index.js'
 import { ContextClient, ExtensionNotDeclaredError, MethodNotInRevisionError } from '../src/index.js'
@@ -22,6 +22,8 @@ afterEach(async () => {
 type Options = {
   version?: '2025-11-25' | '2026-07-28'
   tasks?: boolean
+  oauthClientCredentials?: boolean
+  serverOauthClientCredentials?: boolean
   clientExtensions?: ConstructorParameters<typeof ContextClient>[0]['_extensions']
   serverExtensions?: ConstructorParameters<typeof ContextServer>[0]['_extensions']
   serverTasks?: boolean
@@ -56,12 +58,14 @@ function setup(options: Options = {}) {
       }),
     },
     tasks: options.serverTasks === false ? undefined : createTaskManager(),
+    oauthClientCredentials: options.serverOauthClientCredentials,
     _extensions: options.serverExtensions,
   } as never)
   const client = new ContextClient({
     protocolVersion: options.version ?? '2026-07-28',
     transport: pair.client,
     tasks: options.tasks,
+    oauthClientCredentials: options.oauthClientCredentials,
     _extensions: options.clientExtensions,
     _registry: [TASKS, TEST_EXT],
   })
@@ -225,4 +229,54 @@ test("an 'auto' client with tasks: true negotiates 2025-11-25 against a 2025-onl
   const result = await client.callTool({ name: 'echo', arguments: {} })
   expect(result.content).toEqual([{ type: 'text', text: 'ok' }])
   void server
+})
+
+describe('oauth client credentials', () => {
+  const id = OAUTH_CLIENT_CREDENTIALS.id
+
+  test('oauthClientCredentials: true declares it on 2026-07-28', async () => {
+    const { client, sent } = setup({ oauthClientCredentials: true })
+    await client.callTool({ name: 'echo', arguments: {} })
+    const call = sent.find((m) => (m as { method?: string }).method === 'tools/call') as {
+      params: { _meta: Record<string, unknown> }
+    }
+    expect(call.params._meta['io.modelcontextprotocol/clientCapabilities']).toMatchObject({
+      extensions: { [id]: {} },
+    })
+  })
+
+  test('oauthClientCredentials: true declares it on 2025-11-25 initialize', async () => {
+    const { client, sent } = setup({ version: '2025-11-25', oauthClientCredentials: true })
+    await client.initialize()
+    const init = sent.find((m) => (m as { method?: string }).method === 'initialize') as {
+      params: { capabilities: { extensions?: Record<string, unknown> } }
+    }
+    expect(init.params.capabilities.extensions?.[id]).toEqual({})
+  })
+
+  test('is not declared without the flag', async () => {
+    const modern = setup()
+    await modern.client.callTool({ name: 'echo', arguments: {} })
+    const call = modern.sent.find((m) => (m as { method?: string }).method === 'tools/call') as {
+      params: { _meta: Record<string, Record<string, unknown>> }
+    }
+    expect(call.params._meta['io.modelcontextprotocol/clientCapabilities']).not.toHaveProperty(
+      'extensions',
+    )
+    const legacy = setup({ version: '2025-11-25' })
+    await legacy.client.initialize()
+    const init = legacy.sent.find((m) => (m as { method?: string }).method === 'initialize') as {
+      params: { capabilities: Record<string, unknown> }
+    }
+    expect(init.params.capabilities).not.toHaveProperty('extensions')
+  })
+
+  test('getServerExtension reads it from a flagged server on both revisions', async () => {
+    for (const version of ['2025-11-25', '2026-07-28'] as const) {
+      const { client } = setup({ version, serverOauthClientCredentials: true })
+      expect(await client.getServerExtension(OAUTH_CLIENT_CREDENTIALS)).toEqual({})
+    }
+    const plain = setup()
+    expect(await plain.client.getServerExtension(OAUTH_CLIENT_CREDENTIALS)).toBeNull()
+  })
 })

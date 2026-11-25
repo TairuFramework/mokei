@@ -2,10 +2,12 @@ import { describe, expect, test } from 'vitest'
 
 import {
   declareExtension,
+  EXTENSIONS,
   type ExtensionDefinition,
   extensionForClientMethod,
   extensionsFor,
   missingExtensionErrorParams,
+  OAUTH_CLIENT_CREDENTIALS,
   readExtension,
   TASKS,
 } from '../src/extensions.js'
@@ -83,4 +85,19 @@ test('declaresTasksExtension rejects other revision', () => {
   expect(declaresTasksExtension({ extensions: { [TASKS_EXTENSION]: { revision: 'x' } } })).toBe(
     false,
   )
+})
+
+describe('OAUTH_CLIENT_CREDENTIALS', () => {
+  test('definition', () => {
+    expect(OAUTH_CLIENT_CREDENTIALS.id).toBe('io.modelcontextprotocol/oauth-client-credentials')
+    expect(OAUTH_CLIENT_CREDENTIALS.revision).toBeUndefined()
+    expect([...OAUTH_CLIENT_CREDENTIALS.protocolVersions].sort()).toEqual([
+      '2025-11-25',
+      '2026-07-28',
+    ])
+    expect(OAUTH_CLIENT_CREDENTIALS.clientMethods.size).toBe(0)
+    expect(OAUTH_CLIENT_CREDENTIALS.serverMethods.size).toBe(0)
+    expect(EXTENSIONS).toContain(OAUTH_CLIENT_CREDENTIALS)
+    expect(declareExtension(OAUTH_CLIENT_CREDENTIALS)).toEqual({})
+  })
 })

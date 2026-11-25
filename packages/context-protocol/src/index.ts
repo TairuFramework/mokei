@@ -34,6 +34,7 @@ export {
   extensionForServerMethod,
   extensionsFor,
   missingExtensionErrorParams,
+  OAUTH_CLIENT_CREDENTIALS,
   readExtension,
   TASKS,
 } from './extensions.js'

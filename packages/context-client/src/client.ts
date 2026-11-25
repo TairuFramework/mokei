@@ -61,6 +61,7 @@ import {
   META_SUBSCRIPTION_ID,
   METHOD_NOT_FOUND,
   MOKEI_VERSION,
+  OAUTH_CLIENT_CREDENTIALS,
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   readExtension,
@@ -493,6 +494,9 @@ export class ContextClient<
     this.#registry = params._registry ?? EXTENSIONS
     if (params.tasks === true) {
       this.#extensions.set(TASKS, declareExtension(TASKS))
+    }
+    if (params.oauthClientCredentials === true) {
+      this.#extensions.set(OAUTH_CLIENT_CREDENTIALS, declareExtension(OAUTH_CLIENT_CREDENTIALS))
     }
     for (const { definition, settings } of params._extensions ?? []) {
       this.#extensions.set(definition, declareExtension(definition, settings))

@@ -19,7 +19,14 @@ export const TASKS: ExtensionDefinition = {
   serverMethods: new Set(),
 }
 
-export const EXTENSIONS: ReadonlyArray<ExtensionDefinition> = [TASKS]
+export const OAUTH_CLIENT_CREDENTIALS: ExtensionDefinition = {
+  id: 'io.modelcontextprotocol/oauth-client-credentials',
+  protocolVersions: new Set<ProtocolVersion>(['2025-11-25', '2026-07-28']),
+  clientMethods: new Set(),
+  serverMethods: new Set(),
+}
+
+export const EXTENSIONS: ReadonlyArray<ExtensionDefinition> = [TASKS, OAUTH_CLIENT_CREDENTIALS]
 
 export function extensionForClientMethod(
   method: string,

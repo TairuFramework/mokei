@@ -137,6 +137,8 @@ export type ToolParams<T extends ContextTypes> = NamedParams<T['Tools']>
 export type ClientParams = {
   /** Opt into the Tasks extension (declared on `2026-07-28`; default `false`). */
   tasks?: boolean
+  /** Declare the OAuth client credentials extension (default `false`). */
+  oauthClientCredentials?: boolean
   /** @internal test hook: extra extensions to declare and allow. */
   _extensions?: ReadonlyArray<{
     definition: ExtensionDefinition
