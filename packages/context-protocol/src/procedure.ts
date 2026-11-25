@@ -22,6 +22,14 @@ import type { ListRootsRequest, ListRootsResult, RootsListChangedNotification } 
 import type { CancelledNotification, PingRequest, ProgressNotification, Result } from './rpc.js'
 import type { CreateMessageRequest, CreateMessageResult } from './sampling.js'
 import type {
+  GetSkillRequest,
+  GetSkillResult,
+  ListSkillsRequest,
+  ListSkillsResult,
+  ReadResourceDirectoryRequest,
+  ReadResourceDirectoryResult,
+} from './skills.js'
+import type {
   CallToolRequest,
   CallToolResult,
   ListToolsRequest,
@@ -87,9 +95,21 @@ export type ClientRequests = {
     Params: ReadResourceRequest['params']
     Result: ReadResourceResult
   }
+  'resources/directory/read': {
+    Params: ReadResourceDirectoryRequest['params']
+    Result: ReadResourceDirectoryResult
+  }
   'resources/templates/list': {
     Params: ListResourceTemplatesRequest['params']
     Result: ListResourceTemplatesResult
+  }
+  'skills/get': {
+    Params: GetSkillRequest['params']
+    Result: GetSkillResult
+  }
+  'skills/list': {
+    Params: ListSkillsRequest['params']
+    Result: ListSkillsResult
   }
   'server/discover': {
     Params: DiscoverRequest['params']
