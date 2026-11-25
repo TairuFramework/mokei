@@ -113,6 +113,8 @@ export type ContextHostParams = {
   /** Subclass teardown, run after every context is removed. */
   dispose?: () => Promise<void>
   elicit?: HostElicitHandler | true
+  /** Declare the Tasks extension on every context client this host creates. Default `false`. */
+  tasks?: boolean
   /** MCP payload capture defaults to 'off'. */
   tracing?: { payloads?: PayloadCapture; parentFrom?: TraceParentFrom }
   /**

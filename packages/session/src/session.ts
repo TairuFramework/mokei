@@ -132,6 +132,8 @@ export type SessionParams<T extends ProviderTypes = ProviderTypes> = {
   contextHost?: ContextHost
   /** Enable elicitation when this session creates its own context host. */
   elicit?: HostElicitHandler | true
+  /** Declare the Tasks extension when this session creates its own context host. Default `false`. */
+  tasks?: boolean
   /**
    * Local tools that can be called directly without setting up an MCP server.
    * These tools are registered with the `local:` namespace prefix.
@@ -218,8 +220,8 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
   #tracing: SessionTracing | undefined
 
   constructor(params: SessionParams<T> = {}) {
-    if (params.contextHost && params.elicit != null) {
-      throw new Error('Cannot provide both contextHost and elicit')
+    if (params.contextHost && (params.elicit != null || params.tasks != null)) {
+      throw new Error('Cannot provide both contextHost and elicit or tasks')
     }
     super({
       dispose: async () => {
@@ -229,7 +231,11 @@ export class Session<T extends ProviderTypes = ProviderTypes> extends Disposer {
     this.#events = new EventEmitter()
     this.#contextHost =
       params.contextHost ??
-      new DefaultContextHost({ elicit: params.elicit, tracing: params.tracing })
+      new DefaultContextHost({
+        elicit: params.elicit,
+        tasks: params.tasks,
+        tracing: params.tracing,
+      })
     this.#tracing = params.tracing
     this.#retry = params.retry
     this.#providers = new Map(Object.entries(params.providers ?? {}))

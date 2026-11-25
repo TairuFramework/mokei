@@ -20,6 +20,8 @@ export type CreateHostedContextParams = {
   transport: ClientTransport
   tools?: Array<ContextTool>
   elicit?: ElicitHandler
+  /** Declare the Tasks extension on the client. Default `false`. */
+  tasks?: boolean
   dispose?: () => void | Promise<void>
   /**
    * Revision the client speaks, or `'auto'` to probe the server. Defaults to `'auto'`:
@@ -35,8 +37,8 @@ export function createHostedContext<T extends ContextTypes = UnknownContextTypes
   // `'auto'` rather than the newest revision: a host points at arbitrary third-party servers,
   // most of which serve `'2025-11-25'` only, and a `'2026-07-28'` pin rejects those with
   // `-32022` instead of negotiating down. Callers that know their server pin explicitly.
-  const { transport, tools = [], dispose, protocolVersion = 'auto', elicit } = params
-  const client = new ContextClient<T>({ protocolVersion, transport, elicit })
+  const { transport, tools = [], dispose, protocolVersion = 'auto', elicit, tasks } = params
+  const client = new ContextClient<T>({ protocolVersion, transport, elicit, tasks })
   const disposer = new Disposer({
     dispose: async () => {
       // Via the client, not the transport: `client.dispose()` runs `_beforeTransportClose` (tears
