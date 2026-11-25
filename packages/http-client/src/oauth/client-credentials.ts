@@ -79,17 +79,6 @@ function validateResource(resource: string): string {
   return resource
 }
 
-/** Checks a configured assertion lifetime: anything but a positive integer would sign an
- * assertion that is already expired or has a malformed `exp`. */
-function validateAssertionLifetime(seconds: number | undefined): number | undefined {
-  if (seconds != null && !(Number.isInteger(seconds) && seconds > 0)) {
-    throw new Error(
-      `Client credentials assertionLifetimeSeconds must be a positive integer, got: ${seconds}`,
-    )
-  }
-  return seconds
-}
-
 /** Requires a present metadata list to be an array of strings that contains `value`. Only an
  * `undefined` (absent) list passes unchecked: the client is preregistered for this grant, and the
  * server's own error surfaces if it disagrees. Any other non-array value, JSON `null` included,
@@ -161,7 +150,7 @@ export function createClientCredentialsMiddleware(
   config: ClientCredentialsConfig,
 ): FetchMiddleware {
   const configuredResource = config.resource == null ? undefined : validateResource(config.resource)
-  const assertionLifetimeSeconds = validateAssertionLifetime(config.assertionLifetimeSeconds)
+  const assertionLifetimeSeconds = config.assertionLifetimeSeconds
   const now = config.now ?? (() => Math.floor(Date.now() / 1000))
   const runtime = config.runtime ?? createRuntime()
   const skew = config.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS

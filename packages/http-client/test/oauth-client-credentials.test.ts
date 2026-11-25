@@ -170,11 +170,19 @@ test('honours assertionLifetimeSeconds', async () => {
 })
 
 test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-  'rejects assertionLifetimeSeconds %s at construction',
-  (assertionLifetimeSeconds) => {
-    expect(() =>
-      createClientCredentialsMiddleware({ clientID, issuer, signer, assertionLifetimeSeconds }),
-    ).toThrow('Client credentials assertionLifetimeSeconds must be a positive integer')
+  'rejects assertionLifetimeSeconds %s without a token request',
+  async (assertionLifetimeSeconds) => {
+    const w = world()
+    const mw = createClientCredentialsMiddleware({
+      clientID,
+      issuer,
+      signer,
+      assertionLifetimeSeconds,
+    })
+    await expect(mw(w.next)(resource)).rejects.toThrow(
+      'Client assertion lifetimeSeconds must be a positive integer',
+    )
+    expect(w.tokenForms).toHaveLength(0)
   },
 )
 
