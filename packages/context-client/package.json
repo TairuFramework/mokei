@@ -47,6 +47,7 @@
     "@mokei/logger": "workspace:^",
     "@opentelemetry/api": "catalog:",
     "@sozai/async": "catalog:",
+    "@sozai/codec": "catalog:",
     "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:",
     "@sozai/stream": "catalog:"

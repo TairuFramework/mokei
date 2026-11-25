@@ -32,6 +32,9 @@ export {
   type MethodNotInRevisionErrorParams,
   MRTRNotSupportedError,
   type MRTRNotSupportedErrorParams,
+  SkillVerificationError,
+  type SkillVerificationErrorParams,
+  type SkillVerificationReason,
   StructuredContentValidationError,
   type StructuredContentValidationErrorParams,
   TaskCancelledError,
@@ -90,6 +93,7 @@ export {
   TOKEN_BUCKETS,
   WORKFLOW_DURATION_BUCKETS,
 } from './semconv.js'
+export { checkSkillEntry, type SkillFile } from './skill-verification.js'
 export {
   type ListenHandle,
   type ListenHandlers,

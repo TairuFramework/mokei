@@ -14,6 +14,7 @@ import type {
   ExtensionDefinition,
   GetPromptRequest,
   GetPromptResult,
+  GetSkillResult,
   Implementation,
   InitializeRequest,
   InitializeResult,
@@ -26,6 +27,8 @@ import type {
   ListResourcesResult,
   ListResourceTemplatesRequest,
   ListResourceTemplatesResult,
+  ListSkillsRequest,
+  ListSkillsResult,
   ListToolsRequest,
   ListToolsResult,
   Log,
@@ -33,6 +36,8 @@ import type {
   ProgressNotification,
   ProtocolDefinition,
   ProtocolVersion,
+  ReadResourceDirectoryRequest,
+  ReadResourceDirectoryResult,
   ReadResourceRequest,
   ReadResourceResult,
   RequestID,
@@ -43,6 +48,7 @@ import type {
   ServerNotification,
   ServerRequest,
   SetLevelRequest,
+  Skill,
   SubscriptionFilter,
   TasksAcknowledgement,
   TasksGetResult,
@@ -65,6 +71,7 @@ import {
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   readExtension,
+  SKILLS,
   serverMessage,
   TASKS,
   UNSUPPORTED_PROTOCOL_VERSION,
@@ -110,6 +117,12 @@ import {
 } from './mrtr.js'
 import { capturePayload, type MessageDirection } from './observation.js'
 import { SetupReader } from './setup-reader.js'
+import {
+  checkSkillEntry,
+  listedSkillFile,
+  type SkillFile,
+  verifySkillFile,
+} from './skill-verification.js'
 import {
   ACKNOWLEDGED_METHOD,
   type ListenHandle,
@@ -497,6 +510,9 @@ export class ContextClient<
     }
     if (params.oauthClientCredentials === true) {
       this.#extensions.set(OAUTH_CLIENT_CREDENTIALS, declareExtension(OAUTH_CLIENT_CREDENTIALS))
+    }
+    if (params.skills === true) {
+      this.#extensions.set(SKILLS, declareExtension(SKILLS))
     }
     for (const { definition, settings } of params._extensions ?? []) {
       this.#extensions.set(definition, declareExtension(definition, settings))
@@ -994,19 +1010,27 @@ export class ContextClient<
   /** Local refusal of an extension method (or task listen filter) this client did not opt into. */
   #refuseUndeclaredExtension(method: string, params: unknown, protocol: ProtocolDefinition): void {
     const definition = extensionForClientMethod(method, this.#registry)
-    if (
-      definition != null &&
-      (!this.#extensions.has(definition) || !definition.protocolVersions.has(protocol.version))
-    ) {
+    if (definition != null) {
+      this.#refuseUndeclaredDefinition(definition, method, protocol)
+    }
+    if (method === 'subscriptions/listen') {
+      const filter = (params as { notifications?: SubscriptionFilter } | undefined)?.notifications
+      this.#refuseUndeclaredTaskFilter(filter, protocol)
+    }
+  }
+
+  /** Local refusal of `method` when this client did not enable `definition` on `protocol`. */
+  #refuseUndeclaredDefinition(
+    definition: ExtensionDefinition,
+    method: string,
+    protocol: ProtocolDefinition,
+  ): void {
+    if (!this.#extensions.has(definition) || !definition.protocolVersions.has(protocol.version)) {
       throw new MethodNotInRevisionError({
         method,
         version: protocol.version,
         hint: `the ${definition.id} extension is not enabled`,
       })
-    }
-    if (method === 'subscriptions/listen') {
-      const filter = (params as { notifications?: SubscriptionFilter } | undefined)?.notifications
-      this.#refuseUndeclaredTaskFilter(filter, protocol)
     }
   }
 
@@ -1681,8 +1705,7 @@ export class ContextClient<
     return readExtension(await this.#serverCapabilitiesAsync(options), definition)
   }
 
-  // No caller yet: guards a future feature that needs the server to speak an extension.
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: specified by the plan, first caller lands later
+  /** Throws `ExtensionNotDeclaredError` unless the server declared the extension. */
   async #requireServerExtensionAsync(
     definition: ExtensionDefinition,
     options?: RequestOptions,
@@ -1947,6 +1970,89 @@ export class ContextClient<
     const { elicit, ...requestParams } = params
     const [wireParams, options] = splitRequestOptions(requestParams)
     return this.request('resources/read', wireParams, { ...options, elicit })
+  }
+
+  // --- skills extension ------------------------------------------------------
+
+  /**
+   * Gates shared by the skills methods, all local: this client must have enabled the extension on
+   * a revision that carries it, and the server must have declared it. Returns the server's
+   * settings.
+   */
+  async #requireSkills(method: string, options?: RequestOptions): Promise<Record<string, unknown>> {
+    await this.#ready
+    this.#refuseUndeclaredDefinition(SKILLS, method, this.#requireProtocol())
+    return await this.#requireServerExtensionAsync(SKILLS, options)
+  }
+
+  /** Lists the skills the server serves, walking every page unless `cursor` is set. */
+  async listSkills(
+    params: ListParams<ListSkillsRequest['params']> = {},
+  ): Promise<ListSkillsResult> {
+    const [, gateOptions] = splitRequestOptions(params)
+    await this.#requireSkills('skills/list', gateOptions)
+    const result = await this.#listPaged(
+      'skills/list',
+      'skills',
+      (pageParams, options) => {
+        return this.request(
+          'skills/list',
+          pageParams as ListSkillsRequest['params'],
+          options,
+        ) as Promise<PagedResult>
+      },
+      params,
+    )
+    return result as ListSkillsResult
+  }
+
+  /** Fetches the entry of the skill whose `SKILL.md` is at `uri`. Reads no file. */
+  async getSkill(uri: string, options?: RequestOptions): Promise<GetSkillResult> {
+    await this.#requireSkills('skills/get', options)
+    return await this.request('skills/get', { uri }, options)
+  }
+
+  /**
+   * Lists the direct children of a directory resource, walking every page unless `cursor` is set.
+   * Refused locally unless the server declared the skills extension with `directoryRead: true`.
+   */
+  async readResourceDirectory(
+    params: ListParams<ReadResourceDirectoryRequest['params']>,
+  ): Promise<ReadResourceDirectoryResult> {
+    const [, gateOptions] = splitRequestOptions(params)
+    const settings = await this.#requireSkills('resources/directory/read', gateOptions)
+    if (settings.directoryRead !== true) {
+      throw new ExtensionNotDeclaredError({ extension: `${SKILLS.id}#directoryRead` })
+    }
+    const result = await this.#listPaged(
+      'resources/directory/read',
+      'resources',
+      (pageParams, options) => {
+        return this.request(
+          'resources/directory/read',
+          pageParams as ReadResourceDirectoryRequest['params'],
+          options,
+        ) as Promise<PagedResult>
+      },
+      params,
+    )
+    return result as ReadResourceDirectoryResult
+  }
+
+  /**
+   * Reads one file of a skill and verifies it against `entry`, the entry the caller holds: the
+   * entry is checked, the URI must be listed by it (or lie within the skill root for a
+   * `'dynamic'` entry), and the bytes must match the listed size and digest. For `SKILL.md`, the
+   * parsed frontmatter must equal the entry's. Throws `SkillVerificationError` otherwise; content
+   * that fails is never returned. An entry or URI that fails locally sends nothing.
+   */
+  async readSkillFile(entry: Skill, uri: string, options?: RequestOptions): Promise<SkillFile> {
+    checkSkillEntry(entry)
+    const listed = listedSkillFile(entry, uri)
+    await this.#requireSkills('readSkillFile', options)
+    // Never hand an `input_required` suspension back: only a completed read can be verified.
+    const result = await this.readResource({ ...options, uri, allowInputRequired: false })
+    return await verifySkillFile(entry, uri, listed, result)
   }
 
   async listTools(params: ListParams<ListToolsRequest['params']> = {}): Promise<ListToolsResult> {

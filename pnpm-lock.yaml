@@ -1056,6 +1056,9 @@ importers:
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.3
+      '@sozai/codec':
+        specifier: 'catalog:'
+        version: 0.4.4
       '@sozai/otel':
         specifier: 'catalog:'
         version: 0.4.0(@logtape/logtape@2.4.2)

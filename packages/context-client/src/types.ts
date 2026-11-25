@@ -139,6 +139,11 @@ export type ClientParams = {
   tasks?: boolean
   /** Declare the OAuth client credentials extension (default `false`). */
   oauthClientCredentials?: boolean
+  /**
+   * Opt into the Skills extension (declared on `2026-07-28`; default `false`), unlocking
+   * `listSkills`, `getSkill`, `readResourceDirectory` and `readSkillFile`.
+   */
+  skills?: boolean
   /** @internal test hook: extra extensions to declare and allow. */
   _extensions?: ReadonlyArray<{
     definition: ExtensionDefinition
