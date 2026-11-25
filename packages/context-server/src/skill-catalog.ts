@@ -84,7 +84,21 @@ type PreparedSkill = {
   directories: Array<string>
 }
 
+/** Validate a definition, attributing every format error to its path. */
 function prepareSkill(definition: SkillDefinition): PreparedSkill {
+  try {
+    return prepareSkillUnattributed(definition)
+  } catch (error) {
+    if (error instanceof SkillFormatError && error.skill == null) {
+      const { path } = definition
+      // biome-ignore lint/style/useErrorCause: cause is passed through the options argument
+      throw new SkillFormatError(`${path}: ${error.message}`, path, { cause: error })
+    }
+    throw error
+  }
+}
+
+function prepareSkillUnattributed(definition: SkillDefinition): PreparedSkill {
   const { path } = definition
   const segments = validatePathSegments(path)
   const name = segments[segments.length - 1] as string

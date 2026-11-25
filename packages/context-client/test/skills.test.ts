@@ -1,6 +1,7 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ClientRequest, ServerMessage, Skill } from '@mokei/context-protocol'
-import { computeDigest, SKILLS_EXTENSION } from '@mokei/context-protocol'
+import { computeDigest, SKILLS_EXTENSION, skill as skillSchema } from '@mokei/context-protocol'
+import { createValidator } from '@sozai/schema'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import {
@@ -389,6 +390,22 @@ describe('dynamic entries', () => {
     expect(await reasonOf(() => client.readSkillFile(altered, dynamic.uri))).toBe('frontmatter')
   })
 
+  test('a non-UTF-8 blob SKILL.md is refused', async () => {
+    const { client } = fake(() => ({
+      resultType: 'complete',
+      contents: [{ uri: dynamic.uri, blob: '//8A' }],
+    }))
+    expect(await reasonOf(() => client.readSkillFile(dynamic, dynamic.uri))).toBe('frontmatter')
+  })
+
+  test('a SKILL.md with unparseable frontmatter is refused', async () => {
+    const { client } = fake(() => ({
+      resultType: 'complete',
+      contents: [{ uri: dynamic.uri, text: '---\nname: [gen\n---\n' }],
+    }))
+    expect(await reasonOf(() => client.readSkillFile(dynamic, dynamic.uri))).toBe('frontmatter')
+  })
+
   test('a URI outside the root is unlisted', async () => {
     const { client, received } = generator()
     expect(await reasonOf(() => client.readSkillFile(dynamic, 'skill://acme/other/x.txt'))).toBe(
@@ -399,6 +416,18 @@ describe('dynamic entries', () => {
     )
     expect(received.map((request) => request.method)).not.toContain('resources/read')
   })
+})
+
+test('getSkill refuses an entry for another uri', async () => {
+  const uri = `${ROOT}/SKILL.md`
+  const { client } = fake(() => ({
+    resultType: 'complete',
+    skill: entry({ uri: 'skill://acme/other/pdf/SKILL.md', resources: 'dynamic' }),
+  }))
+  const error = await client.getSkill(uri).catch((error: unknown) => error)
+  expect(error).toBeInstanceOf(SkillVerificationError)
+  expect((error as SkillVerificationError).reason).toBe('response')
+  expect((error as SkillVerificationError).uri).toBe(uri)
 })
 
 describe('gates', () => {
@@ -521,13 +550,17 @@ test('every catalog entry passes checkSkillEntry and every file reads', async ()
         'SKILL.md': '---\r\nname: writer\ndescription: Writes.\nmetadata:\n  a: b\n---\n',
         'assets/logo.bin': new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff]),
         'scripts/run.sh': '#!/bin/sh\necho hi\n',
+        "x/a-z_0.9~!$&'()*+,;=:@.txt": 'every pchar but %\n',
       },
       directories: ['empty'],
     },
   ]
   const catalog = await createSkillCatalog(definitions)
+  // The wire schema checks `format: 'uri'`: an entry it rejects would fail the whole listing.
+  const validateSkill = createValidator(skillSchema)
   for (const skill of catalog.entries) {
     expect(() => checkSkillEntry(skill)).not.toThrow()
+    expect(validateSkill(skill).issues).toBeUndefined()
   }
   const { client } = await setup({ definitions })
   const { skills } = await client.listSkills()

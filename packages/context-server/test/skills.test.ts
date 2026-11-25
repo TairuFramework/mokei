@@ -234,7 +234,11 @@ describe('skills extension', () => {
 
   describe('2025-11-25', () => {
     async function initialized() {
-      const request = await setup({ protocolVersions: ['2025-11-25', '2026-07-28'] })
+      // directoryRead on, so resources/directory/read is refused by the revision gate alone.
+      const request = await setup({
+        protocolVersions: ['2025-11-25', '2026-07-28'],
+        catalog: { directoryRead: true },
+      })
       const init = await request('initialize', {
         protocolVersion: '2025-11-25',
         capabilities: {},

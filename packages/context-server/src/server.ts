@@ -438,9 +438,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   /**
    * The OAuth scopes a request needs beyond the server-wide ones: the called tool's
    * {@link GenericToolDefinition.scopes} for `tools/call`, the prompt's for `prompts/get`, and
-   * {@link ResourceDefinitions.scopes} for `resources/read`. The skill catalog's scopes, when
-   * set, replace those for the skills methods and a `resources/read` of a catalog URI. `[]` for
-   * any other method, or an unknown tool or prompt. Reads only `method` and `params.name` /
+   * {@link ResourceDefinitions.scopes} for `resources/read`. For the skills methods and a
+   * `resources/read` of a catalog URI, the skill catalog's scopes always replace those (`[]` when
+   * the catalog sets none). `[]` for any other method, or an unknown tool or prompt. Reads only `method` and `params.name` /
    * `params.uri`, so a transport can check it before dispatch (the HTTP server answers
    * `403 insufficient_scope` from it).
    */

@@ -50,6 +50,7 @@ describe('skill format', () => {
 
   test('validatePathSegments', () => {
     expect(validatePathSegments('acme/billing/refunds')).toEqual(['acme', 'billing', 'refunds'])
+    expect(validatePathSegments("a-z_0.9~!$&'()*+,;=:@")).toEqual(["a-z_0.9~!$&'()*+,;=:@"])
     for (const path of [
       '',
       '/a',
@@ -61,6 +62,11 @@ describe('skill format', () => {
       'a?b',
       'a#b',
       'a\u0001b',
+      'my notes.md',
+      'é.md',
+      '[1].md',
+      'a"b',
+      'a<b',
     ]) {
       expect(() => validatePathSegments(path)).toThrow(SkillFormatError)
     }
@@ -106,6 +112,9 @@ describe('skill format', () => {
     expect(isValidSkillURI('skill://a//SKILL.md')).toBe(false)
     expect(isValidSkillURI('Skill://a/SKILL.md')).toBe(false)
     expect(isValidSkillURI('skill:/a')).toBe(false)
+    expect(isValidSkillURI('skill://a/my notes.md')).toBe(false)
+    expect(isValidSkillURI('skill://a/é.md')).toBe(false)
+    expect(isValidSkillURI('skill://a/[1].md')).toBe(false)
   })
 
   test('decodeExactUTF8', () => {

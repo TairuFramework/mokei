@@ -91,6 +91,10 @@ describe('createSkillCatalog', () => {
     ],
     ['path segment a%2Fb', () => [{ path: 'a%2Fb', files: { 'SKILL.md': skillMd('a') } }]],
     ['file key ../x', () => [{ path: 'a', files: { 'SKILL.md': skillMd('a'), '../x': 'x' } }]],
+    [
+      'file named my notes.md',
+      () => [{ path: 'a', files: { 'SKILL.md': skillMd('a'), 'my notes.md': 'x' } }],
+    ],
     ['no SKILL.md', () => [{ path: 'a', files: { 'readme.md': 'x' } }]],
     [
       '513 files',
@@ -130,6 +134,24 @@ describe('createSkillCatalog', () => {
   test.each(invalid)('rejects invalid definition: %s', async (_name, build) => {
     await expect(createSkillCatalog(build())).rejects.toBeInstanceOf(SkillFormatError)
   })
+
+  test.each([
+    ['BOM-prefixed SKILL.md', { path: 'acme/a', files: { 'SKILL.md': `\uFEFF${skillMd('a')}` } }],
+    ['invalid skill path', { path: 'acme/../a', files: { 'SKILL.md': skillMd('a') } }],
+    ['invalid file key', { path: 'acme/a', files: { 'SKILL.md': skillMd('a'), 'a b': 'x' } }],
+    [
+      'invalid frontmatter field',
+      { path: 'acme/a', files: { 'SKILL.md': skillMd('a', 'x'.repeat(1025)) } },
+    ],
+  ] as Array<[string, SkillDefinition]>)(
+    'attributes a format error to the definition path: %s',
+    async (_name, definition) => {
+      const error = await createSkillCatalog([definition]).catch((error: unknown) => error)
+      expect(error).toBeInstanceOf(SkillFormatError)
+      expect((error as SkillFormatError).skill).toBe(definition.path)
+      expect((error as SkillFormatError).message).toContain(definition.path)
+    },
+  )
 
   test.each([
     [

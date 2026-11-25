@@ -63,4 +63,18 @@ describe('skills loader', () => {
     const catalog = await loadSkillCatalog(root, { prefix: 'acme' })
     expect(catalog.entries.length).toBe(2)
   })
+
+  test('loadSkillCatalog rejects a file name that is not a URI path segment', async () => {
+    await writeFile(join(root, 'a', 'my notes.md'), 'x')
+    const error = await loadSkillCatalog(root).catch((error: unknown) => error)
+    expect(error).toBeInstanceOf(SkillFormatError)
+    expect((error as SkillFormatError).skill).toBe('a')
+  })
+
+  test('loadSkillCatalog rejects a skill over the file limit', async () => {
+    for (let i = 0; i < 512; i++) {
+      await writeFile(join(root, 'a', 'ref', `f${i}.txt`), 'x')
+    }
+    await expect(loadSkillCatalog(root)).rejects.toThrow(SkillFormatError)
+  })
 })

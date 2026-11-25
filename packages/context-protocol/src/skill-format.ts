@@ -6,8 +6,8 @@ export const SKILL_LIMITS = { maxFiles: 512, maxBytes: 16777216 } as const
 const DIGEST_REGEX = /^sha256:[0-9a-f]{64}$/
 const SKILL_NAME_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const URI_REGEX = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/
-// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are rejected on purpose
-const FORBIDDEN_SEGMENT_CHARS = /[\\%?#\u0000-\u001f\u007f]/
+// RFC 3986 `pchar` without `%`: percent-encoding is rejected so a segment has a single spelling.
+const SEGMENT_REGEX = /^[A-Za-z0-9\-._~!$&'()*+,;=:@]+$/
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
 
 export class SkillFormatError extends Error {
@@ -47,8 +47,10 @@ export function validatePathSegments(path: string): Array<string> {
     if (segment === '' || segment === '.' || segment === '..') {
       throw new SkillFormatError(`Invalid path segment in "${path}"`)
     }
-    if (FORBIDDEN_SEGMENT_CHARS.test(segment)) {
-      throw new SkillFormatError(`Forbidden character in path segment "${segment}"`)
+    if (!SEGMENT_REGEX.test(segment)) {
+      throw new SkillFormatError(
+        `Path segment "${segment}" must contain only URI path characters other than %`,
+      )
     }
   }
   return segments

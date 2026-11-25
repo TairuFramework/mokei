@@ -21,10 +21,10 @@ Done for `private_key_jwt`: `docs/agents/plans/completed/2026-11-25-oauth-client
 
 `io.modelcontextprotocol/skills` (Beta, SEP-2640 Final).
 
-Base client and server support is implemented on the `mcp-extensions` branch: `skills/list` and
-`skills/get`, `skill://` files via `resources/read` with digest and size manifests, optional
-`resources/directory/read` (`directoryRead: true`), disk loading in `context-server-node`, and a
-verifying client (`readSkillFile`, `SkillVerificationError`).
+Base client and server support is implemented: `skills/list` and `skills/get`, `skill://` files
+via `resources/read` with digest and size manifests, optional `resources/directory/read`
+(`directoryRead: true`), disk loading in `context-server-node`, and a verifying client
+(`readSkillFile`, `SkillVerificationError`).
 
 Remaining follow-on work:
 

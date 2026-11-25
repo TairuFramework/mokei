@@ -104,6 +104,7 @@ import {
   ListMaxPagesError,
   MethodNotInRevisionError,
   MRTRNotSupportedError,
+  SkillVerificationError,
   StructuredContentValidationError,
   TaskInterruptedError,
   UnsupportedProtocolVersionError,
@@ -2006,10 +2007,21 @@ export class ContextClient<
     return result as ListSkillsResult
   }
 
-  /** Fetches the entry of the skill whose `SKILL.md` is at `uri`. Reads no file. */
+  /**
+   * Fetches the entry of the skill whose `SKILL.md` is at `uri`. Reads no file. Throws
+   * `SkillVerificationError` (reason `'response'`) if the server answers with another skill's entry.
+   */
   async getSkill(uri: string, options?: RequestOptions): Promise<GetSkillResult> {
     await this.#requireSkills('skills/get', options)
-    return await this.request('skills/get', { uri }, options)
+    const result = await this.request('skills/get', { uri }, options)
+    if (result.skill.uri !== uri) {
+      throw new SkillVerificationError({
+        reason: 'response',
+        uri,
+        message: `skills/get for ${uri} returned the entry of ${result.skill.uri}`,
+      })
+    }
+    return result
   }
 
   /**
@@ -2044,7 +2056,10 @@ export class ContextClient<
    * entry is checked, the URI must be listed by it (or lie within the skill root for a
    * `'dynamic'` entry), and the bytes must match the listed size and digest. For `SKILL.md`, the
    * parsed frontmatter must equal the entry's. Throws `SkillVerificationError` otherwise; content
-   * that fails is never returned. An entry or URI that fails locally sends nothing.
+   * that fails is never returned. An entry or URI that fails locally sends nothing. Some malformed
+   * responses (such as contents with neither `text` nor `blob`) fail the inbound wire validation
+   * first and reject as `RPCError('Invalid response')` instead of
+   * `SkillVerificationError('response')`.
    */
   async readSkillFile(entry: Skill, uri: string, options?: RequestOptions): Promise<SkillFile> {
     checkSkillEntry(entry)
