@@ -327,6 +327,7 @@ describe('ContextServer', () => {
       params,
       meta: {},
       signal: expect.any(AbortSignal),
+      clientCapabilities: {},
       inputResponses: undefined,
       requestState: undefined,
       mintRequestState: expect.any(Function),
@@ -1965,6 +1966,7 @@ describe('factory parameters object', () => {
       client: {} as never,
       meta: {},
       signal: new AbortController().signal,
+      clientCapabilities: {},
       mintRequestState: () => '',
     })
     expect(result).toEqual({ content: [{ type: 'text', text: '2' }] })
@@ -1983,6 +1985,7 @@ describe('factory parameters object', () => {
         client: {} as never,
         meta: {},
         signal: new AbortController().signal,
+        clientCapabilities: {},
         mintRequestState: () => '',
       }),
     ).rejects.toMatchObject({ code: INVALID_PARAMS })
@@ -2007,6 +2010,7 @@ describe('factory parameters object', () => {
       client: {} as never,
       meta: {},
       signal: new AbortController().signal,
+      clientCapabilities: {},
       mintRequestState: () => '',
     })
     expect(result).toEqual({
@@ -2026,6 +2030,7 @@ describe('factory parameters object', () => {
       client: {} as never,
       meta: {},
       signal: new AbortController().signal,
+      clientCapabilities: {},
       mintRequestState: () => '',
     })
     expect(result).toEqual({ messages: [] })
@@ -2048,6 +2053,7 @@ describe('tool outputSchema', () => {
       client: {} as never,
       meta: {},
       signal: new AbortController().signal,
+      clientCapabilities: {},
       mintRequestState: () => '',
     })
     if (isInputRequiredResult(result)) {
@@ -2233,6 +2239,7 @@ describe('tool input validation outcome', () => {
       client: {} as never,
       meta: {},
       signal: new AbortController().signal,
+      clientCapabilities: {},
       mintRequestState: () => '',
     }
 
