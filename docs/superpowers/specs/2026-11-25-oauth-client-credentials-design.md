@@ -1,7 +1,9 @@
 # OAuth Client Credentials design
 
 Item 2 of `docs/agents/plans/backlog/2026-11-25-mcp-extensions.md`. Builds on the extension
-registry from `docs/superpowers/specs/2026-11-25-extension-plumbing-design.md`.
+registry from `docs/superpowers/specs/2026-11-25-extension-plumbing-design.md`. Reviewed by a
+builder check and two Codex reviews; their outcomes are folded in below. "(my call)" marks
+decisions not made by the user.
 
 ## Intent
 
@@ -16,6 +18,8 @@ credentials grant (RFC 6749 §4.4) with a signed JWT client assertion (RFC 7523)
   (decided: built upstream, in a kokuin branch we implement ourselves, then adopted by mokei).
 - `@mokei/http-client` gains a headless OAuth middleware that obtains, stores and re-obtains
   client-credentials tokens, pinned to one authorisation-server issuer.
+- One shared OAuth discovery following the full MCP authorization discovery order, used by both
+  the new middleware and the existing PKCE middleware (decided).
 - The extension is a registry entry; mokei clients using client credentials declare it, and
   `@mokei/http-server` can advertise it.
 
@@ -26,19 +30,21 @@ credentials grant (RFC 6749 §4.4) with a signed JWT client assertion (RFC 7523)
 - Server-side changes to token validation: client-credentials tokens are ordinary bearer tokens,
   already validated through `@teikyo/oauth`.
 - Dynamic client registration; the client is pre-registered with the authorisation server.
+- CLI or config-file wiring for client credentials; programmatic API only (my call).
+- Remote revocation of client-credentials tokens (my call, see "CLI token management").
 
 ## Anti-goals
 
 - Sending a client assertion to any authorisation server other than the pinned issuer.
 - Regressions in the interactive PKCE middleware against servers it works with today. Its
-  discovery gains the MCP fallbacks (decided, see "Discovery fallbacks"); nothing else about it
-  changes.
+  discovery gains the MCP fallbacks; nothing else about it changes, including its resource
+  resolution and store keys.
 
 ## Approaches
 
 1. **Upstream in `@kokuin/oauth` (picked).** It already owns code exchange, refresh and
    revocation; the new grant sits beside them and other kokuin consumers get it. Costs a kokuin
-   release before mokei's middleware lands.
+   release before mokei can merge.
 2. Directly in mokei `http-client`. No wait, but duplicates token-endpoint handling and leaves
    kokuin without the grant. Rejected.
 3. Mokei now, move upstream later. Rejected: pays the migration for a short head start.
@@ -47,20 +53,25 @@ credentials grant (RFC 6749 §4.4) with a signed JWT client assertion (RFC 7523)
 
 ### `@kokuin/oauth` (kokuin branch, implemented by us)
 
-- `createClientAssertion(params): Promise<string>` — compact JWS with header
-  `{ alg, typ: 'JWT', kid? }` and claims `iss = sub = clientID`, `aud = issuer` (the
-  authorisation server's `issuer` metadata value, as the only value; RFC 10070 disallows the
-  token endpoint URL), `iat`, `exp` (default lifetime 60 s, configurable), random `jti`.
-- Signing goes through a minimal signer interface owned by `@kokuin/oauth`, so the package takes
-  no dependency on `@kokuin/token` (whose `SigningIdentity` forces `iss` to a DID):
-  `ClientAssertionSigner = { alg: 'EdDSA' | 'ES256'; kid?: string; sign(data: Uint8Array): Promise<Uint8Array> }`.
-  Callers adapt a keystore key or a raw private key.
-- `requestClientCredentialsToken(params): Promise<TokenResponse>` — POSTs
-  `grant_type=client_credentials`, `client_id`, `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`,
+- `ClientAssertionSigner = { alg: 'EdDSA' | 'ES256'; kid?: string; sign(data: Uint8Array): Promise<Uint8Array> }`.
+  Owned by `@kokuin/oauth`, so the package takes no dependency on `@kokuin/token` (whose
+  `SigningIdentity` forces `iss` to a DID). For `ES256`, `sign()` returns the raw `r||s` JOSE
+  form, not DER.
+- `createWebCryptoAssertionSigner({ alg, privateKey: CryptoKey, kid? }): ClientAssertionSigner`,
+  runtime-neutral and dependency-free; WebCrypto ECDSA already yields `r||s` (my call).
+- `createClientAssertion({ signer, clientID, audience, lifetimeSeconds?, now?, typ? }): Promise<string>`:
+  compact JWS, header `{ alg, typ, kid? }` with `typ` defaulting to `client-authentication+jwt`
+  (RFC 10070 recommendation, overridable for compatibility). Claims: `iss = sub = clientID`,
+  `aud = audience` as a single string, `iat`, `exp = iat + lifetimeSeconds` (default 60), random
+  `jti`. Kokuin takes `audience` explicitly; mokei always passes the pinned issuer, as the
+  extension requires (`aud` is the authorisation server's `issuer`, never the token endpoint URL).
+- `requestClientCredentialsToken({ tokenEndpoint, clientID, assertion, scope?, extraParams?, ...RequestOptions }): Promise<TokenResponse>`:
+  POSTs `grant_type=client_credentials`, `client_id`,
+  `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`,
   `client_assertion`, optional `scope`, plus `extraParams` (e.g. `resource`, RFC 8707) that never
-  override grant fields. Same `RequestOptions`, error mapping (`OAuthTokenError`) and response
+  override grant fields. Same redirect refusal, error mapping (`OAuthTokenError`) and response
   validation as `exchangeCode`.
-- Tests with the package's fake runtime; a kokuin changeset (patch).
+- A kokuin changeset (patch).
 
 ### Registry entry (`@mokei/context-protocol`)
 
@@ -68,123 +79,132 @@ credentials grant (RFC 6749 §4.4) with a signed JWT client assertion (RFC 7523)
 `revision`, `protocolVersions` both `2025-11-25` and `2026-07-28`, empty method sets. Added to
 `EXTENSIONS`.
 
-### Client (`@mokei/http-client`)
+### Shared discovery (`@mokei/http-client`)
+
+One discovery module used by both middlewares. Fetching, size bounds and identity checks are
+shared; grant-specific metadata requirements are applied by each caller.
+
+1. **Protected-resource metadata (PRM).** A `resource_metadata` URL from the `WWW-Authenticate`
+   challenge takes precedence. Otherwise try the path-specific well-known URL, then the root
+   well-known URL. The accepted document's `resource` must equal the resolved resource exactly
+   (as today).
+2. **Expected issuer.** PKCE: the `authorization_servers` entry selected as today (default or
+   `selectAuthServer`). Client credentials: the configured pin, which must appear in
+   `authorization_servers` (else fail with an error naming the pin and the listed servers). No
+   other issuer is ever tried.
+3. **Authorisation-server metadata.** For the expected issuer, try in the order both MCP
+   revisions specify: OAuth path insertion, OpenID Connect path insertion, OpenID Connect path
+   appending (for a root issuer: OAuth, then OpenID Connect). Today's first URL stays first, so
+   servers that work now resolve the same document. The accepted document's `issuer` must equal
+   the expected issuer; it is never learned from the fetched document.
+4. **Fallback policy.** Only "not found"-type HTTP statuses (`404`, `405`, `410`) advance to the
+   next candidate URL (my call). Caller cancellation, timeouts, size-limit failures, parse
+   failures, other statuses, and identity mismatches are terminal. Mismatched metadata is never
+   accepted.
+5. **Grant-specific requirements.** PKCE keeps its current `authorization_endpoint` and `S256`
+   checks unchanged. Client credentials require a secure `token_endpoint` only, and accept
+   metadata without an authorisation endpoint or PKCE support.
+
+### Client credentials middleware (`@mokei/http-client`)
 
 - `createClientCredentialsMiddleware(config): FetchMiddleware`, sibling of
   `createOAuthMiddleware`. Config: `clientID`, `issuer` (required pin), `signer`
   (`ClientAssertionSigner`), `scopes?`, `resource?`, `store?`, `clockSkewSeconds?`, `now?`,
-  `assertionLifetimeSeconds?`, `runtime?`.
-- Flow: attach a stored token; pre-emptively re-run the grant when near expiry (there is no
-  refresh token). On `401`: protected-resource discovery, require the pinned `issuer` to be among
-  the listed authorisation servers (else fail with an error naming both), fetch its metadata,
-  require metadata `issuer` to equal the pin, check `grant_types_supported` /
-  `token_endpoint_auth_methods_supported` when present, request a token, store it, retry once.
-- Reuses the existing token store, `tokenStoreKey`, single-flight and discovery code; shared
-  pieces of `middleware.ts` are extracted rather than copied.
-- Declaration: when the HTTP client is built with client-credentials auth, the `ContextClient`
-  declares `OAUTH_CLIENT_CREDENTIALS` (on `initialize` for `2025-11-25`, per-request `_meta` for
-  `2026-07-28`). The public switch is a client-credentials option on `createHTTPClient`; the
-  `ContextClient` param that carries it is left to the builder (registry-only: no free-form
-  `extensions`).
+  `assertionLifetimeSeconds?` (default 60), `runtime?`.
+- **Resource.** An explicitly configured `resource` is used verbatim (absolute `https` URL,
+  loopback `http` allowed as elsewhere, no fragment), not passed through `canonicalResource`.
+  Without one, the default is `canonicalResource(mcpURL)`, as PKCE does. The resolved value is
+  used for the PRM comparison, the token request (`resource` param) and the store key. This rule
+  applies to client credentials only; PKCE resolution is unchanged.
+- **Token storage.** Client-credentials records live under their own key namespace, built from
+  grant, pinned issuer, resource, client ID and scopes, so the PKCE middleware can never attach a
+  service token and a service grant never overwrites a PKCE record. Existing PKCE keys are
+  untouched. Single-flight is keyed by the same identity, and recovery-flight state is per grant.
+  Every record obtained (stored, from a joined flight, or from an atomic `update`) is checked
+  against the pin before use. Bounded HTTP, store primitives and metadata fetching are shared
+  with PKCE; nothing else is extracted from `middleware.ts`.
+- **Flow.** Attach a stored token. When near expiry, re-run the grant pre-emptively (there is no
+  refresh token), reusing the stored `tokenEndpoint` (it came from the pinned issuer's metadata).
+  On `401`: discovery as above, metadata compatibility check, new assertion, token request,
+  store, retry once. A second `401` after a fresh grant is returned. `403` passes through (no
+  step-up). When `scopes` is unset, challenge scopes from `WWW-Authenticate` are requested, as in
+  PKCE. Token-endpoint errors surface as in PKCE. Every grant attempt builds a fresh assertion
+  with a new `jti`.
+- **Metadata compatibility.** Before signing, for each of `grant_types_supported`,
+  `token_endpoint_auth_methods_supported` and `token_endpoint_auth_signing_alg_values_supported`:
+  - present: must be an array of strings (else fail as malformed metadata), and must contain
+    `client_credentials`, `private_key_jwt` and the signer's `alg` respectively (exact element
+    match), else fail with a distinct error for each;
+  - absent: proceed with the grant. This is a deliberate interoperability exception to RFC 8414's
+    defaults (which imply `authorization_code` / `client_secret_basic`): the client is
+    preregistered for this grant and method, and the authorisation server's own error is
+    surfaced if it disagrees (my call). The exception applies to the client-credentials path
+    only.
+
+### Declaration
+
+When client-credentials auth is configured, the `ContextClient` declares
+`OAUTH_CLIENT_CREDENTIALS` (on `initialize` for `2025-11-25`, per-request `_meta` for
+`2026-07-28`).
+
+- `createHTTPClient` takes a client-credentials option on its transport side, builds the
+  middleware from it and turns the declaration on.
+- `ContextClient` gets a public boolean param that turns the declaration on, for hand-built
+  `HTTPTransport` + `ContextClient`; documented next to the middleware (my call).
+- The host's `HTTPContextParams`, `createHostedContext` and reconnect builds thread the same
+  option, so `ContextHost.addHTTPContext` can use client credentials and the declaration survives
+  reconnects.
 
 ### Server (`@mokei/http-server`)
 
-An opt-in flag that advertises `OAUTH_CLIENT_CREDENTIALS` (in `server/discover` and the
-`2025-11-25` `initialize` result). The public `ContextServer` param that carries it is left to
-the builder, as for the client.
+An opt-in flag advertises `OAUTH_CLIENT_CREDENTIALS` with settings `{}` in `server/discover` and
+the `2025-11-25` `initialize` result (my call).
 
-### Settled details (builder check; marked "my call" where not decided by the user)
+### CLI token management
 
-- **Audience.** The extension page requires `aud` to be the authorisation server's `issuer` as
-  the only value, citing RFC 10070. `createClientAssertion` takes an explicit `audience` (kokuin
-  stays generic); mokei always passes the pinned issuer. (my call)
-- **Signer adapter.** Besides the interface, `@kokuin/oauth` ships
-  `createWebCryptoAssertionSigner({ alg, privateKey: CryptoKey, kid? })`, runtime-neutral and
-  dependency-free. WebCrypto ECDSA already yields raw `r||s`, which is the JOSE format the
-  `sign()` contract requires for `ES256`. Programmatic API only: no CLI or config-file wiring in
-  this item. (my call)
-- **Resource.** With no `resource` configured, the middleware sends the canonical MCP URL as the
-  RFC 8707 `resource`, exactly as the PKCE middleware does; same `tokenStoreKey`. (my call)
-- **Stored-token trust.** A stored record is used only if its `issuer` equals the pin and it was
-  issued by the client-credentials grant (a `grant: 'client_credentials'` marker on the record).
-  Otherwise it is ignored and a fresh grant runs through discovery, overwriting it. Pre-emptive
-  re-grants reuse the stored `tokenEndpoint` only under that same check, since it came from the
-  pinned issuer's metadata. (my call)
-- **Failures.** Retry once: a second `401` after a fresh grant is returned. Token-endpoint errors
-  surface the same way the PKCE middleware surfaces them. No step-up: `403` passes through. When
-  `scopes` is unset, challenge scopes from `WWW-Authenticate` are requested, as in PKCE. (my call)
-- **Shared code.** Moving `withSingleFlight`, `storeFlights`, `nearExpiry` and discovery helpers
-  out of `middleware.ts` into a shared module is in scope, on condition that the existing
-  middleware tests pass unchanged. (my call)
-- **Declaration seam.** The client-credentials option is a transport-side option of
-  `createHTTPClient`, which builds the middleware and also turns on the declaration. For hand-built
-  `HTTPTransport` + `ContextClient`, a public `ContextClient` boolean param turns the declaration
-  on; documented next to the middleware. (my call)
-- **Advertised settings.** `{}` in `server/discover` and the `2025-11-25` `initialize` result
-  only. (my call)
-
-### Codex review changes
-
-Supersede the "Settled details" above where they conflict.
-
-- **Token isolation.** Client-credentials tokens never share a store key with PKCE. They live
-  under their own key namespace built from grant, pinned issuer, resource, client ID and scopes;
-  single-flight is keyed by that identity too, and every record returned (from a joined flight
-  or an atomic `update`) is re-validated against the pin. PKCE keys and `parseTokenStoreKey`
-  handling of existing three-element keys stay as they are. This replaces the
-  `grant: 'client_credentials'` marker idea, which did not stop the PKCE middleware from
-  attaching a service token.
-- **Metadata validation split.** Fetching metadata and checking `issuer` equality are shared;
-  grant-specific requirements are not. The PKCE path keeps its `authorization_endpoint` and
-  `S256` checks. The client-credentials path requires a secure `token_endpoint` only, and must
-  accept metadata without an authorisation endpoint or PKCE support.
-- **Discovery fallbacks (both logins, decided).** One shared discovery follows the MCP
-  authorization discovery order: path-specific then root protected-resource metadata, and for the
-  authorisation server the OAuth and OpenID Connect metadata URLs in the order MCP specifies. Every
-  accepted metadata response must carry the expected `issuer` exactly. The PKCE middleware uses it
-  too. The first URL tried today stays first, so servers that work now resolve the same document.
-  On the client-credentials path the expected issuer is the pin and no other issuer is ever tried.
-  Tests cover each fallback on both paths, plus an unchanged-result test for today's first URL.
-- **Resource identity.** An explicitly configured `resource` is used verbatim (validated as an
-  absolute `https` URL — loopback `http` allowed as elsewhere — with no fragment), not passed
-  through `canonicalResource`. Only the default is derived from the MCP URL with
-  `canonicalResource`. The same resolved value is used for discovery comparison, the token
-  request and the store key.
-- **Metadata compatibility.** Before signing: if `grant_types_supported`,
-  `token_endpoint_auth_methods_supported` or `token_endpoint_auth_signing_alg_values_supported`
-  is present and lacks `client_credentials`, `private_key_jwt` or the signer's `alg`
-  respectively, fail with a distinct error for each. When a field is absent, proceed: the client
-  is preregistered, and the authorisation server's own error is surfaced (my call; RFC 8414's
-  defaults would reject most real servers, which omit these fields).
-- **Host seam.** The declaration switch is threaded through the host's `HTTPContextParams`,
-  `createHostedContext` and reconnect builds, not only `createHTTPClient` and `ContextClient`,
-  with a host-level declaration test on both revisions.
-- **Assertion type.** The assertion header defaults to `typ: 'client-authentication+jwt'`
-  (RFC 10070 recommendation), overridable for compatibility.
-- **Replay.** Tests prove a fresh assertion and `jti` on every grant attempt.
-- **Shared code (narrowed).** Bounded HTTP, store primitives and metadata fetching are shared;
-  recovery-flight state is per grant.
+- The store-key parser/enumerator recognises both key identities; legacy three-element PKCE keys
+  parse exactly as today.
+- `mokei auth list` shows client-credentials records, marked as such, with their exact resource.
+- `mokei auth logout` deletes client-credentials records locally, matching their exact resource
+  (no canonicalisation for these records). Remote revocation is skipped for them and the command
+  says so: `revokeTokens` authenticates as a public client and cannot authenticate a confidential
+  one, and a client-credentials token is short-lived and re-obtainable (my call).
+- No CLI command creates client-credentials records (programmatic API only).
 
 ### Order
 
 One mokei PR (decided): this item ships on the same branch as item 1, and the branch merges only
 after the kokuin release is published (by the user) and adopted in mokei's catalog. Order of work:
-kokuin branch first; mokei parts that do not need kokuin (registry entry, server advertising,
-client declaration) next; the middleware developed against the local kokuin build (a temporary
-link never committed), then switched to the published version before merge.
+kokuin branch first; then the mokei parts that do not need kokuin (registry entry, server
+advertising, declaration seams, shared discovery with its PKCE adoption, store-key namespace and
+CLI listing); then the middleware, developed against the local kokuin build (a temporary link
+never committed) and switched to the published version before merge.
 
 ## Testing
 
-- kokuin: assertion header/claims (`aud` is the issuer, not the token endpoint), signature
-  verifies for `EdDSA` and `ES256`, token request form fields, `extraParams` cannot override
-  grant fields, error mapping.
-- mokei: middleware against a fake authorisation server — first `401` → discovery → token →
-  retry; pinned-issuer mismatch refuses before any token request; re-grant near expiry; store
-  sharing and single-flight; declaration present on both revisions; server advertising on and
-  off.
+- kokuin: assertion header (`typ` default and override, `kid`) and claims (`aud` is the given
+  audience, single string); signature verifies for `EdDSA` and `ES256`; fresh `jti` per call;
+  token request form fields; `extraParams` cannot override grant fields; redirect refusal; error
+  mapping.
+- Shared discovery, on both paths: challenge `resource_metadata` precedence; PRM path-specific
+  then root fallback; AS metadata OAuth then OIDC orderings for path and root issuers; an
+  unchanged-result test for today's first URL; terminal failures (cancellation, oversize, parse
+  error, `500`, PRM `resource` mismatch, AS `issuer` mismatch) do not fall back.
+- PKCE regression: existing middleware tests pass unchanged; explicit `resource` still
+  canonicalised; store keys unchanged.
+- Client credentials middleware against a fake authorisation server: first `401` → discovery →
+  token → retry; pin absent from `authorization_servers` refuses before any token request; token-
+  only metadata accepted; metadata compatibility (absent, malformed, present-and-incompatible for
+  each field); explicit `resource` sent verbatim; re-grant near expiry without discovery; second
+  `401` returned; `403` passes through; single-flight; a PKCE middleware sharing the store never
+  attaches the service token and keeps its own record.
+- Declaration present on both revisions via `createHTTPClient`, `ContextClient` param, and
+  `ContextHost.addHTTPContext`, including after reconnect. Server advertising on and off.
+- CLI: `auth list` shows both kinds; `auth logout` deletes a client-credentials record by exact
+  resource and reports skipped revocation; legacy keys unaffected.
 
 ## Left to the builder
 
-- Exact helper names and the internal split of `middleware.ts`.
+- Exact helper names and module split inside `packages/http-client/src/oauth/`.
+- The new store-key encoding, provided it cannot collide with legacy three-element keys.
 - How the client/server feature params are named (`ClientParams` / `ServerParams`).
-- Default assertion lifetime within 60–300 s.
