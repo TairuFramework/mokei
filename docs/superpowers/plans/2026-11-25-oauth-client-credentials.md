@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** planning
+**Stage:** executing
 **Mode:** tasks
 
 **Goal:** Headless MCP connections through the `io.modelcontextprotocol/oauth-client-credentials` extension: client credentials grant with `private_key_jwt`, built in `@kokuin/oauth` and adopted by `@mokei/http-client`.
