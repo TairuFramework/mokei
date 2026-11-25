@@ -455,6 +455,9 @@ catalogs:
     vitest:
       specifier: ^5.1.0
       version: 5.1.0
+    yaml:
+      specifier: ^2.9.1
+      version: 2.9.1
 
 overrides:
   css-select: 5.2.0
@@ -1078,6 +1081,9 @@ importers:
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
 
   packages/context-rpc:
     dependencies:

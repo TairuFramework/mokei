@@ -132,6 +132,23 @@ export {
   serverMessage,
 } from './server.js'
 export {
+  computeDigest,
+  decodeExactUTF8,
+  frontmatterEquals,
+  isValidDigest,
+  isValidSkillName,
+  isValidSkillURI,
+  isWithinSkill,
+  joinSkillURI,
+  parseSkillFrontmatter,
+  SKILL_LIMITS,
+  SkillFormatError,
+  skillNameFromURI,
+  skillRootURI,
+  validatePathSegments,
+  validateSkillFrontmatter,
+} from './skill-format.js'
+export {
   META_SUBSCRIPTION_ID,
   type SubscriptionFilter,
   type SubscriptionsAcknowledgedNotification,
