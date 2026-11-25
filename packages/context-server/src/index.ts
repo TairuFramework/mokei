@@ -47,6 +47,13 @@ export {
   type ServerParams,
 } from './server.js'
 export {
+  createSkillCatalog,
+  type SkillCatalog,
+  type SkillCatalogOptions,
+  type SkillDefinition,
+  type SkillFile,
+} from './skill-catalog.js'
+export {
   type CreateSubscriptionHubParams,
   createSubscriptionHub,
   SubscriptionBackpressureError,
