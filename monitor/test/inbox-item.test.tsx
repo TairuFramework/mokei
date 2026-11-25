@@ -136,7 +136,7 @@ test('a submit race shows an already settled notice', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
   expect(await screen.findByText(/already settled/)).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
-  expect(setActiveItem).toHaveBeenLastCalledWith(undefined)
+  await waitFor(() => expect(setActiveItem).toHaveBeenLastCalledWith(undefined))
 })
 
 test.each(['Accept', 'Decline', 'Cancel'])(
