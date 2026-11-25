@@ -7,15 +7,15 @@ Each item is its own plan; item 1 is a prerequisite for the others.
 
 ## 1. Generic extension plumbing
 
-In progress: `docs/superpowers/specs/2026-11-25-extension-plumbing-design.md`.
+Done: `docs/agents/plans/completed/2026-11-25-extension-plumbing.complete.md`.
 
 ## 2. OAuth Client Credentials
 
-`io.modelcontextprotocol/oauth-client-credentials` (Stable, ext-auth).
+Done for `private_key_jwt`: `docs/agents/plans/completed/2026-11-25-oauth-client-credentials.complete.md`.
 
-- `http-client` OAuth middleware only acts as a public PKCE client.
-- Add the `client_credentials` grant with `client_secret_basic` and `private_key_jwt` client
-  authentication, for headless use (CLI, flow daemon, CI).
+- Deferred, add on concrete demand, keeping the pinned-issuer and store-key rules:
+  - `client_secret_basic` / `client_secret_post` client authentication (scoped out: JWT only).
+  - RSA (`RS256`) keys and PEM import (scoped out: kokuin's `EdDSA` and `ES256` only).
 
 ## 3. Skills over MCP
 
