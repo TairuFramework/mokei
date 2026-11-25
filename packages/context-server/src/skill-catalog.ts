@@ -30,7 +30,7 @@ export type SkillCatalogOptions = {
   scopes?: Array<string>
 }
 
-export type SkillFile = { uri: string; mimeType: string; text?: string; blob?: string }
+export type SkillFileContents = { uri: string; mimeType: string; text?: string; blob?: string }
 
 export type SkillCatalog = {
   readonly entries: ReadonlyArray<Skill>
@@ -38,7 +38,7 @@ export type SkillCatalog = {
   readonly cache?: CacheHints
   readonly scopes?: ReadonlyArray<string>
   getEntry(uri: string): Skill | undefined
-  getFile(uri: string): SkillFile | undefined
+  getFile(uri: string): SkillFileContents | undefined
   getDirectory(uri: string): Array<Resource> | undefined
   has(uri: string): boolean
 }
@@ -208,7 +208,7 @@ export async function createSkillCatalog(
       addDirectory(directory)
     }
   }
-  const files = new Map<string, SkillFile>()
+  const files = new Map<string, SkillFileContents>()
   for (const [uri, bytes] of store) {
     const name = lastSegment(uri)
     const mimeType = getMimeType(name)
@@ -218,6 +218,12 @@ export async function createSkillCatalog(
     if (parent != null) {
       addDirectory(parent)
       children.get(parent)?.set(uri, { uri, name, mimeType, size: bytes.length })
+    }
+  }
+
+  for (const uri of store.keys()) {
+    if (children.has(uri)) {
+      throw new SkillFormatError(`${uri} is both a file and a directory`)
     }
   }
 

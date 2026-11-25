@@ -51,7 +51,7 @@ export {
   type SkillCatalog,
   type SkillCatalogOptions,
   type SkillDefinition,
-  type SkillFile,
+  type SkillFileContents,
 } from './skill-catalog.js'
 export {
   type CreateSubscriptionHubParams,

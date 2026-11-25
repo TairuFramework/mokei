@@ -131,6 +131,29 @@ describe('createSkillCatalog', () => {
     await expect(createSkillCatalog(build())).rejects.toBeInstanceOf(SkillFormatError)
   })
 
+  test.each([
+    [
+      'file that is an ancestor of another file',
+      [{ path: 'a', files: { 'SKILL.md': skillMd('a'), x: '1', 'x/y': '2' } }],
+    ],
+    [
+      'declared directory that is a file',
+      [{ path: 'a', files: { 'SKILL.md': skillMd('a') }, directories: ['SKILL.md'] }],
+    ],
+    [
+      'file that is a nested skill root',
+      [
+        { path: 'x', files: { 'SKILL.md': skillMd('x'), sub: 'file' } },
+        { path: 'x/sub', files: { 'SKILL.md': skillMd('sub') } },
+      ],
+    ],
+  ] as Array<[string, Array<SkillDefinition>]>)(
+    'rejects a URI that is both file and directory: %s',
+    async (_name, definitions) => {
+      await expect(createSkillCatalog(definitions)).rejects.toBeInstanceOf(SkillFormatError)
+    },
+  )
+
   test('rejects inconsistent nested definitions', async () => {
     const inner = {
       path: 'outer/inner',
