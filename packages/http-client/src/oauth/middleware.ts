@@ -355,6 +355,7 @@ export function createOAuthMiddleware(config: OAuthClientConfig): FetchMiddlewar
       resource,
       resourceMetadataURL,
       fetch: next,
+      grant: 'authorization_code',
       selectAuthServer: config.selectAuthServer,
       signal,
     })

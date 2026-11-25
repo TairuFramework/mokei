@@ -41,6 +41,7 @@ export async function revokeTokens(params: RevokeTokensParams): Promise<RevokeTo
   const as = await fetchAuthServerMetadata({
     issuer: tokens.issuer,
     fetch,
+    grant: 'authorization_code',
     allowLoopback: isLoopbackHost(new URL(params.resource).hostname),
     signal,
   })
