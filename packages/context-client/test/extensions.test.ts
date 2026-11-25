@@ -46,6 +46,14 @@ function setup(options: Options = {}) {
         inputSchema: { type: 'object' },
         handler: () => ({ content: [{ type: 'text' as const, text: 'ok' }] }),
       }),
+      work: createTool({
+        description: 'task-capable',
+        inputSchema: { type: 'object' },
+        handler: ({ task }) =>
+          task == null
+            ? { content: [{ type: 'text' as const, text: 'plain' }] }
+            : task.run(async () => ({ content: [{ type: 'text' as const, text: 'task' }] })),
+      }),
     },
     tasks: options.serverTasks === false ? undefined : createTaskManager(),
     _extensions: options.serverExtensions,
@@ -148,6 +156,20 @@ test('getServerExtension reads the initialize result on 2025-11-25', async () =>
     serverExtensions: [{ definition: TEST_EXT }],
   })
   expect(await client.getServerExtension(TEST_EXT)).toEqual({ revision: '1' })
+})
+
+test('default client gets a plain result from a task-capable tool and sends no task frames', async () => {
+  const { client, sent } = setup()
+  const result = await client.callTool({ name: 'work', arguments: {} })
+  expect(result.content).toEqual([{ type: 'text', text: 'plain' }])
+  expect(methods(sent).filter((m) => m?.startsWith('tasks/'))).toEqual([])
+  expect(methods(sent)).not.toContain('subscriptions/listen')
+})
+
+test('tasks: true client gets the task result from the same tool', async () => {
+  const { client } = setup({ tasks: true })
+  const result = await client.callTool({ name: 'work', arguments: {} })
+  expect(result.content).toEqual([{ type: 'text', text: 'task' }])
 })
 
 test('ExtensionNotDeclaredError carries the id', () => {
