@@ -1,4 +1,5 @@
 import type { Resource, Skill } from '@mokei/context-protocol'
+import type { CacheHints } from '@mokei/context-server'
 import {
   computeDigest,
   decodeExactUTF8,
@@ -11,8 +12,6 @@ import {
   validateSkillFrontmatter,
 } from '@mokei/extension-skills'
 import { toB64 } from '@sozai/codec'
-
-import type { CacheHints } from './server.js'
 
 export type SkillDefinition = {
   /** Slash-separated skill path, its last segment being the skill name. */

@@ -2,16 +2,16 @@ import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ClientRequest, ServerMessage, Skill } from '@mokei/context-protocol'
 import { SKILLS_EXTENSION, skill as skillSchema } from '@mokei/context-protocol'
 import { computeDigest } from '@mokei/extension-skills'
+import {
+  createSkillCatalog,
+  type SkillCatalogOptions,
+  type SkillDefinition,
+  skillsServerExtension,
+} from '@mokei/extension-skills-server'
 import { createValidator } from '@sozai/schema'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import {
-  ContextServer,
-  createSkillCatalog,
-  createTool,
-  type SkillCatalogOptions,
-  type SkillDefinition,
-} from '../../context-server/lib/index.js'
+import { ContextServer, createTool } from '../../context-server/lib/index.js'
 import {
   ContextClient,
   checkSkillEntry,
@@ -75,10 +75,14 @@ async function setup(options: Setup = {}) {
         handler: () => ({ content: [{ type: 'text' as const, text: 'ok' }] }),
       }),
     },
-    skills:
+    extensions:
       options.catalog === false
         ? undefined
-        : await createSkillCatalog(options.definitions ?? DEFINITIONS, options.catalog),
+        : [
+            skillsServerExtension(
+              await createSkillCatalog(options.definitions ?? DEFINITIONS, options.catalog),
+            ),
+          ],
     transport: pair.server,
   })
   cleanup.push(() => server.dispose())

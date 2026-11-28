@@ -8,16 +8,21 @@ import {
   METHOD_NOT_FOUND,
   SKILLS_EXTENSION,
 } from '@mokei/context-protocol'
+import {
+  ContextServer,
+  INSUFFICIENT_SCOPE,
+  type ResourceDefinitions,
+  type ServerAuth,
+  type ServerConfig,
+} from '@mokei/context-server'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { INSUFFICIENT_SCOPE, type ServerAuth } from '../src/auth.js'
-import { ContextServer, type ServerConfig } from '../src/server.js'
+import { skillsServerExtension } from '../src/extension.js'
 import {
   createSkillCatalog,
   type SkillCatalogOptions,
   type SkillDefinition,
 } from '../src/skill-catalog.js'
-import type { ResourceDefinitions } from '../src/types.js'
 
 type Response = {
   error?: { code: number; message: string; data?: unknown }
@@ -56,7 +61,7 @@ async function setup(options: Setup = {}) {
     protocolVersions: options.protocolVersions ?? ['2026-07-28'],
     cache: options.cache,
     resources: options.resources,
-    skills: await createSkillCatalog(DEFINITIONS, options.catalog),
+    extensions: [skillsServerExtension(await createSkillCatalog(DEFINITIONS, options.catalog))],
     auth: options.auth,
     transport: transports.server,
   })

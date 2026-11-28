@@ -47,18 +47,12 @@ export {
   type RequestStateHooks,
 } from './mrtr.js'
 export {
+  type CacheHints,
   ContextServer,
   type ServerConfig,
   type ServerEvents,
   type ServerParams,
 } from './server.js'
-export {
-  createSkillCatalog,
-  type SkillCatalog,
-  type SkillCatalogOptions,
-  type SkillDefinition,
-  type SkillFileContents,
-} from './skill-catalog.js'
 export {
   type CreateSubscriptionHubParams,
   createSubscriptionHub,

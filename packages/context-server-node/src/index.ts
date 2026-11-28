@@ -5,4 +5,3 @@
  */
 
 export { serveProcess } from './serve.js'
-export { loadSkillCatalog, loadSkillDefinitions } from './skills.js'

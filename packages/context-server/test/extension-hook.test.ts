@@ -15,7 +15,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { applyCacheHints } from '../src/cache.js'
 import type { ServerExtension } from '../src/extension.js'
 import { ContextServer, type ServerConfig } from '../src/server.js'
-import { createSkillCatalog } from '../src/skill-catalog.js'
 import { createTaskManager } from '../src/task-manager.js'
 
 type Response = {
@@ -101,15 +100,13 @@ describe('server extension hook', () => {
   })
 
   test('extension method without handler is METHOD_NOT_FOUND', async () => {
-    // The core `skills/get` case would answer -32602 from this catalog: the method must not reach it.
-    const request = setup({ skills: await createSkillCatalog([]), extensions: [extension()] })
+    const request = setup({ extensions: [extension()] })
     const response = await request('skills/get', { uri: 'skill://x/SKILL.md', ...META })
     expect(response.error?.code).toBe(METHOD_NOT_FOUND)
   })
 
   test('extension method with an undefined handler is METHOD_NOT_FOUND', async () => {
     const request = setup({
-      skills: await createSkillCatalog([]),
       extensions: [
         extension({
           handlers: { 'skills/list': () => ({ skills: [] }), 'skills/get': undefined },
