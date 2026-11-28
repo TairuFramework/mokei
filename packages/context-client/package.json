@@ -44,17 +44,14 @@
     "@enkaku/transport": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
-    "@mokei/extension-skills": "workspace:^",
     "@mokei/logger": "workspace:^",
     "@opentelemetry/api": "catalog:",
     "@sozai/async": "catalog:",
-    "@sozai/codec": "catalog:",
     "@sozai/otel": "catalog:",
     "@sozai/schema": "catalog:",
     "@sozai/stream": "catalog:"
   },
   "devDependencies": {
-    "@mokei/extension-skills-server": "workspace:^",
     "@opentelemetry/context-async-hooks": "catalog:",
     "@opentelemetry/sdk-metrics": "catalog:",
     "@opentelemetry/sdk-trace": "catalog:"

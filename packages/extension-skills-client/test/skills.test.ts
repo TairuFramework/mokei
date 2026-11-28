@@ -1,6 +1,12 @@
 import { DirectTransports } from '@enkaku/transport'
+import {
+  ContextClient,
+  ExtensionNotDeclaredError,
+  MethodNotInRevisionError,
+} from '@mokei/context-client'
 import type { ClientMessage, ClientRequest, ServerMessage, Skill } from '@mokei/context-protocol'
-import { SKILLS_EXTENSION, skill as skillSchema } from '@mokei/context-protocol'
+import { SKILLS, SKILLS_EXTENSION, skill as skillSchema } from '@mokei/context-protocol'
+import { ContextServer, createTool } from '@mokei/context-server'
 import { computeDigest } from '@mokei/extension-skills'
 import {
   createSkillCatalog,
@@ -11,12 +17,9 @@ import {
 import { createValidator } from '@sozai/schema'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import { ContextServer, createTool } from '../../context-server/lib/index.js'
 import {
-  ContextClient,
   checkSkillEntry,
-  ExtensionNotDeclaredError,
-  MethodNotInRevisionError,
+  createSkillsClient,
   SkillVerificationError,
   type SkillVerificationReason,
 } from '../src/index.js'
@@ -89,9 +92,9 @@ async function setup(options: Setup = {}) {
   const client = new ContextClient({
     protocolVersion: options.version ?? '2026-07-28',
     transport: pair.client,
-    skills: options.skills ?? true,
+    extensions: (options.skills ?? true) ? [SKILLS] : [],
   })
-  return { client, sent }
+  return { client: createSkillsClient(client), sent }
 }
 
 type Reply = (request: ClientRequest) => unknown
@@ -111,7 +114,7 @@ function fake(reply: Reply) {
   const client = new ContextClient({
     protocolVersion: '2026-07-28',
     transport: pair.client,
-    skills: true,
+    extensions: [SKILLS],
   })
   const received: Array<ClientRequest> = []
   void (async () => {
@@ -125,7 +128,7 @@ function fake(reply: Reply) {
       pair.server.write({ jsonrpc: '2.0', id: request.id, result } as ServerMessage)
     }
   })()
-  return { client, received }
+  return { client: createSkillsClient(client), received }
 }
 
 async function reasonOf(run: () => unknown): Promise<SkillVerificationReason | 'no-error'> {
@@ -493,7 +496,7 @@ describe('gates', () => {
   })
 })
 
-test('skills: true declares the extension', async () => {
+test('extensions: [SKILLS] declares the extension', async () => {
   const { client, sent } = await setup()
   await client.listSkills()
   const list = sent.find(

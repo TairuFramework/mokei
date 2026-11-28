@@ -140,11 +140,6 @@ export type ClientParams = {
   /** Declare the OAuth client credentials extension (default `false`). */
   oauthClientCredentials?: boolean
   /**
-   * Opt into the Skills extension (declared on `2026-07-28`; default `false`), unlocking
-   * `listSkills`, `getSkill`, `readResourceDirectory` and `readSkillFile`.
-   */
-  skills?: boolean
-  /**
    * @internal Extensions to declare and allow, each a definition or a definition with the
    * settings to declare. Matched to the registry by `definition.id`.
    */

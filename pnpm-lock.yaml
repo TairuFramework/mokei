@@ -1047,9 +1047,6 @@ importers:
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
-      '@mokei/extension-skills':
-        specifier: workspace:^
-        version: link:../extension-skills
       '@mokei/logger':
         specifier: workspace:^
         version: link:../logger
@@ -1059,9 +1056,6 @@ importers:
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.3
-      '@sozai/codec':
-        specifier: 'catalog:'
-        version: 0.4.4
       '@sozai/otel':
         specifier: 'catalog:'
         version: 0.4.0(@logtape/logtape@2.4.2)
@@ -1072,9 +1066,6 @@ importers:
         specifier: 'catalog:'
         version: 0.2.2
     devDependencies:
-      '@mokei/extension-skills-server':
-        specifier: workspace:^
-        version: link:../extension-skills-server
       '@opentelemetry/context-async-hooks':
         specifier: 'catalog:'
         version: 3.1.1(@opentelemetry/api@1.10.0)
@@ -1253,6 +1244,37 @@ importers:
       yaml:
         specifier: 'catalog:'
         version: 2.9.1
+
+  packages/extension-skills-client:
+    dependencies:
+      '@mokei/context-client':
+        specifier: workspace:^
+        version: link:../context-client
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      '@mokei/extension-skills':
+        specifier: workspace:^
+        version: link:../extension-skills
+      '@sozai/codec':
+        specifier: 'catalog:'
+        version: 0.4.4
+    devDependencies:
+      '@enkaku/transport':
+        specifier: 'catalog:'
+        version: 0.23.3(@logtape/logtape@2.4.2)
+      '@mokei/context-server':
+        specifier: workspace:^
+        version: link:../context-server
+      '@mokei/extension-skills-server':
+        specifier: workspace:^
+        version: link:../extension-skills-server
+      '@sozai/schema':
+        specifier: 'catalog:'
+        version: 0.1.6
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
 
   packages/extension-skills-node:
     dependencies:

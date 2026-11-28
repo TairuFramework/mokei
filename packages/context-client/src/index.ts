@@ -11,7 +11,7 @@
  */
 
 /** @internal Re-exported for extension packages, which split options like the core methods. */
-export { splitRequestOptions } from '@mokei/context-rpc'
+export { type RequestOptions, splitRequestOptions } from '@mokei/context-rpc'
 
 export type { ClientEvents, ClientTasks, PagedResult } from './client.js'
 export { ContextClient, DEFAULT_LIST_MAX_PAGES } from './client.js'
@@ -35,9 +35,6 @@ export {
   type MethodNotInRevisionErrorParams,
   MRTRNotSupportedError,
   type MRTRNotSupportedErrorParams,
-  SkillVerificationError,
-  type SkillVerificationErrorParams,
-  type SkillVerificationReason,
   StructuredContentValidationError,
   type StructuredContentValidationErrorParams,
   TaskCancelledError,
@@ -97,7 +94,6 @@ export {
   TOKEN_BUCKETS,
   WORKFLOW_DURATION_BUCKETS,
 } from './semconv.js'
-export { checkSkillEntry, type SkillFile } from './skill-verification.js'
 export {
   type ListenHandle,
   type ListenHandlers,

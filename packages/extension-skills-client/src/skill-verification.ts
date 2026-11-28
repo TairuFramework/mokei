@@ -12,7 +12,47 @@ import {
 } from '@mokei/extension-skills'
 import { fromB64 } from '@sozai/codec'
 
-import { SkillVerificationError, type SkillVerificationReason } from './errors.js'
+/** Why {@link SkillVerificationError} refused a skill entry or file. */
+export type SkillVerificationReason =
+  | 'invalid-entry'
+  | 'limits'
+  | 'unlisted'
+  | 'response'
+  | 'size'
+  | 'digest'
+  | 'frontmatter'
+
+export type SkillVerificationErrorParams = {
+  reason: SkillVerificationReason
+  /** The entry or file URI the check failed on. */
+  uri: string
+  message: string
+  cause?: unknown
+}
+
+/**
+ * Thrown when a skill entry held by the caller, or a file read against it, fails verification.
+ * Skill file content is never returned without passing these checks.
+ */
+export class SkillVerificationError extends Error {
+  #reason: SkillVerificationReason
+  #uri: string
+
+  constructor(params: SkillVerificationErrorParams) {
+    super(params.message, { cause: params.cause })
+    this.name = 'SkillVerificationError'
+    this.#reason = params.reason
+    this.#uri = params.uri
+  }
+
+  get reason(): SkillVerificationReason {
+    return this.#reason
+  }
+
+  get uri(): string {
+    return this.#uri
+  }
+}
 
 /** A skill file whose bytes were verified against the entry the caller holds. */
 export type SkillFile = {

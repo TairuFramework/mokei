@@ -14,7 +14,6 @@ import type {
   ExtensionDefinition,
   GetPromptRequest,
   GetPromptResult,
-  GetSkillResult,
   Implementation,
   InitializeRequest,
   InitializeResult,
@@ -27,8 +26,6 @@ import type {
   ListResourcesResult,
   ListResourceTemplatesRequest,
   ListResourceTemplatesResult,
-  ListSkillsRequest,
-  ListSkillsResult,
   ListToolsRequest,
   ListToolsResult,
   Log,
@@ -36,8 +33,6 @@ import type {
   ProgressNotification,
   ProtocolDefinition,
   ProtocolVersion,
-  ReadResourceDirectoryRequest,
-  ReadResourceDirectoryResult,
   ReadResourceRequest,
   ReadResourceResult,
   RequestID,
@@ -48,7 +43,6 @@ import type {
   ServerNotification,
   ServerRequest,
   SetLevelRequest,
-  Skill,
   SubscriptionFilter,
   TasksAcknowledgement,
   TasksGetResult,
@@ -71,7 +65,6 @@ import {
   PROTOCOL_VERSIONS,
   PROTOCOLS,
   readExtension,
-  SKILLS,
   serverMessage,
   TASKS,
   UNSUPPORTED_PROTOCOL_VERSION,
@@ -104,7 +97,6 @@ import {
   ListMaxPagesError,
   MethodNotInRevisionError,
   MRTRNotSupportedError,
-  SkillVerificationError,
   StructuredContentValidationError,
   TaskInterruptedError,
   UnsupportedProtocolVersionError,
@@ -118,12 +110,6 @@ import {
 } from './mrtr.js'
 import { capturePayload, type MessageDirection } from './observation.js'
 import { SetupReader } from './setup-reader.js'
-import {
-  checkSkillEntry,
-  listedSkillFile,
-  type SkillFile,
-  verifySkillFile,
-} from './skill-verification.js'
 import {
   ACKNOWLEDGED_METHOD,
   type ListenHandle,
@@ -552,9 +538,6 @@ export class ContextClient<
     }
     if (params.oauthClientCredentials === true) {
       this.#enableExtension(OAUTH_CLIENT_CREDENTIALS)
-    }
-    if (params.skills === true) {
-      this.#enableExtension(SKILLS)
     }
     for (const { definition, settings } of params._extensions ?? []) {
       this.#enableExtension(definition, settings)
@@ -2047,92 +2030,6 @@ export class ContextClient<
     const { elicit, ...requestParams } = params
     const [wireParams, options] = splitRequestOptions(requestParams)
     return this.request('resources/read', wireParams, { ...options, elicit })
-  }
-
-  // --- skills extension ------------------------------------------------------
-
-  /** Lists the skills the server serves, walking every page unless `cursor` is set. */
-  async listSkills(
-    params: ListParams<ListSkillsRequest['params']> = {},
-  ): Promise<ListSkillsResult> {
-    const [, gateOptions] = splitRequestOptions(params)
-    await this.#requireExtension(SKILLS, 'skills/list', gateOptions)
-    const result = await this.#listPaged(
-      'skills/list',
-      'skills',
-      (pageParams, options) => {
-        return this.request(
-          'skills/list',
-          pageParams as ListSkillsRequest['params'],
-          options,
-        ) as Promise<PagedResult>
-      },
-      params,
-    )
-    return result as ListSkillsResult
-  }
-
-  /**
-   * Fetches the entry of the skill whose `SKILL.md` is at `uri`. Reads no file. Throws
-   * `SkillVerificationError` (reason `'response'`) if the server answers with another skill's entry.
-   */
-  async getSkill(uri: string, options?: RequestOptions): Promise<GetSkillResult> {
-    await this.#requireExtension(SKILLS, 'skills/get', options)
-    const result = await this.request('skills/get', { uri }, options)
-    if (result.skill.uri !== uri) {
-      throw new SkillVerificationError({
-        reason: 'response',
-        uri,
-        message: `skills/get for ${uri} returned the entry of ${result.skill.uri}`,
-      })
-    }
-    return result
-  }
-
-  /**
-   * Lists the direct children of a directory resource, walking every page unless `cursor` is set.
-   * Refused locally unless the server declared the skills extension with `directoryRead: true`.
-   */
-  async readResourceDirectory(
-    params: ListParams<ReadResourceDirectoryRequest['params']>,
-  ): Promise<ReadResourceDirectoryResult> {
-    const [, gateOptions] = splitRequestOptions(params)
-    const settings = await this.#requireExtension(SKILLS, 'resources/directory/read', gateOptions)
-    if (settings.directoryRead !== true) {
-      throw new ExtensionNotDeclaredError({ extension: `${SKILLS.id}#directoryRead` })
-    }
-    const result = await this.#listPaged(
-      'resources/directory/read',
-      'resources',
-      (pageParams, options) => {
-        return this.request(
-          'resources/directory/read',
-          pageParams as ReadResourceDirectoryRequest['params'],
-          options,
-        ) as Promise<PagedResult>
-      },
-      params,
-    )
-    return result as ReadResourceDirectoryResult
-  }
-
-  /**
-   * Reads one file of a skill and verifies it against `entry`, the entry the caller holds: the
-   * entry is checked, the URI must be listed by it (or lie within the skill root for a
-   * `'dynamic'` entry), and the bytes must match the listed size and digest. For `SKILL.md`, the
-   * parsed frontmatter must equal the entry's. Throws `SkillVerificationError` otherwise; content
-   * that fails is never returned. An entry or URI that fails locally sends nothing. Some malformed
-   * responses (such as contents with neither `text` nor `blob`) fail the inbound wire validation
-   * first and reject as `RPCError('Invalid response')` instead of
-   * `SkillVerificationError('response')`.
-   */
-  async readSkillFile(entry: Skill, uri: string, options?: RequestOptions): Promise<SkillFile> {
-    checkSkillEntry(entry)
-    const listed = listedSkillFile(entry, uri)
-    await this.#requireExtension(SKILLS, 'readSkillFile', options)
-    // Never hand an `input_required` suspension back: only a completed read can be verified.
-    const result = await this.readResource({ ...options, uri, allowInputRequired: false })
-    return await verifySkillFile(entry, uri, listed, result)
   }
 
   async listTools(params: ListParams<ListToolsRequest['params']> = {}): Promise<ListToolsResult> {
