@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Stage:** planning
+**Stage:** executing
 **Mode:** tasks
 
 **Goal:** Give the core server and client generic `@internal` extension hooks, and move all Skills behaviour out of `context-{protocol,server,server-node,client}` into four new `@mokei/extension-skills*` packages, without changing any behaviour on the wire.
