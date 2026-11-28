@@ -23,6 +23,8 @@ Three options were considered: skills defined in code only; code plus a disk loa
   - A `skills: true` option, plus `listSkills`, `getSkill`, `readResourceDirectory` and `readSkillFile`.
   - `readSkillFile` checks every file against the entry the caller holds, and throws `SkillVerificationError` with a `reason` on any failure.
 
+Note: Skills was later moved out of the core packages into `@mokei/extension-skills`, `-server`, `-client` and `-node`, built on internal extension hooks in `context-server` and `context-client`. The `skills` server param and `skills: true` client option are replaced by `extensions` options.
+
 ## Key decisions
 
 - **No client declaration.** The spec has clients declare nothing. They call the methods once the server declares the extension. The registry gained `clientDeclaration: 'none'`, and the server gate skips its `MISSING_REQUIRED_CLIENT_CAPABILITY` check for such extensions.

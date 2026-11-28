@@ -140,30 +140,16 @@ await client.getPrompt({
 - `listResources()` - List available resources
 - `readResource(params)` - Read a resource by URI
 
-- `listSkills()` - List the skills the server serves (needs `skills: true`, `2026-07-28`)
-- `getSkill(uri)` - Fetch one skill entry; reads no file
-- `readSkillFile(entry, uri)` - Read a skill file and verify it against the entry
-- `readResourceDirectory(params)` - List a directory resource (server must declare `directoryRead`)
-
 ### Type Parameters
 
 - `ContextTypes` - Define tool and prompt argument types
 - `UnknownContextTypes` - Default untyped context (all tools/prompts accept `Record<string, unknown>`)
 
-## Skills
+## Extensions
 
-Pass `skills: true` to declare the `io.modelcontextprotocol/skills` extension (`2026-07-28` only).
-Skill content is untrusted: `readSkillFile` reads a file only if the entry lists it, then checks
-size and SHA-256 digest (and the frontmatter for `SKILL.md`). It throws `SkillVerificationError`
-and never returns content that fails a check. Nothing is read before it is asked for.
-
-```typescript
-const client = new ContextClient({ protocolVersion: '2026-07-28', transport, skills: true })
-
-const { skills } = await client.listSkills()
-const entry = skills[0]
-const file = await client.readSkillFile(entry, entry.uri) // verified SKILL.md
-```
+Pass `extensions` to declare and allow MCP extensions, such as `extensions: [SKILLS]`. If two
+entries share an id, the last one wins. The Skills methods come from `createSkillsClient(client)` in
+`@mokei/extension-skills-client`. See that package's README.
 
 ## [Documentation](https://mokei.dev)
 

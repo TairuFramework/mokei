@@ -198,15 +198,25 @@ on `2026-07-28`, only for definitions that list that revision.
 An `ExtensionDefinition` also has a `clientDeclaration`: absent means `'required'` (as for `TASKS`,
 the client must declare the extension to call its methods); `'none'` means it need not. `SKILLS`
 uses `'none'`, so the server never gates `skills/*` on a client capability. `ContextClient` still
-opts in locally with `skills: true`.
+opts in locally with `extensions: [SKILLS]`.
 
-Skills (`io.modelcontextprotocol/skills`) are on `2026-07-28` only. `context-protocol` holds the
-schemas and the format helpers (names, `skill://` URIs, frontmatter parsing, digests).
-`context-server` builds a portable `SkillCatalog` (`createSkillCatalog`) passed as the
-`ContextServer` `skills` option; `context-server-node` loads one from disk (`loadSkillCatalog`).
-`ContextClient` exposes `listSkills`, `getSkill`, `readResourceDirectory` and `readSkillFile`;
-the last verifies each file against the entry the caller holds (listed URI, size, SHA-256 digest,
-frontmatter) and throws `SkillVerificationError` otherwise. Nothing reads files eagerly.
+Extension packages: an extension's code lives outside the core packages, as `extension-<name>`
+(shared helpers) plus `-server`, `-client` and, where it needs the filesystem, `-node`. They plug in
+through `@internal` hooks: `ServerConfig.extensions` and `ClientParams.extensions` (the only public
+surface), with the server-side `ServerExtension` (method handlers, resource provider, capabilities,
+cache hints, scopes) and client-side helpers kept internal. Wire schemas and the registry entry stay
+in `context-protocol`.
+
+Skills (`io.modelcontextprotocol/skills`) are on `2026-07-28` only, in the `extension-skills*`
+packages. `context-protocol` holds the schemas and the `SKILLS` entry. `extension-skills` holds the
+format helpers (names, `skill://` URIs, frontmatter parsing, digests). `extension-skills-server`
+builds a portable `SkillCatalog` (`createSkillCatalog`) served by `skillsServerExtension(catalog)`
+in the `ContextServer` `extensions` option; `extension-skills-node` loads one from disk
+(`loadSkillCatalog`). `extension-skills-client` wraps a `ContextClient` built with
+`extensions: [SKILLS]` in `createSkillsClient`, exposing `listSkills`, `getSkill`,
+`readResourceDirectory` and `readSkillFile`; the last verifies each file against the entry the
+caller holds (listed URI, size, SHA-256 digest, frontmatter) and throws `SkillVerificationError`
+otherwise. Nothing reads files eagerly.
 
 ### HTTP Authorisation
 

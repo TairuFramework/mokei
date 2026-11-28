@@ -23,10 +23,11 @@ Done for `private_key_jwt`: `docs/agents/plans/completed/2026-11-25-oauth-client
 
 Done for base support: `docs/agents/plans/completed/2026-11-28-skills-over-mcp.complete.md`.
 
-Base client and server support is implemented: `skills/list` and `skills/get`, `skill://` files
-via `resources/read` with digest and size manifests, optional `resources/directory/read`
-(`directoryRead: true`), disk loading in `context-server-node`, and a verifying client
-(`readSkillFile`, `SkillVerificationError`).
+Base client and server support is implemented in the `@mokei/extension-skills`, `-server`, `-client`
+and `-node` packages, on the internal extension hooks: `skills/list` and `skills/get`, `skill://`
+files via `resources/read` with digest and size manifests, optional `resources/directory/read`
+(`directoryRead: true`), disk loading (`loadSkillCatalog`), and a verifying client
+(`createSkillsClient`, `readSkillFile`, `SkillVerificationError`).
 
 Remaining follow-on work:
 
@@ -45,6 +46,8 @@ Remaining follow-on work:
 
 ## 4. Events
 
+To be built as extension packages (`extension-events*`) on the internal extension hooks.
+
 `io.modelcontextprotocol/events` (Beta, SEP-3415 Final). Requires `2026-07-28`.
 
 - `events/list` with `inputSchema`, `payloadSchema` and `delivery` per event type;
@@ -56,6 +59,8 @@ Remaining follow-on work:
 - Natural consumers: flow daemon, mcp-notify, unattended agents.
 
 ## 5. MCP Apps (server side)
+
+To be built as extension packages (`extension-apps*`) on the internal extension hooks.
 
 `io.modelcontextprotocol/ui` (Stable, ext-apps).
 

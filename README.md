@@ -58,6 +58,10 @@ const response = await session.chat({
 |---------|-------------|
 | `@mokei/context-server` | MCP server implementation |
 | `@mokei/context-client` | MCP client implementation |
+| `@mokei/extension-skills` | Skills MCP extension format helpers |
+| `@mokei/extension-skills-server` | Skills MCP extension server support |
+| `@mokei/extension-skills-client` | Skills MCP extension client support |
+| `@mokei/extension-skills-node` | Skills MCP extension Node loader |
 | `@mokei/host` | Multi-context orchestrator |
 | `@mokei/session` | Portable chat and agent sessions |
 | `@mokei/session-node` | Node stdio session support |

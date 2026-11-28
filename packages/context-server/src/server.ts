@@ -181,8 +181,9 @@ export type ServerConfig = {
   tools?: ToolDefinitions
   tasks?: TaskManager
   /**
-   * @internal Extensions this server serves, matched to the registry by `definition.id`. See
-   * {@link ServerExtension}. Ids must be unique, and distinct from the server's own extensions.
+   * Extensions this server serves, as built by an `@mokei/extension-*-server` package. Each is
+   * matched to the registry by `definition.id`. Ids must be unique, and distinct from the server's
+   * own extensions.
    */
   extensions?: ReadonlyArray<ServerExtension>
   /** Advertise the OAuth client credentials extension (default `false`). */

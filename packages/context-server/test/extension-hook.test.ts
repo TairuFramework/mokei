@@ -99,9 +99,26 @@ describe('server extension hook', () => {
     expect(handler).toHaveBeenCalledOnce()
   })
 
+  // The two tests below cover a missing handler; the core fallthrough also answers METHOD_NOT_FOUND
+  // for these methods, so the gate test above is the one that tells the two apart.
   test('extension method without handler is METHOD_NOT_FOUND', async () => {
     const request = setup({ extensions: [extension()] })
     const response = await request('skills/get', { uri: 'skill://x/SKILL.md', ...META })
+    expect(response.error?.code).toBe(METHOD_NOT_FOUND)
+  })
+
+  test('hook gate refuses a method the core switch would answer', async () => {
+    // `tools/list` is answered by the core `switch`, so METHOD_NOT_FOUND can only come from the gate.
+    const claimsToolsList: ExtensionDefinition = {
+      ...TEST_EXT,
+      clientMethods: new Set(['tools/list']),
+    }
+    const request = setup({
+      tools: {},
+      _registry: [claimsToolsList],
+      extensions: [{ definition: claimsToolsList, handlers: {} }],
+    })
+    const response = await request('tools/list', META)
     expect(response.error?.code).toBe(METHOD_NOT_FOUND)
   })
 
