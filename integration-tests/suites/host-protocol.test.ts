@@ -1,7 +1,6 @@
+import * as hostProtocol from '@mokei/host-protocol'
 import { createValidator, type Schema } from '@sozai/schema'
 import { describe, expect, test } from 'vitest'
-
-import * as hostProtocol from '../../packages/host-protocol/src/index.js'
 
 const runID = '22e7a161-6959-4f82-b082-719ab83b7ec1'
 const meta = { eventID: 'f5256378-5fb7-445a-860f-4771fdb205f5', time: 1_790_935_200_000 }

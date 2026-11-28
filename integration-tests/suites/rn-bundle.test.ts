@@ -3,15 +3,27 @@ import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
+import { packageEntry } from '../support/packages.js'
+
 // Specifiers that must never be reachable from an RN-safe barrel's built import graph.
-const BANNED = [/^node:/, /@enkaku\/node-streams/, /@tejika\/process/, /^nano-spawn$/]
+const BANNED = [
+  /^node:/,
+  /^@mokei\/host-node(?:\/|$)/,
+  /^@mokei\/http-client\/(?:node|oauth\/(?:file|loopback))\b/,
+  /@enkaku\/node-streams/,
+  /@tejika\/process/,
+  /^nano-spawn$/,
+]
 
-const require = createRequire(import.meta.url)
-
-// Resolve a package's built entry to an absolute lib/ path.
-function entryOf(pkg: string): string {
-  return require.resolve(pkg)
-}
+// Packages documented as React Native / Metro safe.
+const PORTABLE = [
+  '@mokei/context-server',
+  '@mokei/extension-skills',
+  '@mokei/extension-skills-client',
+  '@mokei/extension-skills-server',
+  '@mokei/host',
+  '@mokei/session',
+]
 
 // Resolve a relative import specifier (as written in built ESM output) to a real file on disk.
 // Built lib JS may reference the target extensionless or with a trailing `.js`, so try both
@@ -25,7 +37,8 @@ function resolveRelative(fromFile: string, spec: string): string {
 }
 
 // Walk static imports/exports reachable from an entry, following relative and @mokei/* edges
-// only (third-party and Node builtin specifiers are recorded but not followed).
+// only (third-party and Node builtin specifiers are recorded but not followed). Package edges
+// resolve from the importing file, so transitive @mokei/* dependencies need not be listed here.
 function reachableSpecifiers(entry: string): { specs: Set<string>; visited: number } {
   const seen = new Set<string>()
   const specs = new Set<string>()
@@ -56,22 +69,29 @@ function reachableSpecifiers(entry: string): { specs: Set<string>; visited: numb
       specs.add(spec)
       if (spec.startsWith('.')) {
         stack.push(resolveRelative(file, spec))
-      } else if (spec.startsWith('@mokei/')) {
-        stack.push(entryOf(spec))
+      } else if (spec.startsWith('@mokei/') && !BANNED.some((re) => re.test(spec))) {
+        stack.push(createRequire(file).resolve(spec))
       }
     }
   }
   return { specs, visited: seen.size }
 }
 
+function leaksFrom(pkg: string): Array<string> {
+  const { specs, visited } = reachableSpecifiers(packageEntry(pkg))
+  // Guard against a vacuous walk: the graph must span more than just the entry file.
+  expect(visited).toBeGreaterThan(1)
+  return [...specs].filter((spec) => BANNED.some((re) => re.test(spec)))
+}
+
 describe('RN bundle safety', () => {
-  for (const pkg of ['@mokei/host', '@mokei/context-server']) {
+  for (const pkg of PORTABLE) {
     test(`${pkg} barrel reaches no Node-only specifier`, () => {
-      const { specs, visited } = reachableSpecifiers(entryOf(pkg))
-      // Guard against a vacuous walk: the graph must span more than just the entry file.
-      expect(visited).toBeGreaterThan(1)
-      const leaks = [...specs].filter((s) => BANNED.some((re) => re.test(s)))
-      expect(leaks).toEqual([])
+      expect(leaksFrom(pkg)).toEqual([])
     })
   }
+
+  test('guard detects the Node session edge', () => {
+    expect(leaksFrom('@mokei/session-node')).toContain('@mokei/host-node')
+  })
 })

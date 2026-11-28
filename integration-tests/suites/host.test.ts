@@ -5,6 +5,7 @@ import type { ServerMessage } from '@mokei/model-provider'
 import { fromStream } from '@sozai/generator'
 import { expect, test } from 'vitest'
 
+import { packageFile } from '../support/packages.js'
 import {
   CHAT_MODEL,
   type ChatProviderTypes,
@@ -14,7 +15,7 @@ import {
   TOOL_CALL_RETRY,
 } from '../support/requirements.js'
 
-const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
+const FETCH_MCP_SERVER_PATH = packageFile('@mokei/mcp-fetch', 'lib/serve.js')
 
 const model = CHAT_MODEL
 const provider = createChatProvider()

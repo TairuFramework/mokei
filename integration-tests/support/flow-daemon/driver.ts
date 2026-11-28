@@ -12,6 +12,7 @@ import { settleAll } from '@sozai/async'
 import { getPIDPath } from '@tejika/env'
 import { createTestProfile, poll } from '@tejika/test'
 
+import { packageFile } from '../packages.js'
 import { flows } from './flows.js'
 
 const WAIT_MS = 15_000
@@ -177,7 +178,7 @@ export async function startFlowDaemonFixture(
     spawnError = undefined
     const args = options.productionEntry
       ? [
-          absolute('../../../packages/cli/lib/daemon-entry.js'),
+          packageFile('mokei', 'lib/daemon-entry.js'),
           '--socket-path',
           socketPath,
           '--pid-path',

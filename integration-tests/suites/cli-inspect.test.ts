@@ -1,13 +1,13 @@
-import { resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
-import { CLI_CWD, runCLI } from '../support/flow-cli/run-cli.js'
+import { runCLI } from '../support/flow-cli/run-cli.js'
 import {
   MOKEI_STDIO_SERVER_2025_11_25_PATH,
   MOKEI_STDIO_SERVER_2026_07_28_PATH,
 } from '../support/interop/servers.ts'
+import { packageFile } from '../support/packages.js'
 
-const FETCH_SERVER = resolve(CLI_CWD, '../../mcp-servers/fetch/lib/serve.js')
+const FETCH_SERVER = packageFile('@mokei/mcp-fetch', 'lib/serve.js')
 
 describe('CLI inspect', () => {
   test('inspect shows server capabilities', async () => {

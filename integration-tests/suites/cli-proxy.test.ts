@@ -1,14 +1,13 @@
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { createTestProfile } from '@tejika/test'
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { CLI_BINARY, CLI_CWD } from '../support/flow-cli/run-cli.js'
+import { packageFile } from '../support/packages.js'
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const FETCH_SERVER = resolve(ROOT, 'mcp-servers/fetch/lib/serve.js')
+const FETCH_SERVER = packageFile('@mokei/mcp-fetch', 'lib/serve.js')
 
 // `mokei proxy` goes through the host daemon, which binds the per-user default socket. Point the
 // daemon's data, state and log dirs at a private temp dir so the test never reuses a daemon left

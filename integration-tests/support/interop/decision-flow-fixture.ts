@@ -6,9 +6,13 @@ import { SystemOneClient, type SystemOneResult } from '@mokei/system-one-client'
 import { whenAborted } from '@sozai/async'
 import type { FlowDefinition } from '@sozai/flow-graph'
 
-import example from '../../../packages/decision-flow/examples/support-triage.json' with {
-  type: 'json',
+import { readPackageJSON } from '../packages.js'
+
+type ExampleFlow = FlowDefinition & {
+  nodes: { billing: { args: unknown }; technical: { args: unknown } }
 }
+
+const example = readPackageJSON<ExampleFlow>('@mokei/decision-flow', 'examples/support-triage.json')
 
 export type Ticket = { team: string; message: string }
 

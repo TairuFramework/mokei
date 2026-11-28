@@ -2,6 +2,7 @@ import { type AgentEvent, AgentSession } from '@mokei/session'
 import { NodeSession } from '@mokei/session-node'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
+import { packageFile } from '../support/packages.js'
 import {
   CHAT_MODEL,
   CHAT_PROVIDER_KEY,
@@ -12,7 +13,7 @@ import {
   TOOL_CALL_RETRY,
 } from '../support/requirements.js'
 
-const FETCH_MCP_SERVER_PATH = '../mcp-servers/fetch/lib/serve.js'
+const FETCH_MCP_SERVER_PATH = packageFile('@mokei/mcp-fetch', 'lib/serve.js')
 
 const model = CHAT_MODEL
 const provider = createChatProvider()

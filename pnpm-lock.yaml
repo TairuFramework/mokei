@@ -572,9 +572,21 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
+      '@mokei/app-node':
+        specifier: workspace:^
+        version: link:../packages/app-node
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../packages/context-rpc
+      '@mokei/extension-skills':
+        specifier: workspace:^
+        version: link:../packages/extension-skills
+      '@mokei/extension-skills-client':
+        specifier: workspace:^
+        version: link:../packages/extension-skills-client
+      '@mokei/extension-skills-server':
+        specifier: workspace:^
+        version: link:../packages/extension-skills-server
       '@mokei/flow-client':
         specifier: workspace:^
         version: link:../packages/flow-client

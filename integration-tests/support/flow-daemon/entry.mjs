@@ -1,13 +1,8 @@
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { loadMokeiConfig, openMokeiDatabase, setupMokeiTelemetry } from '@mokei/app-node'
 import { getPIDPath } from '@tejika/env'
 import { startMokeiDaemonWithDependencies } from 'mokei/lib/daemon-entry.js'
-
-import {
-  loadMokeiConfig,
-  openMokeiDatabase,
-  setupMokeiTelemetry,
-} from '../../../packages/app-node/lib/index.js'
 
 const directory = process.argv[2]
 const record = (event) => {
