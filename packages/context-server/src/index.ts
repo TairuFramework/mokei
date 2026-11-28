@@ -32,6 +32,12 @@ export {
   ToolOutputValidationError,
   type ToolOutputValidationErrorParams,
 } from './definitions.js'
+export type {
+  ExtensionHandlerRequest,
+  ExtensionMethodHandler,
+  ResourceProvider,
+  ServerExtension,
+} from './extension.js'
 export {
   defaultMintRequestState,
   type InputRequiredResult,

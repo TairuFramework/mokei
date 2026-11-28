@@ -203,7 +203,8 @@ describe('registry gating on 2025-11-25', () => {
   test('is refused when the client did not declare the extension', async () => {
     const request = setup({
       protocolVersions: ['2025-11-25'],
-      declared: [CoreExt],
+      // A structural copy: the server matches the registry entry by id, not identity.
+      declared: [{ ...CoreExt }],
       registry: [CoreExt],
     })
     await request('initialize', initialize({}))
@@ -214,7 +215,8 @@ describe('registry gating on 2025-11-25', () => {
   test('succeeds when the client declared the extension', async () => {
     const request = setup({
       protocolVersions: ['2025-11-25'],
-      declared: [CoreExt],
+      // A structural copy: the server matches the registry entry by id, not identity.
+      declared: [{ ...CoreExt }],
       registry: [CoreExt],
     })
     await request(
