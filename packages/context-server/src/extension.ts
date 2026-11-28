@@ -29,6 +29,7 @@ export type ExtensionMethodHandler = (
  * @internal
  */
 export type ResourceProvider = {
+  /** Must be cheap and pure: it may be called several times per request. */
   owns(uri: string): boolean
   /** Throws an `RPCError` with `INVALID_PARAMS` when the URI is owned but not found. */
   read(uri: string): ReadResourceResult['contents'][number]
@@ -41,6 +42,7 @@ export type ResourceProvider = {
  * - `handlers` answer the extension's client methods; a method of the definition without a
  *   handler is `METHOD_NOT_FOUND`.
  * - `resources` answers `resources/read` for the URIs it owns, ahead of the server's own handler.
+ * - `resources` needs `capabilities: { resources: true }` for the server to declare `resources`.
  * - `capabilities.resources` declares `resources: {}` when the server has no `resources`, which
  *   then answers empty list pages and `Resource not found` for URIs no provider owns.
  * - `cache` and `scopes` replace the server's for the extension's requests: its methods and the

@@ -340,6 +340,7 @@ failed and lost-subscription events.
 | MRTR | `@mokei/context-client`, `@mokei/context-server` | `runInputRequiredFlow`, `inputRequired` |
 | Subscriptions | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `SubscriptionDriver`, `createSubscriptionHub`, `runSubscriptionExchange` |
 | MCP Tasks | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `createTaskManager`, `TaskStore`, `ContextClient.tasks` |
+| MCP Skills extension | `@mokei/extension-skills`, `@mokei/extension-skills-server`, `@mokei/extension-skills-node`, `@mokei/extension-skills-client` | `createSkillCatalog`, `skillsServerExtension`, `loadSkillCatalog`, `createSkillsClient` |
 | Tool namespacing and per-context tool switches | `@mokei/host` | `ContextHost.callNamespacedTool`, `enableContextTools`, `disableContextTools` |
 | Local tools | `@mokei/host` | `ContextHost.callLocalTool`, `packages/host/src/local-tools.ts` |
 | Chat and agent loop | `@mokei/session`, `@mokei/session-node` | Portable `Session` and `AgentSession`. Node stdio `NodeSession.addContext` |
@@ -371,6 +372,10 @@ packages/
 +-- context-server/       # MCP server implementation (RN/Metro-safe)
 +-- context-server-node/  # Node stdio entry for context-server (serveProcess)
 +-- context-client/       # MCP client implementation
++-- extension-skills/     # Skills extension format helpers (names, URIs, frontmatter, digests)
++-- extension-skills-server/ # Skills extension server support (catalog, skillsServerExtension)
++-- extension-skills-node/ # Node loader for skill catalogs (loadSkillCatalog)
++-- extension-skills-client/ # Skills extension client support (createSkillsClient)
 +-- host/                 # Multi-context orchestrator (RN/Metro-safe)
 +-- host-node/            # Node stdio + generic daemon composition for host
 +-- host-desktop/         # Desktop dialogs, notifications and input inbox (Node-only)

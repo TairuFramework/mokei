@@ -100,7 +100,7 @@ describe('server extension hook', () => {
   })
 
   // The two tests below cover a missing handler; the core fallthrough also answers METHOD_NOT_FOUND
-  // for these methods, so the gate test above is the one that tells the two apart.
+  // for these methods, so the gate test below is the one that tells the two apart.
   test('extension method without handler is METHOD_NOT_FOUND', async () => {
     const request = setup({ extensions: [extension()] })
     const response = await request('skills/get', { uri: 'skill://x/SKILL.md', ...META })

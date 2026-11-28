@@ -57,6 +57,12 @@ To be built as extension packages (`extension-events*`) on the internal extensio
   verification and SSRF protection in `http-server`.
 - Cursors with `truncated` and `maxAgeMs`, `eventId` dedup; payloads are untrusted input.
 - Natural consumers: flow daemon, mcp-notify, unattended agents.
+- Core hook gaps to close first (the internal hooks do not cover them today):
+  - Held or streaming responses, for `events/stream`.
+  - Notifications sent outside a request, plus a `dispose` hook, for `notifications/events/list_changed`
+    and stream teardown.
+  - Per-method cacheability: every extension method currently gets cache hints, but `events/poll`
+    must not be cacheable.
 
 ## 5. MCP Apps (server side)
 
@@ -68,6 +74,8 @@ To be built as extension packages (`extension-apps*`) on the internal extension 
   `text/html;profile=mcp-app`, `_meta.ui.csp` / `permissions`.
 - Host-side rendering (sandboxed iframe + postMessage `ui/*` dialect) only if `host-desktop`
   should render apps; out of scope until then.
+- Core hook gap: `ui://` resources likely need only an async `ResourceProvider.read` that receives
+  `auth` and `signal`; the provider is synchronous today.
 
 ## Parked
 
