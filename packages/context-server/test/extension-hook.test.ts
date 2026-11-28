@@ -107,6 +107,19 @@ describe('server extension hook', () => {
     expect(response.error?.code).toBe(METHOD_NOT_FOUND)
   })
 
+  test('extension method with an undefined handler is METHOD_NOT_FOUND', async () => {
+    const request = setup({
+      skills: await createSkillCatalog([]),
+      extensions: [
+        extension({
+          handlers: { 'skills/list': () => ({ skills: [] }), 'skills/get': undefined },
+        }),
+      ],
+    })
+    const response = await request('skills/get', { uri: 'skill://x/SKILL.md', ...META })
+    expect(response.error?.code).toBe(METHOD_NOT_FOUND)
+  })
+
   test('applyCacheHints caches extra methods', () => {
     expect(applyCacheHints('x/y', {}, undefined)).toEqual({})
     expect(applyCacheHints('x/y', {}, { ttlMs: 5 }, new Set(['x/y']))).toEqual({

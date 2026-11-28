@@ -87,7 +87,7 @@ import {
 import { applyCacheHints } from './cache.js'
 import { toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
-import type { ServerExtension } from './extension.js'
+import type { ExtensionMethodHandler, ServerExtension } from './extension.js'
 import {
   defaultMintRequestState,
   type InputRequiredResult,
@@ -768,7 +768,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       }
       // A configured extension answers only the methods it has handlers for, never the core.
       const extension = this.#serverExtensions.get(definition.id)
-      if (extension != null && !Object.hasOwn(extension.handlers, request.method)) {
+      if (extension != null && this.#handlerFor(extension, request.method) == null) {
         throw new RPCError({
           code: METHOD_NOT_FOUND,
           message: `Unsupported method: ${request.method}`,
@@ -1113,10 +1113,7 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     auth: RequestAuth | undefined,
   ): Promise<unknown> {
     const extension = this.#extensionFor(request)
-    const handler =
-      extension != null && Object.hasOwn(extension.handlers, request.method)
-        ? extension.handlers[request.method]
-        : undefined
+    const handler = extension == null ? undefined : this.#handlerFor(extension, request.method)
     if (handler != null) {
       return await handler({
         client,
@@ -1144,6 +1141,13 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       default:
         return NOT_HANDLED
     }
+  }
+
+  /** The extension's own handler for `method`; a key set to `undefined` counts as none. */
+  #handlerFor(extension: ServerExtension, method: string): ExtensionMethodHandler | undefined {
+    if (!Object.hasOwn(extension.handlers, method)) return undefined
+    const handler = extension.handlers[method]
+    return typeof handler === 'function' ? handler : undefined
   }
 
   #readCatalogFile(uri: string): ReadResourceResult['contents'][number] {
