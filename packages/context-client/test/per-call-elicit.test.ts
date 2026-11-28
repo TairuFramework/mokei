@@ -1,14 +1,9 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ElicitResult, ServerMessage } from '@mokei/context-protocol'
 import { TransportClosedError } from '@mokei/context-rpc'
+import { ContextServer, createTaskManager, createTool, inputRequired } from '@mokei/context-server'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import {
-  ContextServer,
-  createTaskManager,
-  createTool,
-  inputRequired,
-} from '../../context-server/lib/index.js'
 import { ContextClient, type ElicitHandler } from '../src/index.js'
 
 type Version = '2025-11-25' | '2026-07-28'

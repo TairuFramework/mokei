@@ -10,8 +10,8 @@ import {
   type PromptAction,
   type RunState,
 } from '../src/index.js'
+import { createMemoryControl, type MemoryControlOptions } from '../src/memory-control.js'
 import { createFlowControlServer } from '../src/server.js'
-import { createMemoryControl, type MemoryControlOptions } from './memory-control.js'
 
 function snapshot(state: RunState, extra: Partial<FlowRunSnapshot> = {}): FlowRunSnapshot {
   return {

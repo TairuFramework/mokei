@@ -12,7 +12,7 @@ import {
   runStatus,
   waitForRun,
 } from '../src/index.js'
-import { createMemoryControl } from './memory-control.js'
+import { createMemoryControl } from '../src/memory-control.js'
 
 function snapshot(state: RunState, extra: Partial<FlowRunSnapshot> = {}): FlowRunSnapshot {
   return {

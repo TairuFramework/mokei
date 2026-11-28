@@ -9,9 +9,9 @@ import type {
 } from '@mokei/context-protocol'
 import { METHOD_NOT_FOUND, TASKS_EXTENSION } from '@mokei/context-protocol'
 import { RequestTimeoutError, TransportClosedError } from '@mokei/context-rpc'
+import { ContextServer, createTaskManager, createTool } from '@mokei/context-server'
 import { afterEach, expect, expectTypeOf, test, vi } from 'vitest'
 
-import { ContextServer, createTaskManager, createTool } from '../../context-server/lib/index.js'
 import {
   brandTransportFailure,
   ContextClient,

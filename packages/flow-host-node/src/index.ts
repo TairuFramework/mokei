@@ -45,7 +45,13 @@ export type {
   FlowServiceStatus,
   FlowServiceUnavailableErrorParams,
 } from './service.js'
-export { createFlowService, FLOW_REPORT_CATEGORY, FlowServiceUnavailableError } from './service.js'
+export {
+  createFlowService,
+  /** @internal Test seam: build the service with injected dependencies. */
+  createFlowServiceWithDependencies,
+  FLOW_REPORT_CATEGORY,
+  FlowServiceUnavailableError,
+} from './service.js'
 export { flowStoreDefinitions } from './stores.js'
 export type { InboxSurface, PromptOutcome, SurfaceDelivery, SurfaceStatus } from './surfaces.js'
 export type { FlowTaskTables } from './task-store.js'

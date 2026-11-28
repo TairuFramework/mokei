@@ -1,7 +1,8 @@
+import { FlowControlError } from './errors.js'
+import { createEventQueue, type EventQueue } from './subscription.js'
 import {
   type FlowCheckResult,
   type FlowControl,
-  FlowControlError,
   type FlowEvent,
   type FlowRunSnapshot,
   type FlowSummary,
@@ -9,8 +10,7 @@ import {
   type InboxOutcome,
   type PromptAction,
   TERMINAL_RUN_STATES,
-} from '../src/index.js'
-import { createEventQueue, type EventQueue } from '../src/subscription.js'
+} from './types.js'
 
 export type UnavailableState = 'starting' | 'failed'
 
