@@ -353,7 +353,37 @@ type ClientTypes = {
   SendResult: ClientResult
 }
 
-type PagedResult = { nextCursor?: string } & Record<string, unknown>
+/**
+ * One page of a paginated list method, or the merged result of walking them.
+ *
+ * @internal
+ */
+export type PagedResult = { nextCursor?: string } & Record<string, unknown>
+
+type RequireExtensionAccess = <T extends ContextTypes>(
+  client: ContextClient<T>,
+  definition: ExtensionDefinition,
+  method: string,
+  options?: RequestOptions,
+) => Promise<Record<string, unknown>>
+
+type ListPagedAccess = <T extends ContextTypes>(
+  client: ContextClient<T>,
+  method: string,
+  key: string,
+  send: (params: Record<string, unknown>, options: RequestOptions) => Promise<PagedResult>,
+  listParams: ListParams<Record<string, unknown>>,
+) => Promise<PagedResult>
+
+/**
+ * Reach `ContextClient`'s private extension gate and pager without making them public. Installed
+ * by the class's static block; only `extension.ts` calls them.
+ *
+ * @internal
+ */
+export let requireExtensionAccess: RequireExtensionAccess
+/** @internal See {@link requireExtensionAccess}. */
+export let listPagedAccess: ListPagedAccess
 
 const FIRST_EXCHANGE = Symbol('firstExchange')
 const ROUND = Symbol('round')
@@ -365,7 +395,11 @@ export class ContextClient<
   #tracing?: ClientTracing
   #exchangeTracer = createExchangeTracer(() => this.#tracing)
   #capabilities: ClientCapabilities
-  #extensions = new Map<ExtensionDefinition, Record<string, unknown>>()
+  /** Declared extensions, keyed by `definition.id`. */
+  #extensions = new Map<
+    string,
+    { definition: ExtensionDefinition; settings: Record<string, unknown> }
+  >()
   #registry: ReadonlyArray<ExtensionDefinition>
   // Aborted once the transport closes, so an input-required flow waiting on a handler settles.
   #closed = new AbortController()
@@ -435,6 +469,13 @@ export class ContextClient<
       this.request('tasks/update', { taskId: taskID, inputResponses }),
     cancel: (taskID) => this.request('tasks/cancel', { taskId: taskID }),
     wait: (taskID, options) => this.waitForTask({ taskID, ...options }),
+  }
+
+  static {
+    requireExtensionAccess = (client, definition, method, options) =>
+      client.#requireExtension(definition, method, options)
+    listPagedAccess = (client, method, key, send, listParams) =>
+      client.#listPaged(method, key, send, listParams)
   }
 
   get tasks(): ClientTasks {
@@ -507,16 +548,23 @@ export class ContextClient<
     this.#capabilities = capabilities
     this.#registry = params._registry ?? EXTENSIONS
     if (params.tasks === true) {
-      this.#extensions.set(TASKS, declareExtension(TASKS))
+      this.#enableExtension(TASKS)
     }
     if (params.oauthClientCredentials === true) {
-      this.#extensions.set(OAUTH_CLIENT_CREDENTIALS, declareExtension(OAUTH_CLIENT_CREDENTIALS))
+      this.#enableExtension(OAUTH_CLIENT_CREDENTIALS)
     }
     if (params.skills === true) {
-      this.#extensions.set(SKILLS, declareExtension(SKILLS))
+      this.#enableExtension(SKILLS)
     }
     for (const { definition, settings } of params._extensions ?? []) {
-      this.#extensions.set(definition, declareExtension(definition, settings))
+      this.#enableExtension(definition, settings)
+    }
+    for (const extension of params.extensions ?? []) {
+      if ('definition' in extension) {
+        this.#enableExtension(extension.definition, extension.settings)
+      } else {
+        this.#enableExtension(extension)
+      }
     }
     this.#tracing = params.tracing
     this.#clientInfo = params.clientInfo ?? DEFAULT_CLIENT_INFO
@@ -1003,8 +1051,18 @@ export class ContextClient<
     }
   }
 
+  #enableExtension(definition: ExtensionDefinition, settings?: Record<string, unknown>): void {
+    this.#extensions.set(definition.id, {
+      definition,
+      settings: declareExtension(definition, settings),
+    })
+  }
+
   #capabilitiesFor(protocol: ProtocolDefinition): ClientCapabilities {
-    const extensions = extensionsFor(this.#extensions, protocol.version)
+    const enabled = new Map(
+      Array.from(this.#extensions.values(), ({ definition, settings }) => [definition, settings]),
+    )
+    const extensions = extensionsFor(enabled, protocol.version)
     return extensions == null ? this.#capabilities : { ...this.#capabilities, extensions }
   }
 
@@ -1026,7 +1084,10 @@ export class ContextClient<
     method: string,
     protocol: ProtocolDefinition,
   ): void {
-    if (!this.#extensions.has(definition) || !definition.protocolVersions.has(protocol.version)) {
+    if (
+      !this.#extensions.has(definition.id) ||
+      !definition.protocolVersions.has(protocol.version)
+    ) {
       throw new MethodNotInRevisionError({
         method,
         version: protocol.version,
@@ -1039,7 +1100,7 @@ export class ContextClient<
     filter: SubscriptionFilter | undefined,
     protocol: ProtocolDefinition,
   ): void {
-    if (filter?.taskIds != null && !this.#extensions.has(TASKS)) {
+    if (filter?.taskIds != null && !this.#extensions.has(TASKS.id)) {
       throw new MethodNotInRevisionError({
         method: 'subscriptions/listen',
         version: protocol.version,
@@ -1706,6 +1767,21 @@ export class ContextClient<
     return readExtension(await this.#serverCapabilitiesAsync(options), definition)
   }
 
+  /**
+   * Gates shared by an extension's methods, all local: this client must have enabled the
+   * extension on a revision that carries it, and the server must have declared it. Returns the
+   * server's settings.
+   */
+  async #requireExtension(
+    definition: ExtensionDefinition,
+    method: string,
+    options?: RequestOptions,
+  ): Promise<Record<string, unknown>> {
+    await this.#ready
+    this.#refuseUndeclaredDefinition(definition, method, this.#requireProtocol())
+    return await this.#requireServerExtensionAsync(definition, options)
+  }
+
   /** Throws `ExtensionNotDeclaredError` unless the server declared the extension. */
   async #requireServerExtensionAsync(
     definition: ExtensionDefinition,
@@ -1975,23 +2051,12 @@ export class ContextClient<
 
   // --- skills extension ------------------------------------------------------
 
-  /**
-   * Gates shared by the skills methods, all local: this client must have enabled the extension on
-   * a revision that carries it, and the server must have declared it. Returns the server's
-   * settings.
-   */
-  async #requireSkills(method: string, options?: RequestOptions): Promise<Record<string, unknown>> {
-    await this.#ready
-    this.#refuseUndeclaredDefinition(SKILLS, method, this.#requireProtocol())
-    return await this.#requireServerExtensionAsync(SKILLS, options)
-  }
-
   /** Lists the skills the server serves, walking every page unless `cursor` is set. */
   async listSkills(
     params: ListParams<ListSkillsRequest['params']> = {},
   ): Promise<ListSkillsResult> {
     const [, gateOptions] = splitRequestOptions(params)
-    await this.#requireSkills('skills/list', gateOptions)
+    await this.#requireExtension(SKILLS, 'skills/list', gateOptions)
     const result = await this.#listPaged(
       'skills/list',
       'skills',
@@ -2012,7 +2077,7 @@ export class ContextClient<
    * `SkillVerificationError` (reason `'response'`) if the server answers with another skill's entry.
    */
   async getSkill(uri: string, options?: RequestOptions): Promise<GetSkillResult> {
-    await this.#requireSkills('skills/get', options)
+    await this.#requireExtension(SKILLS, 'skills/get', options)
     const result = await this.request('skills/get', { uri }, options)
     if (result.skill.uri !== uri) {
       throw new SkillVerificationError({
@@ -2032,7 +2097,7 @@ export class ContextClient<
     params: ListParams<ReadResourceDirectoryRequest['params']>,
   ): Promise<ReadResourceDirectoryResult> {
     const [, gateOptions] = splitRequestOptions(params)
-    const settings = await this.#requireSkills('resources/directory/read', gateOptions)
+    const settings = await this.#requireExtension(SKILLS, 'resources/directory/read', gateOptions)
     if (settings.directoryRead !== true) {
       throw new ExtensionNotDeclaredError({ extension: `${SKILLS.id}#directoryRead` })
     }
@@ -2064,7 +2129,7 @@ export class ContextClient<
   async readSkillFile(entry: Skill, uri: string, options?: RequestOptions): Promise<SkillFile> {
     checkSkillEntry(entry)
     const listed = listedSkillFile(entry, uri)
-    await this.#requireSkills('readSkillFile', options)
+    await this.#requireExtension(SKILLS, 'readSkillFile', options)
     // Never hand an `input_required` suspension back: only a completed read can be verified.
     const result = await this.readResource({ ...options, uri, allowInputRequired: false })
     return await verifySkillFile(entry, uri, listed, result)
@@ -2106,7 +2171,7 @@ export class ContextClient<
   }
 
   waitForTask(params: WaitForTaskParams): Promise<CallToolResult> {
-    if (!this.#extensions.has(TASKS)) {
+    if (!this.#extensions.has(TASKS.id)) {
       // Always reject, never throw: `#requireProtocol()` throws while an 'auto' probe is pending.
       let version: ProtocolVersion
       try {

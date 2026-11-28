@@ -144,6 +144,13 @@ export type ClientParams = {
    * `listSkills`, `getSkill`, `readResourceDirectory` and `readSkillFile`.
    */
   skills?: boolean
+  /**
+   * @internal Extensions to declare and allow, each a definition or a definition with the
+   * settings to declare. Matched to the registry by `definition.id`.
+   */
+  extensions?: ReadonlyArray<
+    ExtensionDefinition | { definition: ExtensionDefinition; settings?: Record<string, unknown> }
+  >
   /** @internal test hook: extra extensions to declare and allow. */
   _extensions?: ReadonlyArray<{
     definition: ExtensionDefinition
