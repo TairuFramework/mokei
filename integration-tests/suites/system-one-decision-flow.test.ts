@@ -9,12 +9,15 @@ import {
 import { createValidator } from '@sozai/schema'
 import { describe, expect, inject, test, vi } from 'vitest'
 
-import example from '../../packages/decision-flow/examples/support-triage.json' with {
-  type: 'json',
-}
+import { readPackageJSON } from '../support/packages.js'
 import type { SystemOneTarget } from '../support/system-one-setup.ts'
 
-const definition = example as unknown as FlowDefinition
+const example = readPackageJSON<FlowDefinition>(
+  '@mokei/decision-flow',
+  'examples/support-triage.json',
+)
+
+const definition = example
 const targets = inject('systemOne')
 
 const BILLING = 'I was charged twice for my subscription this month.'

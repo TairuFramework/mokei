@@ -1,10 +1,15 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { FlowControlError, type FlowRunSnapshot, type InboxItem } from '@mokei/flow-client'
+import {
+  createMemoryControl,
+  FlowControlError,
+  type FlowRunSnapshot,
+  type InboxItem,
+  type MemoryControl,
+} from '@mokei/flow-client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { createMemoryControl, type MemoryControl } from '../../flow-client/test/memory-control.js'
 import { createRunsCommand } from '../src/commands/runs.js'
 import type * as FlowControl from '../src/flow-control.js'
 import { connectFlowControl } from '../src/flow-control.js'

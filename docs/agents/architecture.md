@@ -184,14 +184,39 @@ When a waited request is withdrawn, the signal passed to the input handler abort
 ### Extensions
 
 MCP extensions are described by a built-in registry in `packages/context-protocol/src/extensions.ts`
-(`EXTENSIONS`; `TASKS` is the only entry). An `ExtensionDefinition` names its id, an optional
+(`EXTENSIONS`; entries: `TASKS`, `SKILLS`). An `ExtensionDefinition` names its id, an optional
 `revision`, the protocol versions it is advertised on, and the client and server methods it owns.
 There is no runtime registration. The server gates a request for an extension method on the
 client's declared capabilities. `readExtension` returns a peer's settings, or `null` when the
 extension is not declared or the declared `revision` differs from the definition's, so an unknown
-revision counts as unsupported. Extensions are advertised per revision: in `initialize` on
-`2025-11-25` and in `server/discover` on `2026-07-28`, only for definitions that list that
-revision. `ContextClient.getServerExtension(definition)` reads what the server declared.
+revision counts as unsupported.
+
+Extensions are advertised per revision: in `initialize` on `2025-11-25` and in `server/discover`
+on `2026-07-28`, only for definitions that list that revision.
+`ContextClient.getServerExtension(definition)` reads what the server declared.
+
+An `ExtensionDefinition` also has a `clientDeclaration`: absent means `'required'` (as for `TASKS`,
+the client must declare the extension to call its methods); `'none'` means it need not. `SKILLS`
+uses `'none'`, so the server never gates `skills/*` on a client capability. `ContextClient` still
+opts in locally with `extensions: [SKILLS]`.
+
+Extension packages: an extension's code lives outside the core packages, as `extension-<name>`
+(shared helpers) plus `-server`, `-client` and, where it needs the filesystem, `-node`. They plug in
+through `@internal` hooks: `ServerConfig.extensions` and `ClientParams.extensions` (the only public
+surface), with the server-side `ServerExtension` (method handlers, resource provider, capabilities,
+cache hints, scopes) and client-side helpers kept internal. Wire schemas and the registry entry stay
+in `context-protocol`.
+
+Skills (`io.modelcontextprotocol/skills`) are on `2026-07-28` only, in the `extension-skills*`
+packages. `context-protocol` holds the schemas and the `SKILLS` entry. `extension-skills` holds the
+format helpers (names, `skill://` URIs, frontmatter parsing, digests). `extension-skills-server`
+builds a portable `SkillCatalog` (`createSkillCatalog`) served by `skillsServerExtension(catalog)`
+in the `ContextServer` `extensions` option; `extension-skills-node` loads one from disk
+(`loadSkillCatalog`). `extension-skills-client` wraps a `ContextClient` built with
+`extensions: [SKILLS]` in `createSkillsClient`, exposing `listSkills`, `getSkill`,
+`readResourceDirectory` and `readSkillFile`; the last verifies each file against the entry the
+caller holds (listed URI, size, SHA-256 digest, frontmatter) and throws `SkillVerificationError`
+otherwise. Nothing reads files eagerly.
 
 ### HTTP Authorisation
 
@@ -315,6 +340,7 @@ failed and lost-subscription events.
 | MRTR | `@mokei/context-client`, `@mokei/context-server` | `runInputRequiredFlow`, `inputRequired` |
 | Subscriptions | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `SubscriptionDriver`, `createSubscriptionHub`, `runSubscriptionExchange` |
 | MCP Tasks | `@mokei/context-client`, `@mokei/context-server`, `@mokei/http-server` | `createTaskManager`, `TaskStore`, `ContextClient.tasks` |
+| MCP Skills extension | `@mokei/extension-skills`, `@mokei/extension-skills-server`, `@mokei/extension-skills-node`, `@mokei/extension-skills-client` | `createSkillCatalog`, `skillsServerExtension`, `loadSkillCatalog`, `createSkillsClient` |
 | Tool namespacing and per-context tool switches | `@mokei/host` | `ContextHost.callNamespacedTool`, `enableContextTools`, `disableContextTools` |
 | Local tools | `@mokei/host` | `ContextHost.callLocalTool`, `packages/host/src/local-tools.ts` |
 | Chat and agent loop | `@mokei/session`, `@mokei/session-node` | Portable `Session` and `AgentSession`. Node stdio `NodeSession.addContext` |
@@ -346,6 +372,10 @@ packages/
 +-- context-server/       # MCP server implementation (RN/Metro-safe)
 +-- context-server-node/  # Node stdio entry for context-server (serveProcess)
 +-- context-client/       # MCP client implementation
++-- extension-skills/     # Skills extension format helpers (names, URIs, frontmatter, digests)
++-- extension-skills-server/ # Skills extension server support (catalog, skillsServerExtension)
++-- extension-skills-node/ # Node loader for skill catalogs (loadSkillCatalog)
++-- extension-skills-client/ # Skills extension client support (createSkillsClient)
 +-- host/                 # Multi-context orchestrator (RN/Metro-safe)
 +-- host-node/            # Node stdio + generic daemon composition for host
 +-- host-desktop/         # Desktop dialogs, notifications and input inbox (Node-only)

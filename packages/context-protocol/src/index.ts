@@ -36,6 +36,7 @@ export {
   missingExtensionErrorParams,
   OAUTH_CLIENT_CREDENTIALS,
   readExtension,
+  SKILLS,
   TASKS,
 } from './extensions.js'
 export { MCP_NAME_HEADER_SOURCE } from './http-headers.js'
@@ -131,6 +132,25 @@ export {
   type ServerResult,
   serverMessage,
 } from './server.js'
+export {
+  type GetSkillRequest,
+  type GetSkillResult,
+  getSkillRequest,
+  getSkillResult,
+  type ListSkillsRequest,
+  type ListSkillsResult,
+  listSkillsRequest,
+  listSkillsResult,
+  type ReadResourceDirectoryRequest,
+  type ReadResourceDirectoryResult,
+  readResourceDirectoryRequest,
+  readResourceDirectoryResult,
+  SKILLS_EXTENSION,
+  type Skill,
+  type SkillResource,
+  skill,
+  skillResource,
+} from './skills.js'
 export {
   META_SUBSCRIPTION_ID,
   type SubscriptionFilter,

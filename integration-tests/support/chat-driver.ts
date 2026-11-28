@@ -1,25 +1,13 @@
-/**
- * Drives the real `mokei chat` binary over a PTY (node-pty) so the CLI TUI can be
- * exercised end-to-end in integration tests. ink needs a real TTY on stdin (setRawMode),
- * which a plain child_process pipe cannot provide.
- *
- * Requires the CLI to be built (`bin/dev.js` below imports `../lib/index.js`, so `lib/` must
- * be current -- `packages/cli/dist/` is a stale artifact from an older build layout and is
- * gitignored), the built fetch MCP server, and a chat backend -- ollama by default, or
- * llama-server via `LLAMA_SERVER_URL`, which the suites gate on with `hasChatBackend`.
- */
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { type IPty, spawn } from 'node-pty'
 import stripAnsi from 'strip-ansi'
 
 import { CLI_BINARY, CLI_CWD } from './flow-cli/run-cli.js'
+import { packageFile } from './packages.js'
 import { chatBackend } from './requirements.js'
 
 export { CLI_BINARY, CLI_CWD } from './flow-cli/run-cli.js'
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-export const FETCH_SERVER = resolve(ROOT, 'mcp-servers/fetch/lib/serve.js')
+export const FETCH_SERVER = packageFile('@mokei/mcp-fetch', 'lib/serve.js')
 
 /**
  * Observable TUI strings the driver waits on / asserts against. Centralised so a

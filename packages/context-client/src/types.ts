@@ -139,6 +139,14 @@ export type ClientParams = {
   tasks?: boolean
   /** Declare the OAuth client credentials extension (default `false`). */
   oauthClientCredentials?: boolean
+  /**
+   * Extensions to declare and allow, such as a registry entry from `@mokei/context-protocol`. Each
+   * is a definition, or a definition with the settings to declare, matched to the registry by
+   * `definition.id`. If two entries share an id, the last one wins.
+   */
+  extensions?: ReadonlyArray<
+    ExtensionDefinition | { definition: ExtensionDefinition; settings?: Record<string, unknown> }
+  >
   /** @internal test hook: extra extensions to declare and allow. */
   _extensions?: ReadonlyArray<{
     definition: ExtensionDefinition

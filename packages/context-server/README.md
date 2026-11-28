@@ -140,6 +140,11 @@ const tools = {
 A handler that returns `structuredContent` violating its `outputSchema` — or
 omits it entirely — raises an `INTERNAL_ERROR` back to the client.
 
+## Skills
+
+The Skills MCP extension is served by `@mokei/extension-skills-server`: pass
+`extensions: [skillsServerExtension(catalog)]` to `ContextServer`. See that package's README.
+
 ## Type-Safe Client Integration
 
 The `@mokei/context-server` package provides utilities to extract TypeScript types from your server configuration, enabling type-safe client usage.

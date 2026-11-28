@@ -85,6 +85,7 @@ import {
 import { applyCacheHints } from './cache.js'
 import { toResourceHandlers } from './definitions.js'
 import { buildDiscoverResult } from './discover.js'
+import type { ExtensionMethodHandler, ServerExtension } from './extension.js'
 import {
   defaultMintRequestState,
   type InputRequiredResult,
@@ -158,6 +159,9 @@ function requireExtension(
   throw new RPCError(missingExtensionErrorParams(definition))
 }
 
+/** Returned by `#dispatchExtension` when no extension answers the request. */
+const NOT_HANDLED: unique symbol = Symbol('not handled')
+
 export type CacheHints = {
   cacheScope?: 'public' | 'private'
   ttlMs?: number
@@ -176,6 +180,12 @@ export type ServerConfig = {
   resources?: ResourceDefinitions
   tools?: ToolDefinitions
   tasks?: TaskManager
+  /**
+   * Extensions this server serves, as built by an `@mokei/extension-*-server` package. Each is
+   * matched to the registry by `definition.id`. Ids must be unique, and distinct from the server's
+   * own extensions.
+   */
+  extensions?: ReadonlyArray<ServerExtension>
   /** Advertise the OAuth client credentials extension (default `false`). */
   oauthClientCredentials?: boolean
   /** @internal test hook: extra extensions to advertise and gate. */
@@ -283,7 +293,17 @@ export class ContextServer extends ContextRPC<ServerTypes> {
   #tools: ToolDefinitions = {}
   #toolsList: Array<Tool> = []
   #tasks?: TaskManager
-  #extensions = new Map<ExtensionDefinition, Record<string, unknown>>()
+  /** Advertised extensions, keyed by `definition.id`. */
+  #extensions = new Map<
+    string,
+    { definition: ExtensionDefinition; settings: Record<string, unknown> }
+  >()
+  /** Configured {@link ServerExtension}s, keyed by `definition.id`, in configuration order. */
+  #serverExtensions = new Map<string, ServerExtension>()
+  /** Client methods of the configured extensions, cacheable alongside the core ones. */
+  #extensionMethods = new Set<string>()
+  /** Whether an extension declares `resources: {}` for a server without its own `resources`. */
+  #extensionResources = false
   #registry: ReadonlyArray<ExtensionDefinition>
   #auth?: RequestAuth
   #resolveAuth?: ResolveAuth
@@ -313,13 +333,27 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this.#resolveAuth = params.resolveAuth
     this.#registry = params._registry ?? EXTENSIONS
     if (params.tasks != null) {
-      this.#extensions.set(TASKS, declareExtension(TASKS))
+      this.#enableExtension(TASKS)
     }
     if (params.oauthClientCredentials === true) {
-      this.#extensions.set(OAUTH_CLIENT_CREDENTIALS, declareExtension(OAUTH_CLIENT_CREDENTIALS))
+      this.#enableExtension(OAUTH_CLIENT_CREDENTIALS)
     }
     for (const { definition, settings } of params._extensions ?? []) {
-      this.#extensions.set(definition, declareExtension(definition, settings))
+      this.#enableExtension(definition, settings)
+    }
+    for (const extension of params.extensions ?? []) {
+      const id = extension.definition.id
+      if (this.#extensions.has(id)) {
+        throw new Error(`Extension ${id} is configured more than once`)
+      }
+      this.#enableExtension(extension.definition, extension.settings)
+      this.#serverExtensions.set(id, extension)
+      for (const method of extension.definition.clientMethods) {
+        this.#extensionMethods.add(method)
+      }
+      if (extension.capabilities?.resources === true) {
+        this.#extensionResources = true
+      }
     }
     this.#completeHandler = params.complete
     this.#protocolVersions = params.protocolVersions
@@ -366,6 +400,9 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       this.#capabilities.resources = { listChanged: true }
       this.#resources = toResourceHandlers(params.resources)
       this.#resourceScopes = params.resources.scopes
+    } else if (this.#extensionResources) {
+      // An extension serving resources still declares the capability without a `resources` param.
+      this.#capabilities.resources = {}
     }
 
     // Owner (`subscriptions: true`) creates and owns a hub bound to its own `events`; a borrower
@@ -406,14 +443,28 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     this._handle()
   }
 
+  #enableExtension(definition: ExtensionDefinition, settings?: Record<string, unknown>): void {
+    this.#extensions.set(definition.id, {
+      definition,
+      settings: declareExtension(definition, settings),
+    })
+  }
+
   /**
    * The OAuth scopes a request needs beyond the server-wide ones: the called tool's
    * {@link GenericToolDefinition.scopes} for `tools/call`, the prompt's for `prompts/get`, and
-   * {@link ResourceDefinitions.scopes} for `resources/read`. `[]` for any other method, or an
-   * unknown tool or prompt. Reads only `method` and `params.name` / `params.uri`, so a transport
-   * can check it before dispatch (the HTTP server answers `403 insufficient_scope` from it).
+   * {@link ResourceDefinitions.scopes} for `resources/read`. For a configured extension's methods
+   * and a `resources/read` of a URI its provider owns, the extension's
+   * {@link ServerExtension.scopes} replace those (`[]` when it sets none). `[]` for any
+   * other method, or an unknown tool or prompt. Reads only `method` and `params.name` /
+   * `params.uri`, so a transport can check it before dispatch (the HTTP server answers
+   * `403 insufficient_scope` from it).
    */
   requiredScopes(request: { method?: unknown; params?: unknown }): Array<string> {
+    const extension = this.#extensionFor(request)
+    if (extension != null) {
+      return [...(extension.scopes ?? [])]
+    }
     const params = request.params
     if (params == null || typeof params !== 'object') return []
     const { name, uri } = params as { name?: unknown; uri?: unknown }
@@ -432,6 +483,25 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       default:
         return []
     }
+  }
+
+  /**
+   * The configured extension that answers this request: the one whose definition, looked up in
+   * the registry, claims the method, or for `resources/read` the first whose provider owns the
+   * URI. Such a request uses the extension's scopes and cache hints.
+   */
+  #extensionFor(request: { method?: unknown; params?: unknown }): ServerExtension | undefined {
+    if (this.#serverExtensions.size === 0 || typeof request.method !== 'string') return undefined
+    if (request.method === 'resources/read') {
+      const uri = (request.params as { uri?: unknown } | undefined)?.uri
+      if (typeof uri !== 'string') return undefined
+      for (const extension of this.#serverExtensions.values()) {
+        if (extension.resources?.owns(uri) === true) return extension
+      }
+      return undefined
+    }
+    const definition = extensionForClientMethod(request.method, this.#registry)
+    return definition == null ? undefined : this.#serverExtensions.get(definition.id)
   }
 
   /**
@@ -642,13 +712,27 @@ export class ContextServer extends ContextRPC<ServerTypes> {
     const clientCapabilities = this.#clientCapabilitiesFor(request, protocol)
     const definition = extensionForClientMethod(request.method, this.#registry)
     if (definition != null) {
-      if (!this.#extensions.has(definition) || !definition.protocolVersions.has(protocol.version)) {
+      if (
+        !this.#extensions.has(definition.id) ||
+        !definition.protocolVersions.has(protocol.version)
+      ) {
         throw new RPCError({
           code: METHOD_NOT_FOUND,
           message: `Unsupported method: ${request.method}`,
         })
       }
-      requireExtension(definition, clientCapabilities)
+      // An extension whose clients declare nothing is served to any client once advertised.
+      if (definition.clientDeclaration !== 'none') {
+        requireExtension(definition, clientCapabilities)
+      }
+      // A configured extension answers only the methods it has handlers for, never the core.
+      const extension = this.#serverExtensions.get(definition.id)
+      if (extension != null && this.#handlerFor(extension, request.method) == null) {
+        throw new RPCError({
+          code: METHOD_NOT_FOUND,
+          message: `Unsupported method: ${request.method}`,
+        })
+      }
     }
     const meta = (request.params as Record<string, unknown> | undefined)?._meta as
       | Record<string, unknown>
@@ -744,9 +828,29 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       }) as ServerResult
     }
     const body = protocol.requiresCacheHints
-      ? applyCacheHints(request.method, result as Record<string, unknown>, this.#cache)
+      ? applyCacheHints(
+          request.method,
+          result as Record<string, unknown>,
+          this.#cacheFor(request),
+          this.#extensionMethods,
+        )
       : (result as Record<string, unknown>)
     return protocol.wrapResult(body, { serverInfo: this.#serverInfo }) as ServerResult
+  }
+
+  /**
+   * An extension's cache hints take precedence over the server's for its requests. An unset field
+   * falls back to the server's.
+   */
+  #cacheFor(request: ClientRequest): CacheHints | undefined {
+    const extension = this.#extensionFor(request)
+    if (extension != null) {
+      return {
+        ttlMs: extension.cache?.ttlMs ?? this.#cache?.ttlMs,
+        cacheScope: extension.cache?.cacheScope ?? this.#cache?.cacheScope,
+      }
+    }
+    return this.#cache
   }
 
   #clientCapabilitiesFor(request: ClientRequest, protocol: ProtocolDefinition): ClientCapabilities {
@@ -757,7 +861,10 @@ export class ContextServer extends ContextRPC<ServerTypes> {
 
   #capabilitiesFor(version: ProtocolVersion): ServerCapabilities {
     const { extensions: _omit, ...rest } = this.#capabilities
-    const extensions = extensionsFor(this.#extensions, version)
+    const enabled = new Map(
+      Array.from(this.#extensions.values(), ({ definition, settings }) => [definition, settings]),
+    )
+    const extensions = extensionsFor(enabled, version)
     return extensions == null ? rest : { ...rest, extensions }
   }
 
@@ -783,13 +890,18 @@ export class ContextServer extends ContextRPC<ServerTypes> {
       const required = this.requiredScopes(request)
       const missing = missingScopes(required, auth.scopes)
       if (missing.length > 0) {
-        const { name, uri } = request.params as { name?: unknown; uri?: unknown }
+        const { name, uri } = (request.params ?? {}) as { name?: unknown; uri?: unknown }
+        const target = name ?? uri
         throw new RPCError({
           code: INVALID_REQUEST,
-          message: `Insufficient scope for ${request.method} ${String(name ?? uri)}: requires ${missing.join(' ')}`,
+          message: `Insufficient scope for ${request.method}${target == null ? '' : ` ${String(target)}`}: requires ${missing.join(' ')}`,
           data: { error: INSUFFICIENT_SCOPE, scopes: required },
         })
       }
+    }
+    const handled = await this.#dispatchExtension(request, client, signal, mrtr, meta, auth)
+    if (handled !== NOT_HANDLED) {
+      return handled as ServerResult
     }
     switch (request.method) {
       case 'completion/complete':
@@ -894,6 +1006,58 @@ export class ContextServer extends ContextRPC<ServerTypes> {
         return { tools: this.#toolsList, ...this.#cache }
     }
     throw new RPCError({ code: METHOD_NOT_FOUND, message: `Unsupported method: ${request.method}` })
+  }
+
+  /**
+   * Answers a request from the configured extensions, ahead of the core `switch`: an extension
+   * method by its handler (`_handleRequest` already refused one without), a `resources/read` by the
+   * first provider owning the URI, and, when an extension declared `resources: {}` for a server
+   * without its own `resources`, the empty list pages and `Resource not found`.
+   */
+  async #dispatchExtension(
+    request: ClientRequest,
+    client: ServerClient,
+    signal: AbortSignal,
+    mrtr: MRTRContext,
+    meta: Record<string, JSONValue>,
+    auth: RequestAuth | undefined,
+  ): Promise<unknown> {
+    const extension = this.#extensionFor(request)
+    const handler = extension == null ? undefined : this.#handlerFor(extension, request.method)
+    if (handler != null) {
+      return await handler({
+        client,
+        params: (request.params ?? {}) as Record<string, unknown>,
+        signal,
+        meta,
+        auth,
+        ...mrtr,
+      })
+    }
+    if (request.method === 'resources/read' && extension?.resources != null) {
+      return { contents: [extension.resources.read(request.params.uri)] }
+    }
+    if (this.#resources != null || !this.#extensionResources) return NOT_HANDLED
+    switch (request.method) {
+      case 'resources/list':
+        return { resources: [] }
+      case 'resources/templates/list':
+        return { resourceTemplates: [] }
+      case 'resources/read':
+        throw new RPCError({
+          code: INVALID_PARAMS,
+          message: `Resource not found: ${request.params.uri}`,
+        })
+      default:
+        return NOT_HANDLED
+    }
+  }
+
+  /** The extension's own handler for `method`; a key set to `undefined` counts as none. */
+  #handlerFor(extension: ServerExtension, method: string): ExtensionMethodHandler | undefined {
+    if (!Object.hasOwn(extension.handlers, method)) return undefined
+    const handler = extension.handlers[method]
+    return typeof handler === 'function' ? handler : undefined
   }
 
   async #callTool(

@@ -145,6 +145,12 @@ await client.getPrompt({
 - `ContextTypes` - Define tool and prompt argument types
 - `UnknownContextTypes` - Default untyped context (all tools/prompts accept `Record<string, unknown>`)
 
+## Extensions
+
+Pass `extensions` to declare and allow MCP extensions, such as `extensions: [SKILLS]`. If two
+entries share an id, the last one wins. The Skills methods come from `createSkillsClient(client)` in
+`@mokei/extension-skills-client`. See that package's README.
+
 ## [Documentation](https://mokei.dev)
 
 ## Tracing payloads

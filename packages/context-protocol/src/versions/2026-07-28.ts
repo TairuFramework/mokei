@@ -43,6 +43,14 @@ import {
 } from '../rpc.js'
 import { createMessageRequestParams, createMessageResult } from '../sampling.js'
 import {
+  getSkillRequest,
+  getSkillResult,
+  listSkillsRequest,
+  listSkillsResult,
+  readResourceDirectoryRequest,
+  readResourceDirectoryResult,
+} from '../skills.js'
+import {
   subscriptionsAcknowledgedNotification,
   subscriptionsListenRequest,
   subscriptionsListenResult,
@@ -495,6 +503,9 @@ export const clientRequest = {
     }),
     withProtocolMeta(forbidRetryParams(tasksCancelRequest)),
     withProtocolMeta(forbidRetryParams(subscriptionsListenRequest)),
+    withProtocolMeta(forbidRetryParams(listSkillsRequest)),
+    withProtocolMeta(forbidRetryParams(getSkillRequest)),
+    withProtocolMeta(forbidRetryParams(readResourceDirectoryRequest)),
   ],
 } as const satisfies Schema
 export type ClientRequest =
@@ -511,6 +522,9 @@ export type ClientRequest =
   | TasksUpdateRequest
   | TasksCancelRequest
   | FromSchema<typeof subscriptionsListenRequest>
+  | FromSchema<typeof listSkillsRequest>
+  | FromSchema<typeof getSkillRequest>
+  | FromSchema<typeof readResourceDirectoryRequest>
 
 /**
  * Notifications a client may send in this revision. `2025-11-25`'s `initialized` and
@@ -677,6 +691,9 @@ export const serverResult = {
     withResultType(readResourceResult),
     withResultType(callToolResult),
     withResultType(listToolsResult),
+    withResultType(listSkillsResult),
+    withResultType(getSkillResult),
+    withResultType(readResourceDirectoryResult),
   ],
 } as const satisfies Schema
 /**
@@ -702,6 +719,9 @@ export type ServerResult =
   | CompleteResultOf<typeof readResourceResult>
   | CompleteResultOf<typeof callToolResult>
   | CompleteResultOf<typeof listToolsResult>
+  | CompleteResultOf<typeof listSkillsResult>
+  | CompleteResultOf<typeof getSkillResult>
+  | CompleteResultOf<typeof readResourceDirectoryResult>
 
 export const serverResponse = {
   anyOf: [
@@ -748,6 +768,9 @@ export const PROTOCOL = {
     'tasks/update',
     'tasks/cancel',
     'subscriptions/listen',
+    'skills/list',
+    'skills/get',
+    'resources/directory/read',
   ]),
   // Mirrors `clientNotification` above: `notifications/initialized` and
   // `notifications/roots/list_changed` are gone with the handshake and with server-initiated

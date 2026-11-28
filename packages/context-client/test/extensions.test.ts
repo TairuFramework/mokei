@@ -1,9 +1,9 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ExtensionDefinition, ServerMessage } from '@mokei/context-protocol'
 import { OAUTH_CLIENT_CREDENTIALS, TASKS, TASKS_EXTENSION } from '@mokei/context-protocol'
+import { ContextServer, createTaskManager, createTool } from '@mokei/context-server'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import { ContextServer, createTaskManager, createTool } from '../../context-server/lib/index.js'
 import { ContextClient, ExtensionNotDeclaredError, MethodNotInRevisionError } from '../src/index.js'
 
 const TEST_EXT: ExtensionDefinition = {

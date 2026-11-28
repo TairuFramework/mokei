@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { serveProcess } from '@mokei/context-server-node'
 import type { FlowSummary } from '@mokei/flow-client'
+import { createMemoryControl } from '@mokei/flow-client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { createMemoryControl } from '../../flow-client/test/memory-control.js'
 import { createFlowsCommand } from '../src/commands/flows.js'
 import type * as FlowControl from '../src/flow-control.js'
 import { connectFlowControl } from '../src/flow-control.js'

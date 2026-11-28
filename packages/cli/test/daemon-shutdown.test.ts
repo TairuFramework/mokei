@@ -2,14 +2,17 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { LocalTraceRecorder, openMokeiDatabase } from '@mokei/app-node'
+import { createFlowHost } from '@mokei/flow-host'
 import type * as FlowHostNodeExports from '@mokei/flow-host-node'
-import { createFlowService, type FlowConfig } from '@mokei/flow-host-node'
+import {
+  createFlowService,
+  createFlowServiceWithDependencies,
+  type FlowConfig,
+} from '@mokei/flow-host-node'
 import type { HostEvent } from '@mokei/host-protocol'
 import { NodeSession } from '@mokei/session-node'
 import { expect, test, vi } from 'vitest'
 
-import { createFlowHost } from '../../flow-host/src/host.js'
-import { createFlowServiceWithDependencies } from '../../flow-host-node/src/service.js'
 import { startMokeiDaemonWithDependencies } from '../src/daemon-entry.js'
 
 vi.mock('@mokei/flow-host-node', async (importOriginal) => {

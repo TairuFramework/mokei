@@ -9,6 +9,7 @@ import {
   missingExtensionErrorParams,
   OAUTH_CLIENT_CREDENTIALS,
   readExtension,
+  SKILLS,
   TASKS,
 } from '../src/extensions.js'
 import {
@@ -54,6 +55,18 @@ describe('extensionForClientMethod', () => {
   test('lookup', () => {
     expect(extensionForClientMethod('tasks/get')).toBe(TASKS)
     expect(extensionForClientMethod('tools/call')).toBeUndefined()
+  })
+
+  test('skills methods resolve to SKILLS', () => {
+    expect(extensionForClientMethod('skills/get')).toBe(SKILLS)
+    expect(extensionForClientMethod('skills/list')).toBe(SKILLS)
+    expect(extensionForClientMethod('resources/directory/read')).toBe(SKILLS)
+  })
+
+  test('SKILLS needs no client declaration and is 2026-07-28 only', () => {
+    expect(SKILLS.clientDeclaration).toBe('none')
+    expect([...SKILLS.protocolVersions]).toEqual(['2026-07-28'])
+    expect(EXTENSIONS).toContain(SKILLS)
   })
 })
 

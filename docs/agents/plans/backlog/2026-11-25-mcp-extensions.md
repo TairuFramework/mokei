@@ -21,16 +21,32 @@ Done for `private_key_jwt`: `docs/agents/plans/completed/2026-11-25-oauth-client
 
 `io.modelcontextprotocol/skills` (Beta, SEP-2640 Final).
 
-- Server: register skills, implement `skills/list` and `skills/get`, serve files via
-  `resources/read` (`skill://` scheme), manifests with SHA-256 digest and byte size per file,
-  `resultType` / `ttlMs` / `cacheScope` on results. Optional `resources/directory/read` behind
-  `directoryRead: true`.
-- Client: list/get skills, verify digests, sizes and frontmatter before use, restrict reads to the
-  retained manifest, preserve server identity + URI.
-- Session / agent layer: on-demand loading with approval bound to the manifest; never prefetch
-  files.
+Done for base support: `docs/agents/plans/completed/2026-11-28-skills-over-mcp.complete.md`.
+
+Base client and server support is implemented in the `@mokei/extension-skills`, `-server`, `-client`
+and `-node` packages, on the internal extension hooks: `skills/list` and `skills/get`, `skill://`
+files via `resources/read` with digest and size manifests, optional `resources/directory/read`
+(`directoryRead: true`), disk loading (`loadSkillCatalog`), and a verifying client
+(`createSkillsClient`, `readSkillFile`, `SkillVerificationError`).
+
+Remaining follow-on work:
+
+- Session, agent and host integration:
+  - registries keyed by server label + URI;
+  - user approval bound to the manifest, including activation of nested skills;
+  - caches;
+  - origin tagging and cross-server read rules;
+  - the `allowed-tools` and code-execution gates;
+  - offering skills to models in the CLI and host-desktop.
+  - Keep on-demand loading: never prefetch files.
+- Dynamic skills on the server (`"resources": "dynamic"`); the client already accepts them.
+- Skill files in `resources/list` (`skills/list` stays the discovery path until then).
+- Per-skill or per-URI auth scopes; today one catalog-wide scope list.
+- Protocol revision `2025-11-25` support for the extension methods.
 
 ## 4. Events
+
+To be built as extension packages (`extension-events*`) on the internal extension hooks.
 
 `io.modelcontextprotocol/events` (Beta, SEP-3415 Final). Requires `2026-07-28`.
 
@@ -41,8 +57,16 @@ Done for `private_key_jwt`: `docs/agents/plans/completed/2026-11-25-oauth-client
   verification and SSRF protection in `http-server`.
 - Cursors with `truncated` and `maxAgeMs`, `eventId` dedup; payloads are untrusted input.
 - Natural consumers: flow daemon, mcp-notify, unattended agents.
+- Core hook gaps to close first (the internal hooks do not cover them today):
+  - Held or streaming responses, for `events/stream`.
+  - Notifications sent outside a request, plus a `dispose` hook, for `notifications/events/list_changed`
+    and stream teardown.
+  - Per-method cacheability: every extension method currently gets cache hints, but `events/poll`
+    must not be cacheable.
 
 ## 5. MCP Apps (server side)
+
+To be built as extension packages (`extension-apps*`) on the internal extension hooks.
 
 `io.modelcontextprotocol/ui` (Stable, ext-apps).
 
@@ -50,6 +74,8 @@ Done for `private_key_jwt`: `docs/agents/plans/completed/2026-11-25-oauth-client
   `text/html;profile=mcp-app`, `_meta.ui.csp` / `permissions`.
 - Host-side rendering (sandboxed iframe + postMessage `ui/*` dialect) only if `host-desktop`
   should render apps; out of scope until then.
+- Core hook gap: `ui://` resources likely need only an async `ResourceProvider.read` that receives
+  `auth` and `signal`; the provider is synchronous today.
 
 ## Parked
 

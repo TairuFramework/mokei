@@ -3,10 +3,15 @@ import type { ServerMessage } from '@mokei/model-provider'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { AnthropicClient } from '../src/client.js'
+import { DEFAULT_TIMEOUT } from '../src/config.js'
 import { AnthropicProvider } from '../src/provider.js'
 import type { Model, StreamEvent, ToolCall } from '../src/types.js'
 
 describe('AnthropicProvider', () => {
+  test('default timeout is 30s', () => {
+    expect(DEFAULT_TIMEOUT).toBe(30_000)
+  })
+
   describe('fromConfig', () => {
     test('creates provider from valid config', () => {
       const provider = AnthropicProvider.fromConfig({

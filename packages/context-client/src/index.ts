@@ -10,7 +10,10 @@
  * @module context-client
  */
 
-export type { ClientEvents, ClientTasks } from './client.js'
+/** @internal Re-exported for extension packages, which split options like the core methods. */
+export { type RequestOptions, splitRequestOptions } from '@mokei/context-rpc'
+
+export type { ClientEvents, ClientTasks, PagedResult } from './client.js'
 export { ContextClient, DEFAULT_LIST_MAX_PAGES } from './client.js'
 export {
   type ClientTracing,
@@ -43,6 +46,7 @@ export {
   type UnsupportedProtocolVersionErrorParams,
   type ValidationIssue,
 } from './errors.js'
+export { listPaged, requireClientExtension } from './extension.js'
 export {
   mcpMetricsEnabled,
   metricAttributes,

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest'
 
-import { DEFAULT_TIMEOUT as ANTHROPIC_DEFAULT_TIMEOUT } from '../../anthropic-provider/src/config.js'
 import { OpenAIClient } from '../src/client.js'
 import { DEFAULT_TIMEOUT } from '../src/config.js'
 import { OpenAIProvider } from '../src/provider.js'
@@ -12,9 +11,8 @@ describe('OpenAIProvider construction', () => {
     expect(provider).toBeInstanceOf(OpenAIProvider)
   })
 
-  test('default timeout is standardized to 30s across providers', () => {
+  test('default timeout is 30s', () => {
     expect(DEFAULT_TIMEOUT).toBe(30_000)
-    expect(ANTHROPIC_DEFAULT_TIMEOUT).toBe(30_000)
   })
 })
 

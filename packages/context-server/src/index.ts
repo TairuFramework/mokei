@@ -32,6 +32,12 @@ export {
   ToolOutputValidationError,
   type ToolOutputValidationErrorParams,
 } from './definitions.js'
+export type {
+  ExtensionHandlerRequest,
+  ExtensionMethodHandler,
+  ResourceProvider,
+  ServerExtension,
+} from './extension.js'
 export {
   defaultMintRequestState,
   type InputRequiredResult,
@@ -41,6 +47,7 @@ export {
   type RequestStateHooks,
 } from './mrtr.js'
 export {
+  type CacheHints,
   ContextServer,
   type ServerConfig,
   type ServerEvents,

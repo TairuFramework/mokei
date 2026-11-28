@@ -1,4 +1,5 @@
 import { MISSING_REQUIRED_CLIENT_CAPABILITY } from './rpc.js'
+import { SKILLS_EXTENSION } from './skills.js'
 import { TASKS_EXTENSION } from './versions/2026-07-28.js'
 import type { ProtocolVersion } from './versions/types.js'
 
@@ -8,6 +9,8 @@ export type ExtensionDefinition = {
   protocolVersions: ReadonlySet<ProtocolVersion>
   clientMethods: ReadonlySet<string>
   serverMethods: ReadonlySet<string>
+  /** `'none'`: a client need not declare the extension to call its methods. Absent means `'required'`. */
+  clientDeclaration?: 'required' | 'none'
 }
 
 type ExtensionCapabilities = { extensions?: Record<string, Record<string, unknown>> }
@@ -26,7 +29,19 @@ export const OAUTH_CLIENT_CREDENTIALS: ExtensionDefinition = {
   serverMethods: new Set(),
 }
 
-export const EXTENSIONS: ReadonlyArray<ExtensionDefinition> = [TASKS, OAUTH_CLIENT_CREDENTIALS]
+export const SKILLS: ExtensionDefinition = {
+  id: SKILLS_EXTENSION,
+  protocolVersions: new Set<ProtocolVersion>(['2026-07-28']),
+  clientMethods: new Set(['skills/list', 'skills/get', 'resources/directory/read']),
+  serverMethods: new Set(),
+  clientDeclaration: 'none',
+}
+
+export const EXTENSIONS: ReadonlyArray<ExtensionDefinition> = [
+  TASKS,
+  OAUTH_CLIENT_CREDENTIALS,
+  SKILLS,
+]
 
 export function extensionForClientMethod(
   method: string,

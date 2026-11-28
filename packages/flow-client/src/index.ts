@@ -11,6 +11,12 @@
  */
 
 export * from './errors.js'
+export {
+  createMemoryControl,
+  type MemoryControl,
+  type MemoryControlOptions,
+  type UnavailableState,
+} from './memory-control.js'
 export * from './remote.js'
 export * from './server.js'
 export * from './span-tree.js'
