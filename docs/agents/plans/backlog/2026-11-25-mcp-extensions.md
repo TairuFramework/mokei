@@ -21,6 +21,8 @@ Done for `private_key_jwt`: `docs/agents/plans/completed/2026-11-25-oauth-client
 
 `io.modelcontextprotocol/skills` (Beta, SEP-2640 Final).
 
+Done for base support: `docs/agents/plans/completed/2026-11-28-skills-over-mcp.complete.md`.
+
 Base client and server support is implemented: `skills/list` and `skills/get`, `skill://` files
 via `resources/read` with digest and size manifests, optional `resources/directory/read`
 (`directoryRead: true`), disk loading in `context-server-node`, and a verifying client
