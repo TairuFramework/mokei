@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { SkillFormatError } from '@mokei/context-protocol'
+import { SkillFormatError } from '@mokei/extension-skills'
 import { describe, expect, test } from 'vitest'
 
 import { createSkillCatalog, type SkillDefinition } from '../src/skill-catalog.js'

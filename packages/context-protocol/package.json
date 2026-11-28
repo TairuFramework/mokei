@@ -39,7 +39,6 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@sozai/schema": "catalog:",
-    "yaml": "catalog:"
+    "@sozai/schema": "catalog:"
   }
 }

@@ -1,12 +1,12 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
-import { validatePathSegments } from '@mokei/context-protocol'
 import {
   createSkillCatalog,
   type SkillCatalog,
   type SkillCatalogOptions,
   type SkillDefinition,
 } from '@mokei/context-server'
+import { validatePathSegments } from '@mokei/extension-skills'
 
 const SKILL_FILE = 'SKILL.md'
 

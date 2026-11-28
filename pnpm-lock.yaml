@@ -1047,6 +1047,9 @@ importers:
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
+      '@mokei/extension-skills':
+        specifier: workspace:^
+        version: link:../extension-skills
       '@mokei/logger':
         specifier: workspace:^
         version: link:../logger
@@ -1084,9 +1087,6 @@ importers:
       '@sozai/schema':
         specifier: 'catalog:'
         version: 0.1.6
-      yaml:
-        specifier: 'catalog:'
-        version: 2.9.1
 
   packages/context-rpc:
     dependencies:
@@ -1117,6 +1117,9 @@ importers:
       '@mokei/context-rpc':
         specifier: workspace:^
         version: link:../context-rpc
+      '@mokei/extension-skills':
+        specifier: workspace:^
+        version: link:../extension-skills
       '@sozai/async':
         specifier: 'catalog:'
         version: 0.4.3
@@ -1151,6 +1154,9 @@ importers:
       '@mokei/context-server':
         specifier: workspace:^
         version: link:../context-server
+      '@mokei/extension-skills':
+        specifier: workspace:^
+        version: link:../extension-skills
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -1244,6 +1250,15 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
+
+  packages/extension-skills:
+    dependencies:
+      '@mokei/context-protocol':
+        specifier: workspace:^
+        version: link:../context-protocol
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
 
   packages/flow-client:
     dependencies:

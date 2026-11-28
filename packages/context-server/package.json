@@ -43,6 +43,7 @@
     "@enkaku/transport": "catalog:",
     "@mokei/context-protocol": "workspace:^",
     "@mokei/context-rpc": "workspace:^",
+    "@mokei/extension-skills": "workspace:^",
     "@sozai/async": "catalog:",
     "@sozai/codec": "catalog:",
     "@sozai/event": "catalog:",

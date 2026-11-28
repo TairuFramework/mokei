@@ -1,16 +1,15 @@
+import type { Resource, Skill } from '@mokei/context-protocol'
 import {
   computeDigest,
   decodeExactUTF8,
   isValidSkillName,
   joinSkillURI,
   parseSkillFrontmatter,
-  type Resource,
   SKILL_LIMITS,
-  type Skill,
   SkillFormatError,
   validatePathSegments,
   validateSkillFrontmatter,
-} from '@mokei/context-protocol'
+} from '@mokei/extension-skills'
 import { toB64 } from '@sozai/codec'
 
 import type { CacheHints } from './server.js'

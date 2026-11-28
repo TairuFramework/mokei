@@ -1,6 +1,7 @@
 import { DirectTransports } from '@enkaku/transport'
 import type { ClientMessage, ClientRequest, ServerMessage, Skill } from '@mokei/context-protocol'
-import { computeDigest, SKILLS_EXTENSION, skill as skillSchema } from '@mokei/context-protocol'
+import { SKILLS_EXTENSION, skill as skillSchema } from '@mokei/context-protocol'
+import { computeDigest } from '@mokei/extension-skills'
 import { createValidator } from '@sozai/schema'
 import { afterEach, describe, expect, test } from 'vitest'
 

@@ -9,7 +9,7 @@ import {
   isWithinSkill,
   parseSkillFrontmatter,
   SKILL_LIMITS,
-} from '@mokei/context-protocol'
+} from '@mokei/extension-skills'
 import { fromB64 } from '@sozai/codec'
 
 import { SkillVerificationError, type SkillVerificationReason } from './errors.js'

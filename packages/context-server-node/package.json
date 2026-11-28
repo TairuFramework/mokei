@@ -42,7 +42,8 @@
   "dependencies": {
     "@enkaku/node-streams": "catalog:",
     "@mokei/context-protocol": "workspace:^",
-    "@mokei/context-server": "workspace:^"
+    "@mokei/context-server": "workspace:^",
+    "@mokei/extension-skills": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "catalog:"

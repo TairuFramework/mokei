@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SkillFormatError } from '@mokei/context-protocol'
+import { SkillFormatError } from '@mokei/extension-skills'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { loadSkillCatalog, loadSkillDefinitions } from '../src/skills.js'
